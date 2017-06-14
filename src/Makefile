@@ -1,13 +1,13 @@
 #! /usr/bin/make -f
 #
-# ----------------------------------------------------------------------
+# Makefile for zinzong
 #
-#
-#
-# ----------------------------------------------------------------------
 
-SHELL=/usr/bin/sh
-PKGCONFIG:=pkg-config
+SHELL   = /bin/sh
+srcdir := $(dir $(lastword $(MAKEFILE_LIST)))
+VPATH   = $(srcdir)
+PKGCONFIG=pkg-config
+VERSION:=$(shell $(srcdir)vcversion.sh)
 
 # ----------------------------------------------------------------------
 
@@ -24,5 +24,5 @@ endif
 all: zingzong
 clean: ; -rm -f zingzong
 
-zingzong: CFLAGS += $(AO_CFLAGS)
+zingzong: CFLAGS += $(AO_CFLAGS) -DPACKAGE_VERSION='"$(VERSION)"'
 zingzong: LDLIBS += $(AO_LIBS)
