@@ -792,7 +792,7 @@ static void print_usage(void)
     "  A simple /|\\ Atari ST /|\\ quartet music file player\n"
     "\n"
     "OPTIONS:\n"
-    " -h --help --usage  Print this message and exit (`-v' for more details).\n"
+    " -h --help --usage  Print this message and exit.\n"
     " -V --version       Print version and copyright and exit.\n"
     " -t --tick=HZ       Set player tick rate (default is 200hz)\n"
     " -r --rate=HZ       Set sampling rate (default is 48kHz)\n"

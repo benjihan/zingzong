@@ -8,7 +8,7 @@ An simple Atari ST quartet music file player
     A simple /|\ Atari ST /|\ quartet music file player
 
 ### Options:
-    -h --help --usage  Print this message and exit (`-v' for more details).
+    -h --help --usage  Print this message and exit.
     -V --version       Print version and copyright and exit.
     -t --tick=HZ       Set player tick rate (default is 200hz)
     -r --rate=HZ       Set sampling rate (default is 48kHz)
