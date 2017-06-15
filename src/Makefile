@@ -19,10 +19,15 @@ endif
 AO_CLAGS := $(shell $(PKGCONFIG) --cflags ao)
 endif
 
+zingzong_CPPFLAGS := $(CPPFLAGS) -DPACKAGE_VERSION='"$(VERSION)"'
+zingzong_CFLAGS   := $(CFLAGS) $(AO_CFLAGS)
+zingzong_LDLIBS   := $(LDLIBS) $(AO_LIBS)
+
 # ----------------------------------------------------------------------
 
 all: zingzong
 clean: ; -rm -f zingzong
 
-zingzong: CFLAGS += $(AO_CFLAGS) -DPACKAGE_VERSION='"$(VERSION)"'
-zingzong: LDLIBS += $(AO_LIBS)
+zingzong: CPPFLAGS = $(zingzong_CPPFLAGS)
+zingzong: CFLAGS   = $(zingzong_CFLAGS)
+zingzong: LDLIBS   = $(zingzong_LDLIBS)
