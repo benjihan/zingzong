@@ -36,10 +36,14 @@ static const char copyright[] = \
 static const char licence[] = \
   "Licenced under MIT licence";
 static const char bugreport[] =                                 \
-  "Report bugs to <https://github.com/benjihan/zingzong>";
+  "Report bugs to <https://github.com/benjihan/zingzong/issues>";
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
+#endif
+
+#if !defined(DEBUG) && !defined(NDEBUG)
+#define NDEBUG 1
 #endif
 
 /* libao */
@@ -56,10 +60,6 @@ static const char bugreport[] =                                 \
 #include <errno.h>
 #include <getopt.h>
 #include <libgen.h>
-
-#if !defined(DEBUG) && !defined(NDEBUG)
-#define NDEBUG 1
-#endif
 
 #ifndef PACKAGE_NAME
 #define PACKAGE_NAME "zingzong"
@@ -430,7 +430,7 @@ error:
 static int vset_load_file(vset_t * vset, const char * fname)
 {
   int i, ecode = E_SET;
-  uint8_t hd[222], *end, *pcm;
+  uint8_t hd[222], *pcm;
   FILE * f = 0;
 
   memset(vset,0,sizeof(*vset));
@@ -466,18 +466,18 @@ static int vset_load_file(vset_t * vset, const char * fname)
   vset->bin = load_bin(f,fname,VSET_MAX_SIZE,0);
   if (!vset->bin)
     goto error;
-  /* end = vset->bin->data + vset->bin->size; */
 
   for (i=0; i<vset->nbi; ++i) {
     int off = u32(&hd[142+4*i]);
     int o = off - 222 + 8;
     uint_t len, lpl;
 
-    dmsg("---\nI#%02u \"%s\" +$%x +$%x\n",i+1, hd+2+7*i, off, off -222 +8 );
+    dmsg("---\nI#%02u \"%7s\" +$%x +$%x\n",i+1, hd+2+7*i, off, off -222 +8 );
 
     pcm = vset->bin->data+o;
     len = u32(pcm-4);
     lpl = u32(pcm-8);
+
 
     assert (! (len & 0xFFFF ));
     if (lpl == 0xFFFFFFFF)
@@ -485,8 +485,14 @@ static int vset_load_file(vset_t * vset, const char * fname)
     assert ( ! (lpl & 0xFFFF )) ;
     len >>= 16;
     lpl >>= 16;
+
+    dmsg("I#%02u \"%7s\" [$%05X:$%05X:$%05X] [$%05X:$%05X:$%05X]\n",
+         i+1, hd+2+7*i,
+         0, len-lpl, len,
+         o, o+len-lpl, o+len);
+
     assert(lpl <= len);
-    assert(pcm+len <= end);
+    assert(o+len <= vset->bin->size);
 
     if (lpl > len) {
       emsg("I#%02d invalid loop %u > %u\n",i+1,lpl,len);
@@ -497,10 +503,6 @@ static int vset_load_file(vset_t * vset, const char * fname)
            i+1,len-vset->bin->size);
       goto error;
     }
-    dmsg("I#%02u ******* [$%05X:$%05X:$%05X] [$%05X:$%05X:$%05X]\n",
-         i+1,
-         0, len-lpl, len,
-         o, o+len-lpl, o+len);
     vset->inst[i].len = len;
     vset->inst[i].lpl = lpl;
     vset->inst[i].pcm = pcm;
