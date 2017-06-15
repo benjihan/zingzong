@@ -66,7 +66,7 @@ static const char bugreport[] =                                 \
 #endif
 
 #ifndef PACKAGE_VERSION
-#define PACKAGE_VERSION __DATE__
+#error PACKAGE_VERSION should be defined
 #endif
 
 #ifndef PACKAGE_STRING
@@ -90,12 +90,22 @@ enum {
  * ----------------------------------------------------------------------
  */
 
+static int newline = 1; /* Pseudo newline tracking to improve messages */
+
+static void set_newline(const char * fmt)
+{
+  if (*fmt)
+    newline = fmt[strlen(fmt)-1] == '\n';
+}
+
 static void emsg(const char * fmt, ...)
 {
   va_list list;
   va_start(list,fmt);
-  fprintf(stderr,"%s: ", me);
+  fprintf(stderr,"\n%s: "+newline, me);
+  newline = 0;
   vfprintf(stderr,fmt,list);
+  set_newline(fmt);
   va_end(list);
 }
 
@@ -116,8 +126,10 @@ static void wmsg(const char * fmt, ...)
 {
   va_list list;
   va_start(list,fmt);
-  fprintf(stderr,"WARNING: ");
+  fprintf(stderr,"\nWARNING: "+newline);
+  newline = 0;
   vfprintf(stderr,fmt,list);
+  set_newline(fmt);
   fflush(stderr);
   va_end(list);
 }
@@ -127,7 +139,12 @@ static void dmsg(const char *fmt, ...)
 #ifdef DEBUG
   va_list list;
   va_start(list,fmt);
+  if (!newline) {
+    fputc('\n',stdout);
+    newline = 0;
+  }
   vfprintf(stdout,fmt,list);
+  set_newline(fmt);
   fflush(stdout);
   va_end(list);
 #endif
@@ -137,7 +154,12 @@ static void imsg(const char *fmt, ...)
 {
   va_list list;
   va_start(list,fmt);
+  if (!newline) {
+    fputc('\n',stdout);
+    newline = 0;
+  }
   vfprintf(stdout,fmt,list);
+  set_newline(fmt);
   fflush(stdout);
   va_end(list);
 }
@@ -472,12 +494,9 @@ static int vset_load_file(vset_t * vset, const char * fname)
     int o = off - 222 + 8;
     uint_t len, lpl;
 
-    dmsg("---\nI#%02u \"%7s\" +$%x +$%x\n",i+1, hd+2+7*i, off, off -222 +8 );
-
     pcm = vset->bin->data+o;
     len = u32(pcm-4);
     lpl = u32(pcm-8);
-
 
     assert (! (len & 0xFFFF ));
     if (lpl == 0xFFFFFFFF)
@@ -532,7 +551,6 @@ static int zz_play(play_t * P)
       C->cur = P->chan[k].seq;
   }
 
-  dmsg("Start playing.\n");
   for (;;) {
     int started = 0;
 
@@ -572,7 +590,15 @@ static int zz_play(play_t * P)
           seq = C->seq;
           P->has_loop |= 1<<k;
           C->has_loop++;
-          C->loop_level = 0;
+          C->loop_level = 0;            /* Safety net */
+          dmsg("%c: [%c%c%c%c] end @%u +%u\n",
+               'A'+k,
+               ".A"[!!(1&P->has_loop)],
+               ".B"[!!(2&P->has_loop)],
+               ".C"[!!(4&P->has_loop)],
+               ".D"[!!(8&P->has_loop)],
+               P->tick,
+               C->has_loop);
           break;
 
         case 'V':                       /* Voice-Change */
@@ -629,8 +655,18 @@ static int zz_play(play_t * P)
             C->loop[0].seq = C->seq;
           }
 
-          if (!C->loop[l].cnt)
-            C->loop[l].cnt = (par >> 16) + 1;
+          if (!C->loop[l].cnt) {
+            /* Start a new loop unless the loop point is the start of
+             * the sequence and the next row is the end.
+             *
+             * This (not so) effectively removes useless loops on the
+             * whole sequence that messed up the song duration.
+             */
+            if (C->loop[l].seq == C->seq && u16(seq->cmd) == 'F')
+              C->loop[l].cnt = 1;
+            else
+              C->loop[l].cnt = (par >> 16) + 1;
+          }
 
           if (--C->loop[l].cnt)
             seq = C->loop[l].seq;
@@ -648,7 +684,7 @@ static int zz_play(play_t * P)
 
     if (P->has_loop == 15) {
       if (P->ao.dev && P->ao.info->type == AO_TYPE_LIVE)
-        puts("");
+        imsg("");
       break;
     }
 
@@ -658,11 +694,9 @@ static int zz_play(play_t * P)
       unsigned stp[4];
 
       if (P->ao.info->type == AO_TYPE_LIVE) {
-        uint_t ms = P->tick * 1000u / opt_tickrate;
-        uint_t m  = ms / 60000;
-        uint_t s  = ms / 1000 % 60u;
-        ms %= 1000u;
-        printf("\r%02u:%02u,%03u", m, s, ms);
+        const uint_t s = P->tick / opt_tickrate;
+        printf("\r|> %02u:%02u", s / 60u, s % 60u);
+        newline = 0;
         fflush(stdout);
       }
 
@@ -698,7 +732,6 @@ static int zz_play(play_t * P)
       }
     }
   } /* loop ! */
-  dmsg("Stop playing.\n");
   return E_OK;
 }
 
