@@ -74,7 +74,9 @@ if [ s${AO_LIBS+et} = set ]; then
 fi
 
 make \
-    -f ${top}/../src/Makefile\
-    -B all \
+    -B -f ${top}/../src/Makefile\
     CC="$CC" CFLAGS="$CFLAGS" PKGCONFIG="$PKGCONFIG" \
     "$@"
+
+version=`$SHELL ${top}/../src/vcversion.sh`
+echo "zinzong ${version} for ${arch}"
