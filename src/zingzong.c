@@ -79,7 +79,7 @@ static int opt_sampling = 48000, opt_tickrate = 200, opt_wav;
 
 #define VSET_MAX_SIZE (1<<21) /* arbitrary .set max size */
 #define SONG_MAX_SIZE (1<<18) /* arbitrary .4v max size  */
-#define INFO_MAX_SIZE 1024    /* arbitrary .4q info max size */
+#define INFO_MAX_SIZE 4096    /* arbitrary .4q info max size */
 #define MAX_LOOP 67           /* max loop depth (singsong.prg) */
 
 enum {
@@ -324,7 +324,7 @@ static int my_fsize(FILE *f, const char * path, uint_t *psize)
       -1 == fseek(f,tell,SEEK_SET))     /* restore position */
     return sysmsg(path,"file size");
   else if (size < tell || size >= UINT_MAX) {
-    emsg("too large -- %s\n", path);
+    emsg("too large (fsize) -- %s\n", path);
     return E_ERR;
   }
   *psize = size - tell;
@@ -373,7 +373,7 @@ static int bin_load(bin_t ** pbin, const char * path,
       goto error;
   }
   if (max && size > max) {
-    emsg("too large -- %s\n", path);
+    emsg("too large (load > %u) -- %s\n", max, path);
     ecode = E_ERR;
     goto error;
   }
@@ -445,8 +445,10 @@ static int song_parse(song_t *song, const char * path, FILE *f,
 
     switch (cmd) {
     case 'F':                           /* End-Voice */
-      if (!has_note)
-        song->seq[k] = (sequ_t *)nullseq;
+      if (!has_note) {
+        song->seq[k] = (sequ_t *) nullseq;
+        dmsg("%c: replaced by default sequence\n");
+      }
       has_note = 0;
       ++k;
       break;
@@ -614,13 +616,15 @@ static int q4_load(FILE * f, char * path, play_t * P,
   if (ecode)
     goto error;
 
+  /* Ignoring the comment for now. */
+#if 0
   /* info (ignoring errorS) */
   if (!bin_load(&play.info.bin, path, f, infsize, INFO_MAX_SIZE)
       && play.info.bin->size > 1) {
-    play.info.bin->data[play.info.bin->size-1] = 0;
     play.info.comment = (char *) play.info.bin->data;
     dmsg("Comments:\n%s\n", play.info.comment);
   }
+#endif
 
 error:
   return ecode;
@@ -629,6 +633,7 @@ error:
 
 static int zz_play(play_t * P)
 {
+  const uint_t maxtick = 60*60*opt_tickrate;
   int k;
   assert(P);
 
@@ -644,6 +649,10 @@ static int zz_play(play_t * P)
     int started = 0;
 
     ++P->tick;
+    if (maxtick && P->tick > maxtick) {
+      wmsg("unable to reach detect song end. Aborting.\n");
+      break;
+    }
 
     for (k=0; k<4; ++k) {
       chan_t * const C = P->chan+k;

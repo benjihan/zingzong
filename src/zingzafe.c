@@ -530,6 +530,7 @@ error:
 static int zz_play(play_t * P)
 {
   int k;
+  const uint_t maxtick = 60*60*opt_tick;
   assert(P);
 
   /* Setup player */
@@ -544,6 +545,10 @@ static int zz_play(play_t * P)
     int started = 0;
 
     ++P->tick;
+    if (maxtick && P->tick > maxtick) {
+      wmsg("unable to reach detect song end. Aborting.\n");
+      break;
+    }
 
     for (k=0; k<4; ++k) {
       chan_t * const C = P->chan+k;
