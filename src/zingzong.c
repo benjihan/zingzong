@@ -61,6 +61,10 @@ static const char bugreport[] =                                 \
 #include <limits.h>
 #include <getopt.h>
 #include <libgen.h>
+#ifdef WIN32
+#include <io.h>
+#include <fcntl.h>
+#endif
 
 #ifndef PACKAGE_NAME
 #define PACKAGE_NAME "zingzong"
@@ -75,7 +79,8 @@ static const char bugreport[] =                                 \
 #endif
 
 static char me[] = PACKAGE_NAME;
-static int opt_sampling = 48000, opt_tickrate = 200, opt_wav;
+static int opt_sampling = 48000, opt_tickrate = 200;
+static int opt_wav, opt_stdout;
 
 #define VSET_MAX_SIZE (1<<21) /* arbitrary .set max size */
 #define SONG_MAX_SIZE (1<<18) /* arbitrary .4v max size  */
@@ -98,6 +103,10 @@ static void set_newline(const char * fmt)
 {
   if (*fmt)
     newline = fmt[strlen(fmt)-1] == '\n';
+}
+
+static FILE * stdout_or_stderr(void) {
+  return opt_stdout ? stderr : stdout;
 }
 
 static void emsg(const char * fmt, ...)
@@ -139,30 +148,32 @@ static void wmsg(const char * fmt, ...)
 static void dmsg(const char *fmt, ...)
 {
 #ifdef DEBUG
+  FILE * const out = stdout_or_stderr();
   va_list list;
   va_start(list,fmt);
   if (!newline) {
-    fputc('\n',stdout);
+    fputc('\n',out);
     newline = 0;
   }
-  vfprintf(stdout,fmt,list);
+  vfprintf(out,fmt,list);
   set_newline(fmt);
-  fflush(stdout);
+  fflush(out);
   va_end(list);
 #endif
 }
 
 static void imsg(const char *fmt, ...)
 {
+  FILE * const out = stdout_or_stderr();
   va_list list;
   va_start(list,fmt);
   if (!newline) {
-    fputc('\n',stdout);
+    fputc('\n',out);
     newline = 0;
   }
-  vfprintf(stdout,fmt,list);
+  vfprintf(out,fmt,list);
   set_newline(fmt);
-  fflush(stdout);
+  fflush(out);
   va_end(list);
 }
 
@@ -256,6 +267,8 @@ struct play_s {
   int16_t * mix_buf;
   int pcm_per_tick;
   int has_loop;
+
+  FILE * outfp;
 
   struct {
     int              id;
@@ -787,15 +800,16 @@ static int zz_play(play_t * P)
     }
 
     /* audio output */
-    if (P->ao.dev) {
+    if (P->ao.dev || P->outfp) {
       int n;
       unsigned stp[4];
 
-      if (P->ao.info->type == AO_TYPE_LIVE) {
+      if (P->ao.info && P->ao.info->type == AO_TYPE_LIVE) {
+        FILE * const out = stdout_or_stderr();
         const uint_t s = P->tick / opt_tickrate;
-        printf("\r|> %02u:%02u", s / 60u, s % 60u);
+        fprintf(out,"\r|> %02u:%02u", s / 60u, s % 60u);
         newline = 0;
-        fflush(stdout);
+        fflush(out);
       }
 
       for (k=0; k<4; k++) {
@@ -823,10 +837,14 @@ static int zz_play(play_t * P)
         P->mix_buf[n] = 0x8000 ^ (v << 6);
       }
 
-      if (!ao_play(P->ao.dev, (void*)P->mix_buf, 2*n)) {
-        emsg("libao: failed to play buffer #%d \"%s\"\n",
-             P->ao.id, P->ao.info->short_name);
-        return E_OUT;
+      if (P->ao.dev) {
+        if (!ao_play(P->ao.dev, (void*)P->mix_buf, n<<1)) {
+          emsg("libao: failed to play buffer #%d \"%s\"\n",
+               P->ao.id, P->ao.info->short_name);
+          return E_OUT;
+        }
+      } else if ( (n<<1) != fwrite(P->mix_buf,1,n<<1,P->outfp) ) {
+        return sysmsg("<stdout>","write");
       }
     }
   } /* loop ! */
@@ -849,36 +867,65 @@ static int zing_zong(play_t * P)
 
   /* Init libao */
   ecode = E_OUT;
-  ao_initialize();
-  memset(&P->ao.fmt,0,sizeof(P->ao.fmt));
-  P->ao.fmt.bits = 16;
-  P->ao.fmt.rate = opt_sampling;
-  P->ao.fmt.channels = 1;
-  P->ao.fmt.byte_format = AO_FMT_NATIVE;
-  P->ao.id = P->wavpath
-    ? ao_driver_id("wav")
-    : ao_default_driver_id()
-    ;
-  P->ao.info = ao_driver_info(P->ao.id);
-  if (!P->ao.info) {
-    emsg("libao: failed to get driver #%d info\n", P->ao.id);
-    goto error;
-  }
-  P->ao.dev = P->wavpath
-    ? ao_open_file(P->ao.id, P->wavpath, 1, &P->ao.fmt, 0)
-    : ao_open_live(P->ao.id, &P->ao.fmt, 0)
-    ;
-  if (!P->ao.dev) {
-    emsg("libao: failed to initialize audio driver #%d \"%s\"\n",
-         P->ao.id, P->ao.info->short_name);
-    goto error;
+  if (opt_stdout) {
+    /* Setup for stdout:
+     *
+     * Currently for Windows platform only where we have to set the
+     * file mode to binary.
+     */
+    P->spr = opt_sampling;
+    P->outfp = stdout;
+
+    dmsg("output to stdout!\n");
+#ifdef WIN32
+    if (1) {
+      int err, fd = fileno(P->outfp);
+      dmsg("stdout fd:%d\n", fd);
+      if (fd == -1) {
+        ecode = sysmsg("<stdout>","fileno");
+        goto error;
+      }
+
+      errno = 0;
+      err = _setmode(fd, _O_BINARY);
+      dmsg("setmode returns: %d\n", err);
+      if ( err == -1 || errno ) {
+        sysmsg("<stdout>","setmode");
+      }
+    }
+
+#endif
+  } else {
+    /* Setup libao: */
+    ao_initialize();
+    P->ao.fmt.bits = 16;
+    P->ao.fmt.rate = opt_sampling;
+    P->ao.fmt.channels = 1;
+    P->ao.fmt.byte_format = AO_FMT_NATIVE;
+    P->ao.id = P->wavpath
+      ? ao_driver_id("wav")
+      : ao_default_driver_id()
+      ;
+    P->ao.info = ao_driver_info(P->ao.id);
+    if (!P->ao.info) {
+      emsg("libao: failed to get driver #%d info\n", P->ao.id);
+      goto error;
+    }
+    P->ao.dev = P->wavpath
+      ? ao_open_file(P->ao.id, P->wavpath, 1, &P->ao.fmt, 0)
+      : ao_open_live(P->ao.id, &P->ao.fmt, 0)
+      ;
+    if (!P->ao.dev) {
+      emsg("libao: failed to initialize audio driver #%d \"%s\"\n",
+           P->ao.id, P->ao.info->short_name);
+      goto error;
+    }
+    dmsg("ao %s device \"%s\" is open\n",
+         P->ao.info->type == AO_TYPE_LIVE ? "live" : "file",
+         P->ao.info->short_name);
+    P->spr = P->ao.fmt.rate;
   }
 
-  dmsg("ao %s device \"%s\" is open\n",
-       P->ao.info->type == AO_TYPE_LIVE ? "live" : "file",
-       P->ao.info->short_name);
-
-  P->spr = P->ao.fmt.rate;
   P->pcm_per_tick = (P->spr + (opt_tickrate>>1)) / opt_tickrate;
   P->mix_buf = (int16_t *) malloc ( 2 * P->pcm_per_tick );
   if (!P->mix_buf) {
@@ -888,11 +935,23 @@ static int zing_zong(play_t * P)
 
   ecode = zz_play(&play);
 error:
-  if (P->ao.dev && !ao_close(P->ao.dev) && ecode == E_OK) {
-    sysmsg("audio","close");
-    ecode = E_OUT;
+  /* Close and ignore closing error if error is already raised */
+  if (P->outfp) {
+    dmsg("Closing <stdout>\n");
+    if (( fflush(P->outfp) || fclose(P->outfp)) && ecode == E_OK)
+      ecode = sysmsg("<stdout>","flush/close");
+    P->outfp = 0;
   }
-  ao_shutdown();
+
+  if (!opt_stdout) {
+    if (P->ao.dev && !ao_close(P->ao.dev) && ecode == E_OK) {
+      sysmsg("audio","close");
+      ecode = E_OUT;
+    }
+    P->ao.dev = 0;
+    P->ao.info = 0;
+    ao_shutdown();
+  }
 
   free(P->mix_buf);
   bin_free(&P->vset.bin);
@@ -918,6 +977,7 @@ static void print_usage(void)
     " -t --tick=HZ       Set player tick rate (default is 200hz)\n"
     " -r --rate=HZ       Set sampling rate (default is 48kHz)\n"
     " -w --wav           Generated a .wav file (implicit if output is set)\n"
+    " -c --stdout        Output raw sample to stdout\n"
     "\n"
     "OUTPUT:\n"
     " If output is set it creates a .wav file of this name (implies `-w').\n"
@@ -1013,12 +1073,13 @@ static int too_many_arguments(void)
 
 int main(int argc, char *argv[])
 {
-  static char sopts[] = "hV" "w" "r:t:";
+  static char sopts[] = "hV" "wc" "r:t:";
   static struct option lopts[] = {
     { "help",    0, 0, 'h' },
     { "usage",   0, 0, 'h' },
     { "version", 0, 0, 'V' },
     /**/
+    { "stdout",  0, 0, 'c' },
     { "wav",     0, 0, 'w' },
     { "tick=",   1, 0, 't' },
     { "rate=",   1, 0, 'r' },
@@ -1037,6 +1098,7 @@ int main(int argc, char *argv[])
     case 'h': print_usage(); return E_OK;
     case 'V': print_version(); return E_OK;
     case 'w': opt_wav = 1; break;
+    case 'c': opt_stdout = 1; break;
     case 'r':
       if (-1 == (opt_sampling = uint_arg(optarg,"rate",4000,96000)))
         RETURN (E_ARG);
@@ -1070,6 +1132,11 @@ int main(int argc, char *argv[])
   if (optind >= argc)
     RETURN (too_few_arguments());
 
+  if (opt_wav && opt_stdout) {
+    emsg("-w/--wav and -c/--stdout are exclusive\n");
+    RETURN (E_ARG);
+  }
+
   memset(&play,0,sizeof(play));
 
   /* Get the header of the first file to check if its a .4q file */
@@ -1086,15 +1153,15 @@ int main(int argc, char *argv[])
     uint_t sngsize = u32(hd+8), setsize = u32(hd+12), infsize = u32(hd+16);
     dmsg("QUARTET header [sng:%u set:%u inf:%u]\n",
          sngsize, setsize, infsize);
-    if (optind+1 < argc)
+    if (optind+1-opt_stdout < argc)
       RETURN (too_many_arguments());
     ecode = q4_load(f, play.setpath, &play, sngsize, setsize, infsize);
     my_fclose(&f,play.setpath);
   }
   else if (optind >= argc)
     RETURN(too_few_arguments());
-  else if (optind+2 < argc)
-    RETURN (too_few_arguments());
+  else if (optind+2-opt_stdout < argc)
+    RETURN (too_many_arguments());
   else {
     /* Load voice set file */
     ecode = my_fread(f, play.setpath,hd+20, 222-20);
@@ -1118,6 +1185,7 @@ int main(int argc, char *argv[])
     opt_wav = 1;
   }
   assert (optind == argc);
+  assert (!(opt_wav && opt_stdout));
 
   if (opt_wav && !play.wavpath) {
     ecode = wav_filename(&play.wavpath, play.sngpath);
