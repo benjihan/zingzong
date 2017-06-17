@@ -1,8 +1,8 @@
 /**
- * @file   zingzong.c
- * @data   2017-06-06
+ * @file   zingzafe.c
+ * @data   2017-06-15
  * @author Benjamin Gerard
- * @brief  a simple quartet music player.
+ * @brief  a quartet file doctor.
  *
  * ----------------------------------------------------------------------
  *
@@ -32,9 +32,9 @@
  */
 
 static const char copyright[] = \
-  "Copyright (c) 2017 Benjamin Gerard AKA Ben/OVR";
-static const char license[] = \
-  "Licensed under MIT license";
+  "Copyright (c) 2017 Bejamin Gerard AKA Ben/OVR";
+static const char licence[] = \
+  "Licenced under MIT licence";
 static const char bugreport[] =                                 \
   "Report bugs to <https://github.com/benjihan/zingzong/issues>";
 
@@ -46,9 +46,6 @@ static const char bugreport[] =                                 \
 #define NDEBUG 1
 #endif
 
-/* libao */
-#include <ao/ao.h>
-
 /* stdc */
 #include <assert.h>
 #include <stdarg.h>
@@ -58,12 +55,11 @@ static const char bugreport[] =                                 \
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
-#include <limits.h>
 #include <getopt.h>
 #include <libgen.h>
 
 #ifndef PACKAGE_NAME
-#define PACKAGE_NAME "zingzong"
+#define PACKAGE_NAME "zingzafe"
 #endif
 
 #ifndef PACKAGE_VERSION
@@ -75,17 +71,17 @@ static const char bugreport[] =                                 \
 #endif
 
 static char me[] = PACKAGE_NAME;
-static int opt_sampling = 48000, opt_tickrate = 200, opt_wav;
 
 #define VSET_MAX_SIZE (1<<21) /* arbitrary .set max size */
 #define SONG_MAX_SIZE (1<<18) /* arbitrary .4v max size  */
-#define INFO_MAX_SIZE 1024    /* arbitrary .4q info max size */
 #define MAX_LOOP 67           /* max loop depth (singsong.prg) */
 
 enum {
   E_OK, E_ERR, E_ARG, E_SYS, E_SET, E_SNG, E_OUT, E_PLA,
   E_666 = 66
 };
+
+static int opt_sampling = 0, opt_tickrate = 0;
 
 /* ----------------------------------------------------------------------
  *  Messages
@@ -173,7 +169,6 @@ static void imsg(const char *fmt, ...)
 
 typedef unsigned int   uint_t;
 typedef unsigned short ushort_t;
-typedef struct info_s  info_t;
 typedef struct vset_s  vset_t;
 typedef struct song_s  song_t;
 typedef struct sequ_s  sequ_t;
@@ -184,7 +179,8 @@ typedef struct chan_s chan_t;
 
 struct bin_s {
   uint_t   size;                  /* data size */
-  uint8_t  data[sizeof(int)];
+  uint_t   xtra;                  /* extra bytes allocated */
+  uint8_t  data[1];               /* data pointer */
 };
 
 struct vset_s {
@@ -214,11 +210,6 @@ struct song_s {
   sequ_t *seq[4];
 };
 
-struct info_s {
-  bin_t *bin;
-  char * comment;
-};
-
 struct chan_s {
   sequ_t * seq;                         /* sequence address */
   sequ_t * cur;                         /* next sequence */
@@ -230,7 +221,7 @@ struct chan_s {
   } loop[MAX_LOOP];
 
   struct {
-    uint8_t * pcm;
+  uint8_t * pcm;
     int stp, idx, len, lpl;
   } mix;
 
@@ -244,25 +235,16 @@ struct chan_s {
 };
 
 struct play_s {
-  char * setpath;
-  char * sngpath;
-  char * wavpath;
+  char * vsetpath;
+  char * songpath;
+  char * wavepath;
 
   vset_t vset;
   song_t song;
-  info_t info;
   uint_t tick;
-  uint_t spr;
-  int16_t * mix_buf;
-  int pcm_per_tick;
-  int has_loop;
 
-  struct {
-    int              id;
-    ao_sample_format fmt;
-    ao_device       *dev;
-    ao_info         *info;
-  } ao;
+  uint_t spr;
+  int has_loop;
 
   chan_t chan[4];
 };
@@ -276,118 +258,66 @@ struct songhd {
   uint8_t reserved[2*4];
 };
 
-static play_t play;
-
-
-/* ----------------------------------------------------------------------
- * File functions
- * ----------------------------------------------------------------------
- */
-
-static int my_fopen(FILE **pf, const char * path)
-{
-  dmsg("%s: opening\n",path);
-  return !(*pf = fopen(path,"rb"))
-    ? sysmsg(path,"open")
-    : E_OK
-    ;
-}
-
-static int my_fclose(FILE **pf, const char * path)
-{
-  FILE *f = *pf;
-  *pf = 0;
-  if (f)
-    dmsg("%s: closing\n", path);
-  return (f && fclose(f))
-    ? sysmsg(path,"close")
-    : E_OK
-    ;
-}
-
-static int my_fread(FILE *f, const char * path, void * buf, uint_t n)
-{
-  dmsg("%s: reading %u bytes\n", path, n);
-  return (n != fread(buf,1,n,f))
-    ? sysmsg(path,"too short")
-    : E_OK
-    ;
-}
-
-static int my_fsize(FILE *f, const char * path, uint_t *psize)
-{
-  size_t tell, size;
-  assert(f); assert(psize);
-  if (-1 == (tell = ftell(f)) ||        /* save position */
-      -1 == fseek(f,0,SEEK_END) ||      /* go to end */
-      -1 == (size = ftell(f)) ||        /* size = position */
-      -1 == fseek(f,tell,SEEK_SET))     /* restore position */
-    return sysmsg(path,"file size");
-  else if (size < tell || size >= UINT_MAX) {
-    emsg("too large -- %s\n", path);
-    return E_ERR;
-  }
-  *psize = size - tell;
-  dmsg("%s: tell=%u size=%u\n",path,(uint_t)tell,(uint_t)size);
-  return E_OK;
-}
-
 /* ----------------------------------------------------------------------
  * Load binaries
  * ----------------------------------------------------------------------
  */
 
-static void bin_free(bin_t ** pbin)
+static void free_bin(bin_t * bin) {
+  if (bin) free(bin);
+}
+
+static bin_t *alloc_bin(const char * path, uint_t len, uint_t xtra)
 {
-  if (*pbin) {
-    free(*pbin);
-    *pbin = 0;
+  bin_t * bin;
+
+  bin = malloc( bin->data - (uint8_t *)bin + len + xtra);
+  if (!bin) {
+    sysmsg(path,"alloc");
+  } else {
+    bin->size = len;
+    bin->xtra = xtra;
   }
+  return bin;
 }
 
-static int bin_alloc(bin_t ** pbin, const char * path, uint_t len)
+static bin_t *load_bin(FILE * f, const char * path, uint_t max, uint_t xtra)
 {
-  bin_t * bin = 0;
-  assert(pbin); assert(path);
-  *pbin = bin = malloc((uint_t)(intptr_t)(bin->data+len));
-  if (!bin)
-    return sysmsg(path,"alloc");
-  bin->size = len;
-  return E_OK;
-}
+  size_t tell, size;
+  bin_t *bin = 0;
 
-static int bin_read(bin_t * bin, const char * path,
-                    FILE *f, uint_t off, uint_t len)
-{
-  return my_fread(f,path,bin->data+off,len);
-}
-
-static int bin_load(bin_t ** pbin, const char * path,
-                    FILE *f, uint_t size, uint_t max)
-{
-  int ecode;
-
-  if (!size) {
-    ecode = my_fsize(f, path, &size);
-    if (ecode)
-      goto error;
+  if (-1 == (tell = ftell(f)) ||
+      -1 == fseek(f,0,SEEK_END) ||
+      -1 == (size = ftell(f)) ||
+      -1 == fseek(f,tell,SEEK_SET) ||
+      size < tell) {
+    sysmsg(path,"get size");
+    goto error;
   }
+  size -= tell;
+  dmsg("%s: @%u %u+%u extra => %u bytes\n",
+       path, (uint_t)tell, (uint_t)size, xtra, (uint_t)size+xtra);
+
   if (max && size > max) {
-    emsg("too large -- %s\n", path);
-    ecode = E_ERR;
+    emsg("too large -- %s", path);
     goto error;
   }
-  ecode = bin_alloc(pbin, path, size);
-  if (ecode)
+
+  bin = alloc_bin(path, size, xtra);
+  if (!bin)
     goto error;
-  ecode = bin_read(*pbin, path, f, 0, size);
+
+  size = fread(bin->data,1,bin->size,f);
+  if (size != bin->size) {
+    sysmsg(path,"read");
+    goto error;
+  }
+  return bin;
 
 error:
-  if (ecode)
-    bin_free(pbin);
-  return ecode;
+  free_bin(bin);
+  return 0;
 }
-
 
 /* ----------------------------------------------------------------------
  */
@@ -403,11 +333,15 @@ static inline uint_t u32(const uint8_t * const v) {
 /* ----------------------------------------------------------------------
  */
 
-static int song_parse(song_t *song, const char * path, FILE *f,
-                      uint8_t *hd, uint_t size)
+/**
+ * Load .4v sonf file.
+ */
+static int song_load_file(song_t *song, const char * fname)
 {
-  int ecode, k, has_note=0;
-  uint_t off;
+  int ecode = E_SNG, has_note = 0;
+  uint8_t hd[16];
+  uint_t off, k;
+  FILE * f = 0;
 
   /* sequence to use in case of empty sequence to avoid endless loop
    * condition and allow to properly measure music length.
@@ -417,26 +351,46 @@ static int song_parse(song_t *song, const char * path, FILE *f,
     { 0,'F' }                           /* "F"in */
   };
 
+  assert(song);
+  assert(fname);
+  memset(song,0,sizeof(*song));
+
+  /* Open song (.4v) file */
+  if (f = fopen(fname,"rb"), !f) {
+    sysmsg(fname,"open");
+    goto error;
+  }
+
+  /* Read song header */
+  if (16 != fread(hd,1,16,f)) {
+    sysmsg(fname,"read");
+    goto error;
+  }
+
   /* Parse song header */
   song->khz   = u16(hd+0);
   song->barm  = u16(hd+2);
   song->tempo = u16(hd+4);
   song->sigm  = hd[6];
   song->sigd  = hd[7];
-  dmsg("%s: rate: %ukHz, bar:%u, tempo:%u, signature:%u/%u\n",
-       path, song->khz, song->barm, song->tempo, song->sigm, song->sigd);
+  dmsg("rate: %ukHz, bar:%u, tempo:%u, signature:%u/%u\n",
+       song->khz, song->barm, song->tempo, song->sigm, song->sigd );
 
-  /* Load data */
-  ecode = bin_load(&song->bin, path, f, size, SONG_MAX_SIZE);
-  if (ecode)
+  song->bin = load_bin(f,fname,SONG_MAX_SIZE, 0);
+  if (!song->bin)
     goto error;
-  size = (song->bin->size / 12u) * 12u;
+
+  off = song->bin->size % 12u;
+  if (off) {
+    wmsg("song data is not a multiple of 12.\n");
+    song->bin->size -= off;
+  }
 
   /* Basic parsing of the sequences to find the end. It replaces
    * empty sequences by something that won't loop endlessly and won't
    * disrupt the end of music detection.
    */
-  for (k=off=0; k<4 && off<size; off+=12) {
+  for (k=off=0; k<4 && off<song->bin->size; off+=12) {
     sequ_t * const seq = (sequ_t *)(song->bin->data+off);
     uint_t   const cmd = u16(seq->cmd);
 
@@ -473,68 +427,61 @@ static int song_parse(song_t *song, const char * path, FILE *f,
 
   ecode = E_OK;
 error:
-  if (ecode)
-    bin_free(&song->bin);
-  return ecode;
-}
-
-static int song_load(song_t *song, const char *path)
-{
-  uint8_t hd[16];
-  FILE *f = 0;
-  int ecode = my_fopen(&f, path);
-  if (ecode)
-    goto error;
-
-  ecode = my_fread(f,path,hd,16);
-  if (ecode)
-    goto error;
-  ecode = song_parse(song,path,f,hd,0);
-
-error:
-  my_fclose(&f, path);
+  if (f) fclose(f);
   if (ecode) {
-    if (ecode != E_SYS)
-      ecode = E_SNG;
-    bin_free(&song->bin);
+    free_bin(song->bin);
+    memset(song,0,sizeof(*song));
   }
   return ecode;
 }
 
-
-
-static int vset_parse(vset_t *vset, const char *path, FILE *f,
-                      uint8_t *hd, uint_t size)
+/**
+ * Load .set voice set file.
+ */
+static int vset_load_file(vset_t * vset, const char * fname)
 {
-  int ecode = E_SET, i;
+  int i, ecode = E_SET;
+  uint8_t hd[222], *pcm;
+  FILE * f = 0;
+
+  memset(vset,0,sizeof(*vset));
+
+  /* Open voiceset (.set) file */
+  if (f = fopen(fname,"rb"), !f) {
+    sysmsg(fname,"open");
+    goto error;
+  }
+
+  /* Load voiceset header */
+  if (222 != fread(hd,1,222,f)) {
+    sysmsg(fname,"read");
+    goto error;
+  }
 
   /* Check sampling rate */
   vset->khz = hd[0];
-  dmsg("%s: %u hz\n", path, vset->khz);
   if (vset->khz < 4u || vset->khz > 20u) {
-    emsg("sampling rate (%u) out of range -- %s\n", vset->khz, path);
+    emsg("%s -- sampling rate out of range -- %u\n", fname, vset->khz);
     goto error;
   }
 
   /* Check instrument number */
   vset->nbi = hd[1]-1;
-  dmsg("%s: %u instrument\n", path, vset->nbi);
-
+  dmsg("vset instruments: %u\n", vset->nbi);
   if (vset->nbi < 1 || vset->nbi > 20) {
-    emsg("instrument count (%U) out of range -- %s\n", vset->nbi, path);
+    emsg("vset instrument number out of range -- %u\n", vset->nbi);
     goto error;
   }
 
   /* Load data */
-  ecode = bin_load(&vset->bin, path, f, size, VSET_MAX_SIZE);
-  if (ecode)
+  vset->bin = load_bin(f,fname,VSET_MAX_SIZE,0);
+  if (!vset->bin)
     goto error;
 
   for (i=0; i<vset->nbi; ++i) {
     int off = u32(&hd[142+4*i]);
     int o = off - 222 + 8;
     uint_t len, lpl;
-    uint8_t * pcm;
 
     pcm = vset->bin->data+o;
     len = u32(pcm-4);
@@ -571,61 +518,14 @@ static int vset_parse(vset_t *vset, const char *path, FILE *f,
 
   ecode = E_OK;
 error:
-  if (ecode)
-    bin_free(&vset->bin);
+  if (f)
+    fclose(f);
+  if (ecode) {
+    free_bin(vset->bin);
+    memset(vset,0,sizeof(*vset));
+  }
   return ecode;
 }
-
-/**
- * Load .q4 file (after header).
- */
-static int q4_load(FILE * f, char * path, play_t * P,
-                   uint_t sngsize, uint_t setsize, uint_t infsize)
-{
-  int ecode;
-  uint8_t hd[222];
-
-  assert(ftell(f) == 20);
-
-  if (sngsize < 16 + 12*4) {
-    emsg("invalid .4q song size (%u) -- %s", sngsize, path);
-    ecode = E_SNG;
-    goto error;
-  }
-
-  if (setsize < 222) {
-    emsg("invalid .4q set size (%u) -- %s", setsize, path);
-    ecode = E_SNG;
-    goto error;
-  }
-
-  ecode = my_fread(f, path, hd, 16);
-  if (ecode)
-    goto error;
-  ecode = song_parse(&play.song, path, f, hd, sngsize-16);
-  if (ecode)
-    goto error;
-
-  /* Voice set */
-  ecode = my_fread(f,path,hd,222);
-  if (ecode)
-    goto error;
-  ecode = vset_parse(&play.vset, path, f, hd, setsize-222);
-  if (ecode)
-    goto error;
-
-  /* info (ignoring errorS) */
-  if (!bin_load(&play.info.bin, path, f, infsize, INFO_MAX_SIZE)
-      && play.info.bin->size > 1) {
-    play.info.bin->data[play.info.bin->size-1] = 0;
-    play.info.comment = (char *) play.info.bin->data;
-    dmsg("Comments:\n%s\n", play.info.comment);
-  }
-
-error:
-  return ecode;
-}
-
 
 static int zz_play(play_t * P)
 {
@@ -635,9 +535,9 @@ static int zz_play(play_t * P)
   /* Setup player */
   memset(P->chan,0,sizeof(P->chan));
   for (k=0; k<4; ++k) {
-    chan_t * const C = P->chan+k;
-    C->seq = P->song.seq[k];
-    C->cur = P->chan[k].seq;
+      chan_t * const C = P->chan+k;
+      C->seq = P->song.seq[k];
+      C->cur = P->chan[k].seq;
   }
 
   for (;;) {
@@ -772,125 +672,39 @@ static int zz_play(play_t * P)
     } /* per chan */
 
     if (P->has_loop == 15) {
-      if (P->ao.dev && P->ao.info->type == AO_TYPE_LIVE)
-        imsg("");
       break;
-    }
-
-    /* audio output */
-    if (P->ao.dev) {
-      int n;
-      unsigned stp[4];
-
-      if (P->ao.info->type == AO_TYPE_LIVE) {
-        const uint_t s = P->tick / opt_tickrate;
-        printf("\r|> %02u:%02u", s / 60u, s % 60u);
-        newline = 0;
-        fflush(stdout);
-      }
-
-      for (k=0; k<4; k++) {
-        chan_t * const C = P->chan+k;
-        stp[k] = C->mix.stp * P->song.khz * 10u / (P->spr/100u);
-      }
-      for (n=0; n<P->pcm_per_tick; ++n) {
-        /* GB: $$$ Teribad mix loop $$$ */
-        int k;
-        unsigned int v = 0;
-        for (k=0; k<4; ++k) {
-          chan_t * const C = P->chan+k;
-
-          if (C->mix.pcm) {
-            v += C->mix.pcm[  C->mix.idx >> 16 ];
-            C->mix.idx += stp[k];
-            if (C->mix.idx >= C->mix.len) {
-              C->mix.idx -= C->mix.lpl;
-              if (!C->mix.lpl)
-                C->mix.pcm = 0;
-            }
-          } else
-            v += 0x80;
-        }
-        P->mix_buf[n] = 0x8000 ^ (v << 6);
-      }
-
-      if (!ao_play(P->ao.dev, (void*)P->mix_buf, 2*n)) {
-        emsg("libao: failed to play buffer #%d \"%s\"\n",
-             P->ao.id, P->ao.info->short_name);
-        return E_OUT;
-      }
     }
   } /* loop ! */
   return E_OK;
 }
 
-static int zing_zong(play_t * P)
+static int zing_zong(char * setname, char * sngname, char * wavname)
 {
-  int ecode = E_SNG;
+  int ecode;
+  static play_t play;
 
-  imsg("zinging that zong at %uhz with %u ticks per second\n"
-       "vset: \"%s\" (%ukHz, %u sound)\n"
-       "song: \"%s\" (%ukHz, %u, %u, %u:%u)\n",
-       opt_sampling, opt_tickrate,
-       basename(P->setpath), P->vset.khz, P->vset.nbi,
-       basename(P->sngpath), P->song.khz, P->song.barm,
-       P->song.tempo, P->song.sigm, P->song.sigd);
-  if (P->wavpath)
-    imsg("wave: \"%s\"\n", P->wavpath);
+  memset(&play,0,sizeof(play));
+
+  ecode = E_SNG;
+  if (song_load_file(&play.song, sngname))
+    goto error;
+
+  ecode = E_SET;
+  if (vset_load_file(&play.vset, setname))
+    goto error;
+
 
   /* Init libao */
   ecode = E_OUT;
-  ao_initialize();
-  memset(&P->ao.fmt,0,sizeof(P->ao.fmt));
-  P->ao.fmt.bits = 16;
-  P->ao.fmt.rate = opt_sampling;
-  P->ao.fmt.channels = 1;
-  P->ao.fmt.byte_format = AO_FMT_NATIVE;
-  P->ao.id = P->wavpath
-    ? ao_driver_id("wav")
-    : ao_default_driver_id()
-    ;
-  P->ao.info = ao_driver_info(P->ao.id);
-  if (!P->ao.info) {
-    emsg("libao: failed to get driver #%d info\n", P->ao.id);
-    goto error;
-  }
-  P->ao.dev = P->wavpath
-    ? ao_open_file(P->ao.id, P->wavpath, 1, &P->ao.fmt, 0)
-    : ao_open_live(P->ao.id, &P->ao.fmt, 0)
-    ;
-  if (!P->ao.dev) {
-    emsg("libao: failed to initialize audio driver #%d \"%s\"\n",
-         P->ao.id, P->ao.info->short_name);
-    goto error;
-  }
-
-  dmsg("ao %s device \"%s\" is open\n",
-       P->ao.info->type == AO_TYPE_LIVE ? "live" : "file",
-       P->ao.info->short_name);
-
-  P->spr = P->ao.fmt.rate;
-  P->pcm_per_tick = (P->spr + (opt_tickrate>>1)) / opt_tickrate;
-  P->mix_buf = (int16_t *) malloc ( 2 * P->pcm_per_tick );
-  if (!P->mix_buf) {
-    ecode = sysmsg("audio", "alloc");
-    goto error;
-  }
 
   ecode = zz_play(&play);
 error:
-  if (P->ao.dev && !ao_close(P->ao.dev) && ecode == E_OK) {
-    sysmsg("audio","close");
-    ecode = E_OUT;
-  }
-  ao_shutdown();
+  free_bin(play.vset.bin);
+  free_bin(play.song.bin);
 
-  free(P->mix_buf);
-  bin_free(&P->vset.bin);
-  bin_free(&P->song.bin);
-  bin_free(&P->info.bin);
   return ecode;
 }
+
 
 /**
  * Print usage message.
@@ -898,29 +712,28 @@ error:
 static void print_usage(void)
 {
   puts(
-    "Usage: zingzong [OPTIONS] <inst.set> <song.4v> [output.wav]\n"
-    "       zingzong [OPTIONS] <music.q4> [output.wav]\n"
+    "Usage: zingzafe [OPTIONS] -s <inst.set> [<song1.4v ...]\n"
     "\n"
-    "  A simple /|\\ Atari ST /|\\ quartet music file player\n"
+    "  A quartet music file doctor\n"
     "\n"
     "OPTIONS:\n"
     " -h --help --usage  Print this message and exit.\n"
     " -V --version       Print version and copyright and exit.\n"
-    " -t --tick=HZ       Set player tick rate (default is 200hz)\n"
-    " -r --rate=HZ       Set sampling rate (default is 48kHz)\n"
-    " -w --wav           Generated a .wav file (implicit if output is set)\n"
+    " -s --set=PATH      Select voice set (.set) file.\n"
     "\n"
-    "OUTPUT:\n"
-    " If output is set it creates a .wav file of this name (implies `-w').\n"
-    " Else with `-w' alone the .wav file is the song file stripped of its\n"
-    " path with its extension replaced by .wav.\n"
-    " If output exists the program will refuse to create the file unless\n"
-    " it is already a RIFF file (just a \"RIFF\" 4cc test)"
+    " -t --tick=HZ       Set tick rate (default is 200hz)\n"
+    " -r --rate=kHZ      Set sampling rate [4..50]\n"
+    "\n"
+    "Important:\n"
+    "\n"
+    " tick rate is the input tick rate. Normally all quartet files should be\n"
+    " played at 200hz however some files might have been modified (Oh Cricket!)\n"
+    " Setting the tick rate will fix those files.\n"
     );
-  puts("");
-  puts(copyright);
-  puts(license);
-  puts(bugreport);
+    puts("");
+    puts(copyright);
+    puts(licence);
+    puts(bugreport);
 }
 
 /**
@@ -930,32 +743,9 @@ static void print_version(void)
 {
   puts(PACKAGE_STRING "\n");
   puts(copyright);
-  puts(license);
+  puts(licence);
 }
 
-static char * fileext(char * base)
-{
-  char * ext = strrchr(base,'.');
-  return ext && ext != base
-    ? ext
-    : base + strlen(base)
-    ;
-}
-
-/**
- * Create .wav filename from another filename
- */
-static int wav_filename(char ** pwavname, char * sngname)
-{
-  char *leaf=basename(sngname), *ext=fileext(leaf), *wavname;
-  int l = ext - leaf;
-  *pwavname = wavname = malloc(l+5);
-  if (!wavname)
-    return sysmsg(leaf,"alloc");
-  memcpy(wavname, leaf, l);
-  strcpy(wavname+l, ".wav");
-  return E_OK;
-}
 
 /**
  * Parse integer argument with range check.
@@ -987,37 +777,25 @@ static int uint_arg(char * arg, char * name, uint_t min, uint_t max)
   return v;
 }
 
-static int too_few_arguments(void)
-{
-  emsg("too few arguments. Try --help.\n");
-  return E_ARG;
-}
-
-static int too_many_arguments(void)
-{
-  emsg("too many arguments. Try --help.\n");
-  return E_ARG;
-}
-
-
 #define RETURN(V) do { ecode = V; goto error_exit; } while(0)
 
 int main(int argc, char *argv[])
 {
-  static char sopts[] = "hV" "w" "r:t:";
+  static char sopts[] = "hV" "n" "O" "s:";
   static struct option lopts[] = {
     { "help",    0, 0, 'h' },
     { "usage",   0, 0, 'h' },
     { "version", 0, 0, 'V' },
     /**/
-    { "wav",     0, 0, 'w' },
+    { "dry"     ,0, 0, 'n' },           /* don't do nothing ! */
+    { "optimize",0, 0, 'O' },           /* optimize */
+    { "set=",    0, 0, 's' },
     { "tick=",   1, 0, 't' },
     { "rate=",   1, 0, 'r' },
     { 0 }
   };
   int c, ecode = E_ERR;
-  FILE * f = 0;
-  uint8_t hd[222];
+  char *sngname = 0, *setname = 0;
 
   assert( sizeof(songhd_t) ==  16);
   assert( sizeof(sequ_t)   ==  12);
@@ -1027,7 +805,6 @@ int main(int argc, char *argv[])
     switch (c) {
     case 'h': print_usage(); return E_OK;
     case 'V': print_version(); return E_OK;
-    case 'w': opt_wav = 1; break;
     case 'r':
       if (-1 == (opt_sampling = uint_arg(optarg,"rate",4000,96000)))
         RETURN (E_ARG);
@@ -1058,83 +835,21 @@ int main(int argc, char *argv[])
     }
   }
 
-  if (optind >= argc)
-    RETURN (too_few_arguments());
-
-  memset(&play,0,sizeof(play));
-
-  /* Get the header of the first file to check if its a .4q file */
-  play.setpath = play.sngpath = argv[optind++];
-  ecode = my_fopen(&f, play.setpath);
-  if (ecode)
-    goto error_exit;
-  ecode = my_fread(f, play.setpath, hd, 20);
-  if (ecode)
-    goto error_exit;
-
-  /* Check for .q4 "QUARTET" magic id */
-  if (!memcmp(hd,"QUARTET",8)) {
-    uint_t sngsize = u32(hd+8), setsize = u32(hd+12), infsize = u32(hd+16);
-    dmsg("QUARTET header [sng:%u set:%u inf:%u]\n",
-         sngsize, setsize, infsize);
-    if (optind+1 < argc)
-      RETURN (too_many_arguments());
-    ecode = q4_load(f, play.setpath, &play, sngsize, setsize, infsize);
-    my_fclose(&f,play.setpath);
+  if (optind+2 > argc) {
+    emsg("Missing argument. Try --help.\n");
+    RETURN (E_ARG);
   }
-  else if (optind >= argc)
-    RETURN(too_few_arguments());
-  else if (optind+2 < argc)
-    RETURN (too_few_arguments());
-  else {
-    /* Load voice set file */
-    ecode = my_fread(f, play.setpath,hd+20, 222-20);
-    if (ecode)
-      goto error_exit;
+  setname = argv[optind++];
+  sngname = argv[optind++];
 
-    ecode = vset_parse(&play.vset, play.setpath, f, hd, 0);
-    if (ecode)
-      goto error_exit;
-
-    my_fclose(&f,play.setpath);
-
-    play.sngpath = argv[optind++];
-    ecode = song_load(&play.song, play.sngpath);
-  }
-  if (ecode)
-    goto error_exit;
-
-  if (optind < argc) {
-    play.wavpath = argv[optind++];
-    opt_wav = 1;
-  }
-  assert (optind == argc);
-
-  if (opt_wav && !play.wavpath) {
-    ecode = wav_filename(&play.wavpath, play.sngpath);
-    if (ecode)
-      goto error_exit;
-    opt_wav = 2;                        /* mark for free */
+  if (optind != argc) {
+    emsg("Too many arguments. Try --help.\n");
+    RETURN (E_ARG);
   }
 
-  if (play.wavpath) {
-    f = fopen(play.wavpath,"rb");
-    if (f) {
-      if (4 != fread(hd,1,4,f) || memcmp(hd,"RIFF",4)) {
-        ecode = E_OUT;
-        emsg("output file exists and is not a RIFF wav -- %s\n", play.wavpath);
-        goto error_exit;
-      }
-      my_fclose(&f,play.wavpath);
-    }
-  }
-
-  ecode = zing_zong(&play);
+  ecode = E_666;
 
 error_exit:
   /* clean exit */
-  my_fclose(&f,play.setpath);
-  if (opt_wav == 2)
-    free(play.wavpath);
   return ecode;
 }

@@ -1,11 +1,19 @@
 # zingzong
-An simple Atari ST quartet music file player
+
+An simple __Atari ST quartet__ music file player.
+
+Original __quartet__ music consists of
+
+  1. a __.set__ file that contains the instruments.
+  2. a __.4v__ file  that contains the music score
+
+Alternatively __zingzong__ supports an convenient format that bundles both
+files into a __.4q__ file alongside a small info text.
 
 ## Usage:
 
     zingzong [OPTIONS] <inst.set> <song.4v> [output.wav]
-
-    A simple /|\ Atari ST /|\ quartet music file player
+    zingzong [OPTIONS] <music.q4> [output.wav]
 
 ### Options:
     -h --help --usage  Print this message and exit.
@@ -15,17 +23,34 @@ An simple Atari ST quartet music file player
     -w --wav           Generated a .wav file (implicit if output is set)
     
 ### Output:
-    If output is set it creates a .wav file of this name (implies `-w').
-    Else with `-w' the .wav filename is the song filename stripped
-    of its path and its .4v extension replaced by .wav.
+
+If output is set it creates a __.wav__ file of this name (implies __-w__).
+
+Else with __-w__ alone the __.wav__ file is the song file stripped of
+its path with its extension replaced by __.wav__.  
+ 
+If output exists the program will refuse to create the file unless it
+is already a RIFF file (just a "RIFF" 4cc test)
 
 ## Building:
 
-  The provided Makefile shoud work in most GNU environment. You must have pkg-config and its libao module usually provided by libao-dev package. Alternatively you can define AO_LIBS and AO_CFLAGS.
+The provided Makefile should work in most GNU environment. You must
+have pkg-config and its libao module usually provided by libao-dev
+package. Alternatively you can define AO_LIBS and AO_CFLAGS.
   
-  For exemple to build a win64 standalone executable with a cross gcc
+For example to build a win64 standalone executable with a cross gcc
   
       make \
         CC=x86_64-w64-mingw32-gcc \
         PKGCONFIG="x86_64-w64-mingw32-pkg-config --static" \
         CFLAGS="-O3 -static -static-libgcc"
+
+
+## License and copyright
+
+  * Copyright (c) 2017 Benjamin Gerard AKA Ben/OVR
+  * Licensed under MIT license
+
+## Bugs
+
+  Report bugs to <https://github.com/benjihan/zingzong/issues>
