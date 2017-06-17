@@ -23,11 +23,19 @@ zingzong_CPPFLAGS := $(CPPFLAGS) -DPACKAGE_VERSION='"$(VERSION)"'
 zingzong_CFLAGS   := $(CFLAGS) $(AO_CFLAGS)
 zingzong_LDLIBS   := $(LDLIBS) $(AO_LIBS)
 
+zingzafe_CPPFLAGS := $(CPPFLAGS) -DPACKAGE_VERSION='"$(VERSION)"'
+zingzafe_CFLAGS   := $(CFLAGS)
+zingzafe_LDLIBS   := $(LDLIBS)
+
 # ----------------------------------------------------------------------
 
-all: zingzong
-clean: ; -rm -f zingzong
+all: zingzong #zingzafe
+clean: ; -rm -f zingzong zingzafe
 
 zingzong: CPPFLAGS = $(zingzong_CPPFLAGS)
 zingzong: CFLAGS   = $(zingzong_CFLAGS)
 zingzong: LDLIBS   = $(zingzong_LDLIBS)
+
+zingzafe: CPPFLAGS = $(zingzafe_CPPFLAGS)
+zingzafe: CFLAGS   = $(zingzafe_CFLAGS)
+zingzafe: LDLIBS   = $(zingzafe_LDLIBS)
