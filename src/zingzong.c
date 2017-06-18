@@ -46,8 +46,13 @@ static const char bugreport[] =                                 \
 #define NDEBUG 1
 #endif
 
+#ifndef WITHOUT_LIBAO
 /* libao */
-#include <ao/ao.h>
+# include <ao/ao.h>
+# define WAVOPT "w"
+#else
+# define WAVOPT
+#endif
 
 /* stdc */
 #include <assert.h>
@@ -79,8 +84,11 @@ static const char bugreport[] =                                 \
 #endif
 
 static char me[] = PACKAGE_NAME;
-static int opt_sampling = 48000, opt_tickrate = 200;
-static int opt_wav, opt_stdout;
+static int opt_sampling = 48000, opt_tickrate = 200, opt_stdout;
+
+#ifndef WITHOUT_LIBAO
+static int opt_wav;
+#endif
 
 #define VSET_MAX_SIZE (1<<21) /* arbitrary .set max size */
 #define SONG_MAX_SIZE (1<<18) /* arbitrary .4v max size  */
@@ -97,7 +105,12 @@ enum {
  * ----------------------------------------------------------------------
  */
 
-static int newline = 1; /* Pseudo newline tracking to improve messages */
+static int newline = 1; /* Lazy newline tracking for message display */
+
+static FILE * stdout_or_stderr(void)
+{
+  return opt_stdout ? stderr : stdout;
+}
 
 static void set_newline(const char * fmt)
 {
@@ -105,8 +118,12 @@ static void set_newline(const char * fmt)
     newline = fmt[strlen(fmt)-1] == '\n';
 }
 
-static FILE * stdout_or_stderr(void) {
-  return opt_stdout ? stderr : stdout;
+static void ensure_newline(void)
+{
+  if (!newline) {
+    fputc('\n',stdout_or_stderr());
+    newline = 1;
+  }
 }
 
 static void emsg(const char * fmt, ...)
@@ -151,10 +168,7 @@ static void dmsg(const char *fmt, ...)
   FILE * const out = stdout_or_stderr();
   va_list list;
   va_start(list,fmt);
-  if (!newline) {
-    fputc('\n',out);
-    newline = 0;
-  }
+  ensure_newline();
   vfprintf(out,fmt,list);
   set_newline(fmt);
   fflush(out);
@@ -167,10 +181,7 @@ static void imsg(const char *fmt, ...)
   FILE * const out = stdout_or_stderr();
   va_list list;
   va_start(list,fmt);
-  if (!newline) {
-    fputc('\n',out);
-    newline = 0;
-  }
+  ensure_newline();
   vfprintf(out,fmt,list);
   set_newline(fmt);
   fflush(out);
@@ -257,7 +268,9 @@ struct chan_s {
 struct play_s {
   char * setpath;
   char * sngpath;
+#ifndef WITHOUT_LIBAO
   char * wavpath;
+#endif
 
   vset_t vset;
   song_t song;
@@ -272,9 +285,13 @@ struct play_s {
 
   struct {
     int              id;
-    ao_sample_format fmt;
+#ifndef WITHOUT_LIBAO
     ao_device       *dev;
     ao_info         *info;
+    ao_sample_format fmt;
+#else
+    void *dev;
+#endif
   } ao;
 
   chan_t chan[4];
@@ -663,7 +680,7 @@ static int zz_play(play_t * P)
 
     ++P->tick;
     if (maxtick && P->tick > maxtick) {
-      wmsg("unable to reach detect song end. Aborting.\n");
+      wmsg("unable to detect song end. Aborting.\n");
       break;
     }
 
@@ -793,17 +810,15 @@ static int zz_play(play_t * P)
       C->cur = seq;
     } /* per chan */
 
-    if (P->has_loop == 15) {
-      if (P->ao.dev && P->ao.info->type == AO_TYPE_LIVE)
-        imsg("");
+    if (P->has_loop == 15)
       break;
-    }
 
     /* audio output */
     if (P->ao.dev || P->outfp) {
       int n;
       unsigned stp[4];
 
+#ifndef WITHOUT_LIBAO
       if (P->ao.info && P->ao.info->type == AO_TYPE_LIVE) {
         FILE * const out = stdout_or_stderr();
         const uint_t s = P->tick / opt_tickrate;
@@ -811,6 +826,7 @@ static int zz_play(play_t * P)
         newline = 0;
         fflush(out);
       }
+#endif
 
       for (k=0; k<4; k++) {
         chan_t * const C = P->chan+k;
@@ -838,11 +854,13 @@ static int zz_play(play_t * P)
       }
 
       if (P->ao.dev) {
+#ifndef WITHOUT_LIBAO
         if (!ao_play(P->ao.dev, (void*)P->mix_buf, n<<1)) {
           emsg("libao: failed to play buffer #%d \"%s\"\n",
                P->ao.id, P->ao.info->short_name);
           return E_OUT;
         }
+#endif
       } else if ( (n<<1) != fwrite(P->mix_buf,1,n<<1,P->outfp) ) {
         return sysmsg("<stdout>","write");
       }
@@ -853,7 +871,7 @@ static int zz_play(play_t * P)
 
 static int zing_zong(play_t * P)
 {
-  int ecode = E_SNG;
+  int ecode = E_OUT;
 
   imsg("zinging that zong at %uhz with %u ticks per second\n"
        "vset: \"%s\" (%ukHz, %u sound)\n"
@@ -862,11 +880,11 @@ static int zing_zong(play_t * P)
        basename(P->setpath), P->vset.khz, P->vset.nbi,
        basename(P->sngpath), P->song.khz, P->song.barm,
        P->song.tempo, P->song.sigm, P->song.sigd);
+#ifndef WITHOUT_LIBAO
   if (P->wavpath)
     imsg("wave: \"%s\"\n", P->wavpath);
+#endif
 
-  /* Init libao */
-  ecode = E_OUT;
   if (opt_stdout) {
     /* Setup for stdout:
      *
@@ -891,12 +909,16 @@ static int zing_zong(play_t * P)
       dmsg("setmode returns: %d\n", err);
       if ( err == -1 || errno ) {
         sysmsg("<stdout>","setmode");
+      } else {
+        dmsg("<stdout> should be in binary mode\n");
       }
     }
-
 #endif
-  } else {
-    /* Setup libao: */
+  }
+
+#ifndef WITHOUT_LIBAO
+  else {
+    /* Setup libao */
     ao_initialize();
     P->ao.fmt.bits = 16;
     P->ao.fmt.rate = opt_sampling;
@@ -925,6 +947,7 @@ static int zing_zong(play_t * P)
          P->ao.info->short_name);
     P->spr = P->ao.fmt.rate;
   }
+#endif
 
   P->pcm_per_tick = (P->spr + (opt_tickrate>>1)) / opt_tickrate;
   P->mix_buf = (int16_t *) malloc ( 2 * P->pcm_per_tick );
@@ -943,6 +966,7 @@ error:
     P->outfp = 0;
   }
 
+#ifndef WITHOUT_LIBAO
   if (!opt_stdout) {
     if (P->ao.dev && !ao_close(P->ao.dev) && ecode == E_OK) {
       sysmsg("audio","close");
@@ -952,6 +976,7 @@ error:
     P->ao.info = 0;
     ao_shutdown();
   }
+#endif
 
   free(P->mix_buf);
   bin_free(&P->vset.bin);
@@ -963,11 +988,18 @@ error:
 /**
  * Print usage message.
  */
+
+#ifndef WITHOUT_LIBAO
+# define OUTWAV " [output.wav]"
+#else
+# define OUTWAV ""
+#endif
+
 static void print_usage(void)
 {
   puts(
-    "Usage: zingzong [OPTIONS] <inst.set> <song.4v> [output.wav]\n"
-    "       zingzong [OPTIONS] <music.q4> [output.wav]\n"
+    "Usage: zingzong [OPTIONS] <inst.set> <song.4v>" OUTWAV "\n"
+    "       zingzong [OPTIONS] <music.q4>" OUTWAV "\n"
     "\n"
     "  A simple /|\\ Atari ST /|\\ quartet music file player\n"
     "\n"
@@ -976,8 +1008,9 @@ static void print_usage(void)
     " -V --version       Print version and copyright and exit.\n"
     " -t --tick=HZ       Set player tick rate (default is 200hz)\n"
     " -r --rate=HZ       Set sampling rate (default is 48kHz)\n"
-    " -w --wav           Generated a .wav file (implicit if output is set)\n"
     " -c --stdout        Output raw sample to stdout\n"
+#ifndef WITHOUT_LIBAO
+    " -w --wav           Generated a .wav file (implicit if output is set)\n"
     "\n"
     "OUTPUT:\n"
     " If output is set it creates a .wav file of this name (implies `-w').\n"
@@ -985,6 +1018,12 @@ static void print_usage(void)
     " path with its extension replaced by .wav.\n"
     " If output exists the program will refuse to create the file unless\n"
     " it is already a RIFF file (just a \"RIFF\" 4cc test)"
+#else
+    "\n"
+    "IMPORTANT:\n"
+    " This version of zingzong has been built without libao support.\n"
+    " Therefore it can not produce audio output nor RIFF .wav file."
+#endif
     );
   puts("");
   puts(copyright);
@@ -1001,6 +1040,8 @@ static void print_version(void)
   puts(copyright);
   puts(license);
 }
+
+#ifndef WITHOUT_LIBAO
 
 static char * fileext(char * base)
 {
@@ -1025,6 +1066,8 @@ static int wav_filename(char ** pwavname, char * sngname)
   strcpy(wavname+l, ".wav");
   return E_OK;
 }
+
+#endif
 
 /**
  * Parse integer argument with range check.
@@ -1073,19 +1116,21 @@ static int too_many_arguments(void)
 
 int main(int argc, char *argv[])
 {
-  static char sopts[] = "hV" "wc" "r:t:";
+  static char sopts[] = "hV" WAVOPT "c" "r:t:";
   static struct option lopts[] = {
     { "help",    0, 0, 'h' },
     { "usage",   0, 0, 'h' },
     { "version", 0, 0, 'V' },
     /**/
-    { "stdout",  0, 0, 'c' },
+#ifndef WITHOUT_LIBAO
     { "wav",     0, 0, 'w' },
+#endif
+    { "stdout",  0, 0, 'c' },
     { "tick=",   1, 0, 't' },
     { "rate=",   1, 0, 'r' },
     { 0 }
   };
-  int c, ecode = E_ERR;
+  int c, cant_do_wav, ecode = E_ERR;
   FILE * f = 0;
   uint8_t hd[222];
 
@@ -1097,7 +1142,9 @@ int main(int argc, char *argv[])
     switch (c) {
     case 'h': print_usage(); return E_OK;
     case 'V': print_version(); return E_OK;
+#ifndef WITHOUT_LIBAO
     case 'w': opt_wav = 1; break;
+#endif
     case 'c': opt_stdout = 1; break;
     case 'r':
       if (-1 == (opt_sampling = uint_arg(optarg,"rate",4000,96000)))
@@ -1132,10 +1179,15 @@ int main(int argc, char *argv[])
   if (optind >= argc)
     RETURN (too_few_arguments());
 
+#ifndef WITHOUT_LIBAO
   if (opt_wav && opt_stdout) {
     emsg("-w/--wav and -c/--stdout are exclusive\n");
     RETURN (E_ARG);
   }
+  cant_do_wav = !!opt_stdout;
+#else
+  cant_do_wav = 1;
+#endif
 
   memset(&play,0,sizeof(play));
 
@@ -1153,14 +1205,14 @@ int main(int argc, char *argv[])
     uint_t sngsize = u32(hd+8), setsize = u32(hd+12), infsize = u32(hd+16);
     dmsg("QUARTET header [sng:%u set:%u inf:%u]\n",
          sngsize, setsize, infsize);
-    if (optind+1-opt_stdout < argc)
+    if (optind+1-cant_do_wav < argc)
       RETURN (too_many_arguments());
     ecode = q4_load(f, play.setpath, &play, sngsize, setsize, infsize);
     my_fclose(&f,play.setpath);
   }
   else if (optind >= argc)
     RETURN(too_few_arguments());
-  else if (optind+2-opt_stdout < argc)
+  else if (optind+2-cant_do_wav < argc)
     RETURN (too_many_arguments());
   else {
     /* Load voice set file */
@@ -1180,12 +1232,11 @@ int main(int argc, char *argv[])
   if (ecode)
     goto error_exit;
 
+#ifndef WITHOUT_LIBAO
   if (optind < argc) {
     play.wavpath = argv[optind++];
     opt_wav = 1;
   }
-  assert (optind == argc);
-  assert (!(opt_wav && opt_stdout));
 
   if (opt_wav && !play.wavpath) {
     ecode = wav_filename(&play.wavpath, play.sngpath);
@@ -1205,13 +1256,18 @@ int main(int argc, char *argv[])
       my_fclose(&f,play.wavpath);
     }
   }
+#endif
 
   ecode = zing_zong(&play);
 
 error_exit:
   /* clean exit */
   my_fclose(&f,play.setpath);
+#ifndef WITHOUT_LIBAO
   if (opt_wav == 2)
     free(play.wavpath);
+#endif
+
+  ensure_newline();
   return ecode;
 }
