@@ -244,6 +244,10 @@ struct info_s {
 struct chan_s {
   sequ_t * seq;                         /* sequence address */
   sequ_t * cur;                         /* next sequence */
+  sequ_t * end;                         /* last sequence */
+
+  sequ_t * sq0;                         /* First wait-able command */
+  sequ_t * sqN;                         /* Last  wait-able command */
 
   int loop_level;
   struct {
@@ -266,10 +270,10 @@ struct chan_s {
 };
 
 struct play_s {
-  char * setpath;
-  char * sngpath;
+  char *setpath;
+  char *sngpath;
 #ifndef WITHOUT_LIBAO
-  char * wavpath;
+  char *wavpath;
 #endif
 
   vset_t vset;
@@ -281,7 +285,7 @@ struct play_s {
   int pcm_per_tick;
   int has_loop;
 
-  FILE * outfp;
+  FILE *outfp;
 
   struct {
     int              id;
@@ -431,6 +435,8 @@ static inline uint_t u32(const uint8_t * const v) {
 }
 
 /* ----------------------------------------------------------------------
+ * quartet song
+ * ----------------------------------------------------------------------
  */
 
 static int song_parse(song_t *song, const char * path, FILE *f,
@@ -473,6 +479,18 @@ static int song_parse(song_t *song, const char * path, FILE *f,
     if (!song->seq[k])
       song->seq[k] = seq;               /* Sequence */
 
+    if (1) {
+      dmsg("%c %04u %c %04x %08x %04x-%04x\n",
+           k+'A',
+           seq-song->seq[k],
+           isgraph(cmd) ? cmd : '?',
+           u16(seq->len),
+           u32(seq->stp),
+           u16(seq->par),
+           u16(seq->par+2));
+    }
+
+
     switch (cmd) {
     case 'F':                           /* End-Voice */
       if (!has_note) {
@@ -484,7 +502,8 @@ static int song_parse(song_t *song, const char * path, FILE *f,
       break;
     case 'P':                           /* Play-Note */
       has_note = 1;
-    case 'S': case 'R': case 'l': case 'L': case 'V':
+    case 'S': case 'R':
+    case 'l': case 'L': case 'V':
       break;
     default:
       emsg("invalid sequence command $%04x('%c') at %c:%u\n",
@@ -533,7 +552,10 @@ error:
   return ecode;
 }
 
-
+/* ----------------------------------------------------------------------
+ * quartet voiceset
+ * ----------------------------------------------------------------------
+ */
 
 static int vset_parse(vset_t *vset, const char *path, FILE *f,
                       uint8_t *hd, uint_t size)
@@ -648,7 +670,7 @@ static int q4_load(FILE * f, char * path, play_t * P,
 
   /* Ignoring the comment for now. */
 #if 0
-  /* info (ignoring errorS) */
+  /* info (ignoring errors) */
   if (!bin_load(&play.info.bin, path, f, infsize, INFO_MAX_SIZE)
       && play.info.bin->size > 1) {
     play.info.comment = (char *) play.info.bin->data;
@@ -660,6 +682,10 @@ error:
   return ecode;
 }
 
+/* ----------------------------------------------------------------------
+ * quartet player
+ * ----------------------------------------------------------------------
+ */
 
 static int zz_play(play_t * P)
 {
@@ -671,8 +697,22 @@ static int zz_play(play_t * P)
   memset(P->chan,0,sizeof(P->chan));
   for (k=0; k<4; ++k) {
     chan_t * const C = P->chan+k;
+    sequ_t * seq;
+    uint_t cmd;
     C->seq = P->song.seq[k];
     C->cur = P->chan[k].seq;
+    for ( seq=C->seq; (cmd=u16(seq->cmd)) != 'F' ; ++seq) {
+      switch(cmd) {
+      case 'P': case 'R': case 'S':
+        if (!C->sq0) C->sq0 = seq;
+        C->sqN = seq;
+      }
+    }
+    C->end = seq;
+    assert(C->sq0);
+    assert(C->sqN);
+    dmsg("%c: [%05u..%05u..%05u]\n",
+         'A'+k, C->sq0-C->seq, C->sqN-C->seq, C->end-C->seq);
   }
 
   for (;;) {
@@ -680,7 +720,12 @@ static int zz_play(play_t * P)
 
     ++P->tick;
     if (maxtick && P->tick > maxtick) {
-      wmsg("unable to detect song end. Aborting.\n");
+      wmsg("unable to detect song end [%s%s%s%s]. Aborting.\n",
+           "A"+((P->has_loop>>0)&1),
+           "B"+((P->has_loop>>1)&1),
+           "C"+((P->has_loop>>2)&1),
+           "D"+((P->has_loop>>3)&1)
+        );
       break;
     }
 
@@ -712,6 +757,13 @@ static int zz_play(play_t * P)
         uint_t const par = u32(seq->par);
         ++seq;
 
+        dmsg("%c: %04u %c %04x %08x %04x-%04x\n",
+             'A'+k,
+             seq-1-C->seq,
+             isgraph(cmd)?cmd:'?',
+             len,stp,par>>16,(par&0xFFFF));
+
+
         switch (cmd) {
 
         case 'F':                       /* End-Voice */
@@ -721,10 +773,10 @@ static int zz_play(play_t * P)
           C->loop_level = 0;            /* Safety net */
           dmsg("%c: [%c%c%c%c] end @%u +%u\n",
                'A'+k,
-               ".A"[!!(1&P->has_loop)],
-               ".B"[!!(2&P->has_loop)],
-               ".C"[!!(4&P->has_loop)],
-               ".D"[!!(8&P->has_loop)],
+               ".A"[1&(P->has_loop>>0)],
+               ".B"[1&(P->has_loop>>1)],
+               ".C"[1&(P->has_loop>>2)],
+               ".D"[1&(P->has_loop>>3)],
                P->tick,
                C->has_loop);
           break;
@@ -734,6 +786,7 @@ static int zz_play(play_t * P)
           break;
 
         case 'P':                       /* Play-Note */
+
           C->mix.stp = C->pta.aim = stp;
           C->pta.stp = 0;
           C->wait = len;
@@ -765,6 +818,7 @@ static int zz_play(play_t * P)
             const int l = C->loop_level++;
             C->loop[l].seq = seq;
             C->loop[l].cnt = 0;
+            dmsg("%c: set loop[%d] point @%u\n",'A'+k, l, seq - C->seq);
           } else {
             emsg("%c off:%u tick:%u -- loop stack overflow\n",
                  'A'+k, (unsigned) (seq-C->seq-1), P->tick);
@@ -790,16 +844,37 @@ static int zz_play(play_t * P)
              * This (not so) effectively removes useless loops on the
              * whole sequence that messed up the song duration.
              */
-            if (C->loop[l].seq == C->seq && u16(seq->cmd) == 'F')
+
+            /* if (seq >= C->sqN) */
+            /*   dmsg("'%c: seq:%05u loop:%05u sq:[%05u..%05u]\n", */
+            /*        'A'+k, */
+            /*        seq - C->seq, */
+            /*        C->loop[l].seq - C->seq, */
+            /*        C->sq0 - C->seq, */
+            /*        C->sqN - C->seq); */
+
+            if (C->loop[l].seq <= C->sq0 && seq > C->sqN) {
               C->loop[l].cnt = 1;
-            else
+            } else {
               C->loop[l].cnt = (par >> 16) + 1;
+            }
+            dmsg("%c: set loop[%d] @%u x%u\n",
+                 'A'+k, l, C->loop[l].seq-C->seq,
+                 C->loop[l].cnt-1);
           }
 
-          if (--C->loop[l].cnt)
+          if (--C->loop[l].cnt) {
+            dmsg("%c: loop[%d] to @%u rem:%u\n",
+                 'A'+k, l, C->loop[l].seq-C->seq,
+                 C->loop[l].cnt);
             seq = C->loop[l].seq;
-          else
+          } else {
             --C->loop_level;
+            assert(C->loop_level >= 0);
+            dmsg("%c: loop[%d] end\n",'A'+k,C->loop_level);
+          }
+
+
         } break;
 
         default:
@@ -833,7 +908,7 @@ static int zz_play(play_t * P)
         stp[k] = C->mix.stp * P->song.khz * 10u / (P->spr/100u);
       }
       for (n=0; n<P->pcm_per_tick; ++n) {
-        /* GB: $$$ Teribad mix loop $$$ */
+        /* GB: $$$ Terribad mix loop $$$ */
         int k;
         unsigned int v = 0;
         for (k=0; k<4; ++k) {
@@ -985,6 +1060,11 @@ error:
   return ecode;
 }
 
+/* ----------------------------------------------------------------------
+ * Usage and version
+ * ----------------------------------------------------------------------
+ */
+
 /**
  * Print usage message.
  */
@@ -1112,6 +1192,11 @@ static int too_many_arguments(void)
 }
 
 
+/* ----------------------------------------------------------------------
+ * Main
+ * ----------------------------------------------------------------------
+ */
+
 #define RETURN(V) do { ecode = V; goto error_exit; } while(0)
 
 int main(int argc, char *argv[])
@@ -1130,8 +1215,8 @@ int main(int argc, char *argv[])
     { "rate=",   1, 0, 'r' },
     { 0 }
   };
-  int c, cant_do_wav, ecode = E_ERR;
-  FILE * f = 0;
+  int c, can_do_wav=0, ecode=E_ERR;
+  FILE * f=0;
   uint8_t hd[222];
 
   assert( sizeof(songhd_t) ==  16);
@@ -1184,9 +1269,7 @@ int main(int argc, char *argv[])
     emsg("-w/--wav and -c/--stdout are exclusive\n");
     RETURN (E_ARG);
   }
-  cant_do_wav = !!opt_stdout;
-#else
-  cant_do_wav = 1;
+  can_do_wav = !opt_stdout;
 #endif
 
   memset(&play,0,sizeof(play));
@@ -1205,14 +1288,14 @@ int main(int argc, char *argv[])
     uint_t sngsize = u32(hd+8), setsize = u32(hd+12), infsize = u32(hd+16);
     dmsg("QUARTET header [sng:%u set:%u inf:%u]\n",
          sngsize, setsize, infsize);
-    if (optind+1-cant_do_wav < argc)
+    if (optind+can_do_wav < argc)
       RETURN (too_many_arguments());
     ecode = q4_load(f, play.setpath, &play, sngsize, setsize, infsize);
     my_fclose(&f,play.setpath);
   }
   else if (optind >= argc)
     RETURN(too_few_arguments());
-  else if (optind+2-cant_do_wav < argc)
+  else if (optind+1+can_do_wav < argc)
     RETURN (too_many_arguments());
   else {
     /* Load voice set file */
