@@ -49,9 +49,21 @@ static const char bugreport[] =                                 \
 #ifndef WITHOUT_LIBAO
 /* libao */
 # include <ao/ao.h>
-# define WAVOPT "w"
+# define WAVOPT "wf"
 #else
 # define WAVOPT
+#endif
+
+#ifndef SPR_MIN
+#define SPR_MIN 4000                    /* sampling rate minimum */
+#endif
+
+#ifndef SPR_MAX
+#define SPR_MAX 96000                   /* sampling rate maximum */
+#endif
+
+#ifndef SPR_DEF
+#define SPR_DEF 48000                   /* sampling rate default */
 #endif
 
 /* stdc */
@@ -84,16 +96,18 @@ static const char bugreport[] =                                 \
 #endif
 
 static char me[] = PACKAGE_NAME;
-static int opt_sampling = 48000, opt_tickrate = 200, opt_stdout;
+static int opt_sampling = SPR_DEF, opt_tickrate = 200, opt_stdout;
 
 #ifndef WITHOUT_LIBAO
-static int opt_wav;
+static int opt_wav, opt_force;
 #endif
 
+#define VSET_UNROLL   1024u
+#define VSET_XSIZE    (20u*VSET_UNROLL)
 #define VSET_MAX_SIZE (1<<21) /* arbitrary .set max size */
 #define SONG_MAX_SIZE (1<<18) /* arbitrary .4v max size  */
 #define INFO_MAX_SIZE 4096    /* arbitrary .4q info max size */
-#define MAX_LOOP 67           /* max loop depth (singsong.prg) */
+#define MAX_LOOP      67      /* max loop depth (singsong.prg) */
 
 enum {
   E_OK, E_ERR, E_ARG, E_SYS, E_SET, E_SNG, E_OUT, E_PLA,
@@ -164,7 +178,7 @@ static void wmsg(const char * fmt, ...)
 
 static void dmsg(const char *fmt, ...)
 {
-#ifdef DEBUG
+#if defined(DEBUG) && (DEBUG == 1)
   FILE * const out = stdout_or_stderr();
   va_list list;
   va_start(list,fmt);
@@ -196,6 +210,7 @@ static void imsg(const char *fmt, ...)
 typedef unsigned int   uint_t;
 typedef unsigned short ushort_t;
 typedef struct info_s  info_t;
+typedef struct inst_s  inst_t;
 typedef struct vset_s  vset_t;
 typedef struct song_s  song_t;
 typedef struct sequ_s  sequ_t;
@@ -206,7 +221,14 @@ typedef struct chan_s chan_t;
 
 struct bin_s {
   uint_t   size;                  /* data size */
+  uint_t   xtra;                  /* xtra allocated bytes */
   uint8_t  data[sizeof(int)];
+};
+
+struct inst_s {
+  int len;                            /* size in byte */
+  int lpl;                            /* loop length in byte */
+  uint8_t * pcm;                      /* sample address */
 };
 
 struct vset_s {
@@ -214,12 +236,7 @@ struct vset_s {
 
   int khz;                          /* sampling rate from .set */
   int nbi;                          /* number of instrument [1..20] */
-  struct {
-    int len;                            /* size in byte */
-    int lpl;                            /* loop length in byte */
-    uint8_t * pcm;                      /* sample address */
-  } inst[20];
-
+  inst_t inst[20];
 };
 
 struct sequ_s {
@@ -257,7 +274,7 @@ struct chan_s {
 
   struct {
     uint8_t * pcm;
-    int stp, idx, len, lpl;
+    uint_t stp, idx, len, lpl;
   } mix;
 
   struct {
@@ -379,14 +396,16 @@ static void bin_free(bin_t ** pbin)
   }
 }
 
-static int bin_alloc(bin_t ** pbin, const char * path, uint_t len)
+static int bin_alloc(bin_t ** pbin, const char * path,
+                     uint_t len, uint_t xlen)
 {
   bin_t * bin = 0;
   assert(pbin); assert(path);
-  *pbin = bin = malloc((uint_t)(intptr_t)(bin->data+len));
+  *pbin = bin = malloc((uint_t)(intptr_t)(bin->data+len+xlen));
   if (!bin)
     return sysmsg(path,"alloc");
   bin->size = len;
+  bin->xtra = xlen;
   return E_OK;
 }
 
@@ -397,24 +416,25 @@ static int bin_read(bin_t * bin, const char * path,
 }
 
 static int bin_load(bin_t ** pbin, const char * path,
-                    FILE *f, uint_t size, uint_t max)
+                    FILE *f, uint_t len, uint_t xlen, uint_t max)
 {
   int ecode;
 
-  if (!size) {
-    ecode = my_fsize(f, path, &size);
+  if (!len) {
+    ecode = my_fsize(f, path, &len);
     if (ecode)
       goto error;
   }
-  if (max && size > max) {
+  if (max && len > max) {
     emsg("too large (load > %u) -- %s\n", max, path);
     ecode = E_ERR;
     goto error;
   }
-  ecode = bin_alloc(pbin, path, size);
+  ecode = bin_alloc(pbin, path, len, xlen);
   if (ecode)
     goto error;
-  ecode = bin_read(*pbin, path, f, 0, size);
+  dmsg("%s: allocated: %u +%u = %u\n", path, len, xlen, len+xlen);
+  ecode = bin_read(*pbin, path, f, 0, len);
 
 error:
   if (ecode)
@@ -463,9 +483,10 @@ static int song_parse(song_t *song, const char * path, FILE *f,
        path, song->khz, song->barm, song->tempo, song->sigm, song->sigd);
 
   /* Load data */
-  ecode = bin_load(&song->bin, path, f, size, SONG_MAX_SIZE);
+  ecode = bin_load(&song->bin, path, f, size, 0, SONG_MAX_SIZE);
   if (ecode)
     goto error;
+  ecode = E_SNG;
   size = (song->bin->size / 12u) * 12u;
 
   /* Basic parsing of the sequences to find the end. It replaces
@@ -556,11 +577,80 @@ error:
  * quartet voiceset
  * ----------------------------------------------------------------------
  */
+static int cmpadr(const void * a, const void * b)
+{
+  return (*((inst_t **)b))->pcm - (*((inst_t **)a))->pcm;
+}
+
+static void prepare_vset(vset_t *vset, const char *path)
+{
+  const int n = vset->nbi;
+  uint8_t * const beg = vset->bin->data;
+  uint8_t * const end = vset->bin->data+vset->bin->size+vset->bin->xtra;
+  uint8_t * e;
+  int i,j,tot,unroll;
+  inst_t *pinst[20];
+
+  assert(n>0 && n<=20);
+
+  /* Re-order instrument in memory order. */
+  for (i=tot=0; i<n; ++i) {
+    pinst[i] = vset->inst+i;
+    tot += vset->inst[i].len;
+  }
+  assert(tot <= end-beg);
+  unroll = (end-beg-tot) / n;
+  dmsg("%u instrument using %u/%u bytes unroll:%u\n",
+       n, tot, end-beg, unroll);
+  qsort(pinst, n, sizeof(*pinst), cmpadr);
+  for (i=0; i<n; ++i)
+    dmsg("%u %p\n", pinst[i] - vset->inst, pinst[i]->pcm);
+
+  for (i=0, e=end; i<n; ++i) {
+    inst_t * const inst = pinst[i];
+    const uint_t len = inst->len;
+    uint8_t * const pcm = e - unroll - len;
+
+    if (len == 0) {
+      dmsg("i#%02u is tainted -- ignoring\n", pinst[i]-vset->inst);
+      continue;
+    }
+
+    dmsg("i#%02u copying %05x to %05x..%05x\n",
+         pinst[i]-vset->inst,
+         pinst[i]->pcm-beg, pcm-beg, pcm-beg+len-1);
+    memmove(pcm, pinst[i]->pcm, len);
+    pinst[i]->pcm = pcm;
+
+    if (!inst->lpl) {
+      /* Instrument does not loop -- smooth to middle point */
+      uint_t v = pcm[len-1];
+      v |= (v<<8);                      /* v := [$0000..$FFFF] */
+      for (j=0; j<unroll; ++j) {
+        v = ( 3*v + 0x8000 ) >> 2;   /* v = .75*v + 0.25*128 */
+        pcm[len+j] = v >> 8;
+      }
+    } else {
+      int lpi = len;
+      /* Copy loop */
+      for (j=0; j<unroll; ++j) {
+        if (lpi >= len)
+          lpi -= inst->lpl;
+        assert(lpi < len);
+        assert(lpi >= len-inst->lpl);
+        pcm[len+j] = pcm[lpi++];
+      }
+    }
+    e = pcm;
+  }
+
+}
 
 static int vset_parse(vset_t *vset, const char *path, FILE *f,
                       uint8_t *hd, uint_t size)
 {
   int ecode = E_SET, i;
+  bin_t * bin;
 
   /* Check sampling rate */
   vset->khz = hd[0];
@@ -580,49 +670,71 @@ static int vset_parse(vset_t *vset, const char *path, FILE *f,
   }
 
   /* Load data */
-  ecode = bin_load(&vset->bin, path, f, size, VSET_MAX_SIZE);
+  ecode = bin_load(&vset->bin, path, f, size, VSET_XSIZE, VSET_MAX_SIZE);
   if (ecode)
     goto error;
 
-  for (i=0; i<vset->nbi; ++i) {
-    int off = u32(&hd[142+4*i]);
+  for (i=0, ecode=E_SET, bin=vset->bin; i<vset->nbi; ++i) {
+    int off = u32(&hd[142+4*i]), invalid = 0;
     int o = off - 222 + 8;
     uint_t len, lpl;
     uint8_t * pcm;
 
-    pcm = vset->bin->data+o;
+    pcm = bin->data+o;
     len = u32(pcm-4);
     lpl = u32(pcm-8);
-
-    assert (! (len & 0xFFFF ));
     if (lpl == 0xFFFFFFFF)
       lpl = 0;
-    assert ( ! (lpl & 0xFFFF )) ;
+
+    /* These 2 tests might be a little pedantic but as the format is
+     * not very robust It might be a nice safety net. These 2 words
+     * should be 0.
+     */
+    if (len & 0xFFFF) {
+      wmsg("I#%02u length LSW is not 0 [08X]\n", i+1, len);
+      ++invalid;
+    }
+    if (lpl & 0xFFFF) {
+      wmsg("I#%02u loop-length LSW is not 0 [08X]\n", i+1, lpl);
+      ++invalid;
+    }
     len >>= 16;
     lpl >>= 16;
 
-    dmsg("I#%02u \"%7s\" [$%05X:$%05X:$%05X] [$%05X:$%05X:$%05X]\n",
-         i+1, hd+2+7*i,
-         0, len-lpl, len,
-         o, o+len-lpl, o+len);
-
-    assert(lpl <= len);
-    assert(o+len <= vset->bin->size);
+    if (!len) {
+      wmsg("I#%02u has no data\n", i+1);
+      ++invalid;
+    }
 
     if (lpl > len) {
-      emsg("I#%02d invalid loop %u > %u\n",i+1,lpl,len);
-      goto error;
+      wmsg("I#%02u loop-length > length [%08X > %08X] \n",
+           i+1, lpl, len);
+      ++invalid;
     }
-    if (len > vset->bin->size) {
-      emsg("I#%02d sample out of data range by %u byte(s)\n",
-           i+1,len-vset->bin->size);
-      goto error;
+
+    /* Is the sample inside out memory range ? */
+    if ( o < 8 || o >= bin->size || (o+len > bin->size) ) {
+      wmsg("I#%02u data out of range [%05x..%05x] not in [%05x..%05x] +%u\n",
+           i+1, o,o+len, 8,bin->size, o+len-bin->size);
+      ++invalid;
     }
+
+    if (invalid) {
+      pcm = 0;
+      len = lpl = 0;
+    } else {
+      dmsg("I#%02u \"%7s\" [$%05X:$%05X:$%05X] [$%05X:$%05X:$%05X]\n",
+           i+1, hd+2+7*i,
+           0, len-lpl, len,
+           o, o+len-lpl, o+len);
+    }
+
     vset->inst[i].len = len;
     vset->inst[i].lpl = lpl;
     vset->inst[i].pcm = pcm;
   }
 
+  /* prepare_vset(vset, path); */
   ecode = E_OK;
 error:
   if (ecode)
@@ -689,7 +801,7 @@ error:
 
 static int zz_play(play_t * P)
 {
-  const uint_t maxtick = 60*60*opt_tickrate;
+  const uint_t maxtick = 20*60*opt_tickrate;
   int k;
   assert(P);
 
@@ -786,16 +898,27 @@ static int zz_play(play_t * P)
           break;
 
         case 'P':                       /* Play-Note */
+          if (C->curi < 0 || C->curi >= P->vset.nbi) {
+            emsg("@%c[%u]: using invalid instrument number -- %d/%d\n",
+                 'A'+k, seq-1-C->seq, C->curi+1,P->vset.nbi);
+            return E_SNG;
+          }
+          if (!P->vset.inst[C->curi].len) {
+            emsg("@%c[%u]: using tainted instrument -- I#%02u\n",
+                 'A'+k, seq-1-C->seq, C->curi+1);
+            return E_SET;
+          }
 
+          /* Copy current instrument to channel */
+          C->mix.len = P->vset.inst[C->curi].len << 16;
+          C->mix.lpl = P->vset.inst[C->curi].lpl << 16;
+          C->mix.pcm = P->vset.inst[C->curi].pcm;
+          C->mix.idx = 0;
+
+          /* Set step and duration / reset slide */
           C->mix.stp = C->pta.aim = stp;
           C->pta.stp = 0;
           C->wait = len;
-
-          /* Copy current instrument to channel */
-          C->mix.idx = 0;
-          C->mix.pcm = P->vset.inst[C->curi].pcm;
-          C->mix.len = P->vset.inst[C->curi].len << 16;
-          C->mix.lpl = P->vset.inst[C->curi].lpl << 16;
 
           started |= 1<<(k<<3);
           break;
@@ -915,12 +1038,24 @@ static int zz_play(play_t * P)
           chan_t * const C = P->chan+k;
 
           if (C->mix.pcm) {
-            v += C->mix.pcm[  C->mix.idx >> 16 ];
+            const int idx = C->mix.idx >> 16;
+            assert(C->mix.idx >= 0);
+            if (! (C->mix.idx < C->mix.len) ) {
+              emsg("%c: %08x %08x %08x\n",
+                   'A'+k, C->mix.idx, C->mix.len, C->mix.lpl);
+            }
+
+            assert(C->mix.idx < C->mix.len);
+            v += C->mix.pcm[ idx ];
             C->mix.idx += stp[k];
             if (C->mix.idx >= C->mix.len) {
               C->mix.idx -= C->mix.lpl;
               if (!C->mix.lpl)
                 C->mix.pcm = 0;
+              else {
+                assert(C->mix.idx >= C->mix.len-C->mix.lpl);
+                assert(C->mix.idx < C->mix.len);
+              }
             }
           } else
             v += 0x80;
@@ -1077,7 +1212,7 @@ error:
 
 static void print_usage(void)
 {
-  puts(
+  printf(
     "Usage: zingzong [OPTIONS] <inst.set> <song.4v>" OUTWAV "\n"
     "       zingzong [OPTIONS] <music.q4>" OUTWAV "\n"
     "\n"
@@ -1087,24 +1222,25 @@ static void print_usage(void)
     " -h --help --usage  Print this message and exit.\n"
     " -V --version       Print version and copyright and exit.\n"
     " -t --tick=HZ       Set player tick rate (default is 200hz)\n"
-    " -r --rate=HZ       Set sampling rate (default is 48kHz)\n"
+    " -r --rate=HZ       Set sampling rate (default is %ukHz)\n"
     " -c --stdout        Output raw sample to stdout\n"
 #ifndef WITHOUT_LIBAO
     " -w --wav           Generated a .wav file (implicit if output is set)\n"
+    " -f --force         Clobber output .wav file.\n"
     "\n"
     "OUTPUT:\n"
     " If output is set it creates a .wav file of this name (implies `-w').\n"
     " Else with `-w' alone the .wav file is the song file stripped of its\n"
     " path with its extension replaced by .wav.\n"
     " If output exists the program will refuse to create the file unless\n"
-    " it is already a RIFF file (just a \"RIFF\" 4cc test)"
+    " the -f/--force option is used or it is either empty or a RIFF file."
 #else
     "\n"
     "IMPORTANT:\n"
     " This version of zingzong has been built without libao support.\n"
     " Therefore it can not produce audio output nor RIFF .wav file."
 #endif
-    );
+    "\n", SPR_DEF/1000u);
   puts("");
   puts(copyright);
   puts(license);
@@ -1209,6 +1345,7 @@ int main(int argc, char *argv[])
     /**/
 #ifndef WITHOUT_LIBAO
     { "wav",     0, 0, 'w' },
+    { "force",   0, 0, 'f' },
 #endif
     { "stdout",  0, 0, 'c' },
     { "tick=",   1, 0, 't' },
@@ -1229,14 +1366,15 @@ int main(int argc, char *argv[])
     case 'V': print_version(); return E_OK;
 #ifndef WITHOUT_LIBAO
     case 'w': opt_wav = 1; break;
+    case 'f': opt_force = 1; break;
 #endif
     case 'c': opt_stdout = 1; break;
     case 'r':
-      if (-1 == (opt_sampling = uint_arg(optarg,"rate",4000,96000)))
+      if (-1 == (opt_sampling = uint_arg(optarg,"rate",SPR_MIN,SPR_MAX)))
         RETURN (E_ARG);
       break;
     case 't':
-      if (-1 == (opt_tickrate = uint_arg(optarg,"tick",25,800)))
+      if (-1 == (opt_tickrate = uint_arg(optarg,"tick",200/4,200*4)))
         RETURN (E_ARG);
       break;
 
@@ -1328,16 +1466,21 @@ int main(int argc, char *argv[])
     opt_wav = 2;                        /* mark for free */
   }
 
-  if (play.wavpath) {
+  if (!opt_force && play.wavpath) {
+    /* Unless opt_force is set, tries to load 4cc out of the output
+     * .wav file. Non RIFF files are rejected unless they are empty.
+     */
     f = fopen(play.wavpath,"rb");
     if (f) {
-      if (4 != fread(hd,1,4,f) || memcmp(hd,"RIFF",4)) {
+      hd[3] = 0;     /* memcmp() will fail unless 4 bytes are read. */
+      if (fread(hd,1,4,f) != 0 && memcmp(hd,"RIFF",4)) {
         ecode = E_OUT;
         emsg("output file exists and is not a RIFF wav -- %s\n", play.wavpath);
         goto error_exit;
       }
       my_fclose(&f,play.wavpath);
     }
+    errno = 0;
   }
 #endif
 

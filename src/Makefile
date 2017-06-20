@@ -11,6 +11,10 @@ VERSION:=$(shell $(srcdir)vcversion.sh)
 
 # ----------------------------------------------------------------------
 
+ifndef CFLAGS
+CFLAGS	:= -Wall -O2 -DNDEBUG=1
+endif
+
 ifndef AO_LIBS
 AO_LIBS := $(shell $(PKGCONFIG) --libs ao || echo ERROR)
 ifeq '$(AO_LIBS)' 'ERROR'

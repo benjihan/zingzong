@@ -18,9 +18,10 @@ files into a __.4q__ file alongside a small info text.
 ### Options:
     -h --help --usage  Print this message and exit.
     -V --version       Print version and copyright and exit.
-    -t --tick=HZ       Set player tick rate (default is 200hz).
-    -r --rate=HZ       Set sampling rate (default is 48kHz).
-    -w --wav           Generated a .wav file (implicit if output is set).
+    -t --tick=HZ       Set player tick rate (default is __200hz__).
+    -r --rate=HZ       Set sampling rate (default is __48kHz__).
+    -w --wav           Generated a __.wav__ file (implicit if output is set).
+    -f --force         Clobber output __.wav__ file.
     -c --stdout        Output raw sample to stdout.
 
 ### Output:
@@ -29,9 +30,10 @@ If output is set it creates a __.wav__ file of this name (implies __-w__).
 
 Else with __-w__ alone the __.wav__ file is the song file stripped of
 its path with its extension replaced by __.wav__.  
- 
-If output exists the program will refuse to create the file unless it
-is already a RIFF file (just a "RIFF" 4cc test)
+
+If output exists the program will refuse to create the file unless the
+__-f__/__--force__ option is used or it is either empty or a RIFF file (4cc
+test).
 
 ## Building:
 
