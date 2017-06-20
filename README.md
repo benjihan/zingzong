@@ -18,10 +18,10 @@ files into a __.4q__ file alongside a small info text.
 ### Options:
     -h --help --usage  Print this message and exit.
     -V --version       Print version and copyright and exit.
-    -t --tick=HZ       Set player tick rate (default is __200hz__).
-    -r --rate=HZ       Set sampling rate (default is __48kHz__).
-    -w --wav           Generated a __.wav__ file (implicit if output is set).
-    -f --force         Clobber output __.wav__ file.
+    -t --tick=HZ       Set player tick rate (default is 200hz).
+    -r --rate=HZ       Set sampling rate (default is 48kHz).
+    -w --wav           Generated a .wav file (implicit if output is set).
+    -f --force         Clobber output .wav file.
     -c --stdout        Output raw sample to stdout.
 
 ### Output:
