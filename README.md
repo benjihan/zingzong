@@ -55,16 +55,16 @@ For example to build a win64 standalone executable with a cross gcc
 
 ### Defines that alter the built:
 
- |Define       | Description                                                |
- |-------------|------------------------------------------------------------|
- |HAVE_CONFIG_H|Includes config.h on top                                    |
- |   DEBUG     |set to 1 for debug messages                                 |
- |   NDEBUG    |Removes assertion; automatically set if DEBUG is not defined|
- |WITHOUT_LIBAO|Ignores libao support                                       |
- |  NO_INTERP  |Disables quadratic interpolation                            |
- |   SPR_MIN   |Minimum sampling rate                                       |
- |   SPR_MAX   |Maximum sampling rate                                       |
- |   SPR_DEF   |Default sampling rate                                       |
+ |     Define    |                        Description                         |
+ |---------------|------------------------------------------------------------|
+ |`HAVE_CONFIG_H`|To include config.h                                         |
+ |   `DEBUG`     |Set to 1 for debug messages                                 |
+ |   `NDEBUG`    |To removes assert; automatically set if DEBUG is not defined|
+ |`WITHOUT_LIBAO`|To ignore libao support                                     |
+ |  `NO_INTERP`  |To disable quadratic interpolation                          |
+ |   `SPR_MIN`   |Set minimum sampling rate                                   |
+ |   `SPR_MAX`   |Set maximum sampling rate                                   |
+ |   `SPR_DEF`   |Set default sampling rate                                   |
 
 ## License and copyright
 
