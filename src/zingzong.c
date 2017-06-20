@@ -274,7 +274,7 @@ struct chan_s {
 
   struct {
     uint8_t * pcm;
-    uint_t stp, idx, len, lpl;
+    uint_t xtp, stp, idx, len, lpl;
   } mix;
 
   struct {
@@ -619,16 +619,21 @@ static void prepare_vset(vset_t *vset, const char *path)
     dmsg("i#%02u copying %05x to %05x..%05x\n",
          pinst[i]-vset->inst,
          pinst[i]->pcm-beg, pcm-beg, pcm-beg+len-1);
-    memmove(pcm, pinst[i]->pcm, len);
+
+    if (pcm <= pinst[i]->pcm)
+      for (j=0; j<len; ++j)
+        pcm[j] = 0x80 ^ pinst[i]->pcm[j];
+    else
+      for (j=len-1; j>=0; --j)
+        pcm[j] = 0x80 ^ pinst[i]->pcm[j];
     pinst[i]->pcm = pcm;
 
     if (!inst->lpl) {
       /* Instrument does not loop -- smooth to middle point */
-      uint_t v = pcm[len-1];
-      v |= (v<<8);                      /* v := [$0000..$FFFF] */
+      int v = (int)(int8_t)pcm[len-1] << 8;
       for (j=0; j<unroll; ++j) {
-        v = ( 3*v + 0x8000 ) >> 2;   /* v = .75*v + 0.25*128 */
-        pcm[len+j] = v >> 8;
+        v = 3*v >> 2;                   /* v = .75*v */
+        pcm[len+j] = 0x00 /* v>>8 */ ;
       }
     } else {
       int lpi = len;
@@ -643,7 +648,6 @@ static void prepare_vset(vset_t *vset, const char *path)
     }
     e = pcm;
   }
-
 }
 
 static int vset_parse(vset_t *vset, const char *path, FILE *f,
@@ -734,7 +738,7 @@ static int vset_parse(vset_t *vset, const char *path, FILE *f,
     vset->inst[i].pcm = pcm;
   }
 
-  /* prepare_vset(vset, path); */
+  prepare_vset(vset, path);
   ecode = E_OK;
 error:
   if (ecode)
@@ -798,6 +802,112 @@ error:
  * quartet player
  * ----------------------------------------------------------------------
  */
+
+#define SET(N) case N: *b++  = (int8_t)(pcm[idx>>16]) << 6; idx += stp
+#define ADD(N) case N: *b++ += (int8_t)(pcm[idx>>16]) << 6; idx += stp
+
+static void inline mix_gen(play_t * const P,
+                           const int k,
+                           int16_t * restrict b, const int n)
+{
+  uint_t idx, stp;
+  const int8_t * const pcm = (const int8_t *)P->chan[k].mix.pcm;
+
+  assert(n > 0 && n <= 8);
+  assert(k >= 0 && k < 4);
+
+  idx = P->chan[k].mix.idx;
+  stp = P->chan[k].mix.xtp;
+
+  if ( k == 0 ) {
+    if (!pcm) {
+      memset(b,0,2*8);
+      return;
+    }
+    switch (8-n) {
+      SET(0);
+      SET(1);
+      SET(2);
+      SET(3);
+      SET(4);
+      SET(5);
+      SET(6);
+      SET(7); break;
+    default: assert(0);
+
+    }
+  } else {
+    if (!pcm) return;
+    switch (8-n) {
+      ADD(0);
+      ADD(1);
+      ADD(2);
+      ADD(3);
+      ADD(4);
+      ADD(5);
+      ADD(6);
+      ADD(7); break;
+    default: assert(0);
+    }
+  }
+  stp = P->chan[k].mix.len;
+  if (idx >= stp) {
+    if (!P->chan[k].mix.lpl)
+      P->chan[k].mix.pcm = 0;
+    else
+      do { } while ( (idx -= P->chan[k].mix.lpl) >= stp );
+  }
+  P->chan[k].mix.idx = idx;
+}
+
+static void mix_set8(play_t * const P, int16_t * b) {
+  mix_gen(P, 0, b, 8);
+}
+
+static void mix_setN(play_t * const P, int16_t * b, const int n) {
+  mix_gen(P, 0, b, n);
+}
+
+static void mix_add8(play_t * const P, const int k, int16_t * b) {
+  assert( k >= 1 && k < 4 );
+  mix_gen(P, k, b, 8);
+}
+
+static void mix_addN(play_t * const P, const int k, int16_t * b, const int n) {
+  assert( k >= 1 && k < 4 );
+  mix_gen(P, k, b, n);
+}
+
+static void mix_all(play_t * const P)
+{
+  int16_t * restrict b;
+  int k, n;
+
+  /* re-scale step to our sampling rate
+   *
+   * GB: we could pre-compute this but once a frame is not to much.
+   */
+  for (k=0; k<4; ++k) {
+    chan_t * const C = P->chan+k;
+    C->mix.xtp = C->mix.stp * P->song.khz * 10u / (P->spr/100u);
+  }
+
+  /* Mix per block of 8 samples */
+  for (b=P->mix_buf, n=P->pcm_per_tick; n >= 8; b += 8, n -= 8) {
+    mix_set8(P,    b);
+    mix_add8(P, 1, b);
+    mix_add8(P, 2, b);
+    mix_add8(P, 3, b);
+  }
+
+  /* Mix remaining */
+  if (n > 0) {
+    mix_setN(P,    b, n);
+    mix_addN(P, 1, b, n);
+    mix_addN(P, 2, b, n);
+    mix_addN(P, 3, b, n);
+  }
+}
 
 static int zz_play(play_t * P)
 {
@@ -1013,9 +1123,7 @@ static int zz_play(play_t * P)
 
     /* audio output */
     if (P->ao.dev || P->outfp) {
-      int n;
-      unsigned stp[4];
-
+      int n = P->pcm_per_tick << 1;
 #ifndef WITHOUT_LIBAO
       if (P->ao.info && P->ao.info->type == AO_TYPE_LIVE) {
         FILE * const out = stdout_or_stderr();
@@ -1026,52 +1134,17 @@ static int zz_play(play_t * P)
       }
 #endif
 
-      for (k=0; k<4; k++) {
-        chan_t * const C = P->chan+k;
-        stp[k] = C->mix.stp * P->song.khz * 10u / (P->spr/100u);
-      }
-      for (n=0; n<P->pcm_per_tick; ++n) {
-        /* GB: $$$ Terribad mix loop $$$ */
-        int k;
-        unsigned int v = 0;
-        for (k=0; k<4; ++k) {
-          chan_t * const C = P->chan+k;
-
-          if (C->mix.pcm) {
-            const int idx = C->mix.idx >> 16;
-            assert(C->mix.idx >= 0);
-            if (! (C->mix.idx < C->mix.len) ) {
-              emsg("%c: %08x %08x %08x\n",
-                   'A'+k, C->mix.idx, C->mix.len, C->mix.lpl);
-            }
-
-            assert(C->mix.idx < C->mix.len);
-            v += C->mix.pcm[ idx ];
-            C->mix.idx += stp[k];
-            if (C->mix.idx >= C->mix.len) {
-              C->mix.idx -= C->mix.lpl;
-              if (!C->mix.lpl)
-                C->mix.pcm = 0;
-              else {
-                assert(C->mix.idx >= C->mix.len-C->mix.lpl);
-                assert(C->mix.idx < C->mix.len);
-              }
-            }
-          } else
-            v += 0x80;
-        }
-        P->mix_buf[n] = 0x8000 ^ (v << 6);
-      }
+      mix_all(P);
 
       if (P->ao.dev) {
 #ifndef WITHOUT_LIBAO
-        if (!ao_play(P->ao.dev, (void*)P->mix_buf, n<<1)) {
+        if (!ao_play(P->ao.dev, (void*)P->mix_buf, n)) {
           emsg("libao: failed to play buffer #%d \"%s\"\n",
                P->ao.id, P->ao.info->short_name);
           return E_OUT;
         }
 #endif
-      } else if ( (n<<1) != fwrite(P->mix_buf,1,n<<1,P->outfp) ) {
+      } else if ( n != fwrite(P->mix_buf, 1, n, P->outfp) ) {
         return sysmsg("<stdout>","write");
       }
     }
