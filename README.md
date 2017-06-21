@@ -9,16 +9,16 @@ Original `quartet` music consists of
 
 Alternatively `zingzong` supports an convenient format that bundles both files into a `.4q` file alongside a small info text.
 
-## Download:
+## Download
 
 :floppy_disk: [GitHub Release page](releases)
 
-## Usage:
+## Usage
 
     zingzong [OPTIONS] <inst.set> <song.4v> [output.wav]
     zingzong [OPTIONS] <music.q4> [output.wav]
 
-### Options:
+### Options
     -h --help --usage  Print this message and exit.
     -V --version       Print version and copyright and exit.
     -t --tick=HZ       Set player tick rate (default is 200hz).
@@ -28,7 +28,7 @@ Alternatively `zingzong` supports an convenient format that bundles both files i
     -f --force         Clobber output .wav file.
     -c --stdout        Output raw sample to stdout.
 
-### Time:
+### Time
 
 If time is not set the player tries to auto detect the music duration. However a number of musics are going into unnecessary loops which makes it hard to properly detect. Detection threshold is set to 1 hour.
 
@@ -39,7 +39,7 @@ If time is set to zero `0` or `inf` the player will run for ever.
   * colon `:` to separate hours,minutes and seconds
   * `h` to suffix hours; `m` to suffix minutes
 
-### Output:
+### Output
 
 If output is set it creates a `.wav` file of this name (implies `-w`).
 
@@ -48,7 +48,7 @@ its path with its extension replaced by `.wav`.
 
 If output exists the program will refuse to create the file unless the -f`/`--force` option is used or it is either empty or a RIFF file (4cc test).
 
-## Building:
+## Building
 
 The provided Makefile should work in most GNU environment. You must have pkg-config and its libao module usually provided by libao-dev package. Alternatively you can define `AO_LIBS` and `AO_CFLAGS`.
 
@@ -59,7 +59,7 @@ For example to build a win64 standalone executable with a cross gcc
         PKGCONFIG="x86_64-w64-mingw32-pkg-config --static" \
         CFLAGS="-O3 -static -static-libgcc"
 
-### Defines that alter the built:
+### Defines that alter the built
 
  |     Define    |                        Description                         |
  |---------------|------------------------------------------------------------|
