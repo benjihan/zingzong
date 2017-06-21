@@ -1,4 +1,4 @@
-# zingzong
+# :musical_note: zingzong :musical_note:
 
 An simple `Atari ST quartet` music file player.
 
@@ -19,19 +19,21 @@ Alternatively `zingzong` supports an convenient format that bundles both files i
     -V --version       Print version and copyright and exit.
     -t --tick=HZ       Set player tick rate (default is 200hz).
     -r --rate=HZ       Set sampling rate (default is 48kHz).
-    -l --length=TIME   Set play duration (length).
+    -l --length=TIME   Set play time.
     -w --wav           Generated a .wav file (implicit if output is set).
     -f --force         Clobber output .wav file.
     -c --stdout        Output raw sample to stdout.
 
 ### Time:
 
-If time is not set the player will try to auto detect the music duration. However a number of musics are going into unnecessary loops which makes it hard to properly detect. There is threshold set to a maximum of 1 hour.
+If time is not set the player tries to auto detect the music duration. However a number of musics are going into unnecessary loops which makes it hard to properly detect. Detection threshold is set to 1 hour.
 
-  * a single integer number is the number of ticks
-  * a comma `,` separates seconds and milliseconds
-  * a colon `:` separate hours,minutes,seconds
-  * `h` suffix for hours; `m` suffix for minutes
+If time is set to zero `0` or `inf` the player will run for ever.
+
+  * pure integer number to represent a number of ticks
+  * comma `,` to separate seconds and milliseconds
+  * colon `:` to separate hours,minutes and seconds
+  * `h` to suffix hours; `m` to suffix minutes
 
 ### Output:
 
@@ -62,6 +64,7 @@ For example to build a win64 standalone executable with a cross gcc
  |   `NDEBUG`    |To removes assert; automatically set if DEBUG is not defined|
  |`WITHOUT_LIBAO`|To ignore libao support                                     |
  |  `NO_INTERP`  |To disable quadratic interpolation                          |
+ | `MAX_DETECT`  |Set maximum time detection threshold (in seconds)           |
  |   `SPR_MIN`   |Set minimum sampling rate                                   |
  |   `SPR_MAX`   |Set maximum sampling rate                                   |
  |   `SPR_DEF`   |Set default sampling rate                                   |
@@ -73,4 +76,4 @@ For example to build a win64 standalone executable with a cross gcc
 
 ## Bugs
 
-  Report bugs to <https://github.com/benjihan/zingzong/issues>
+  Report bugs to [GitHub issues page](https://github.com/benjihan/zingzong/issues)
