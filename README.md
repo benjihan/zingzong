@@ -11,7 +11,7 @@ Alternatively `zingzong` supports an convenient format that bundles both files i
 
 ## Download
 
-:floppy_disk: [GitHub Release page](releases)
+:floppy_disk: [GitHub Release page](https://github.com/benjihan/zingzong/releases)
 
 ## Usage
 
