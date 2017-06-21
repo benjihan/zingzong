@@ -9,6 +9,10 @@ Original `quartet` music consists of
 
 Alternatively `zingzong` supports an convenient format that bundles both files into a `.4q` file alongside a small info text.
 
+## Download:
+
+:floppy_disk: [GitHub Release page](releases)
+
 ## Usage:
 
     zingzong [OPTIONS] <inst.set> <song.4v> [output.wav]
