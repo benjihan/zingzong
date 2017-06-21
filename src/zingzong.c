@@ -54,6 +54,10 @@ static const char bugreport[] =                                 \
 # define WAVOPT
 #endif
 
+#ifndef MAX_DETECT
+#define MAX_DETECT 3600     /* maximum seconds for length detection */
+#endif
+
 #ifndef SPR_MIN
 #define SPR_MIN 4000                    /* sampling rate minimum */
 #endif
@@ -97,13 +101,15 @@ static const char bugreport[] =                                 \
 
 static char me[] = PACKAGE_NAME;
 static int opt_sampling = SPR_DEF, opt_tickrate = 200, opt_stdout;
+static char *opt_length;
 
 #ifndef WITHOUT_LIBAO
 static int opt_wav, opt_force;
 #endif
 
-#define VSET_UNROLL   1024u
-#define VSET_XSIZE    (20u*VSET_UNROLL)
+#define MIXBLK        16
+#define VSET_UNROLL   1024u             /* Over estimated */
+#define VSET_XSIZE    (20u*VSET_UNROLL) /* Additional space for loops  */
 #define VSET_MAX_SIZE (1<<21) /* arbitrary .set max size */
 #define SONG_MAX_SIZE (1<<18) /* arbitrary .4v max size  */
 #define INFO_MAX_SIZE 4096    /* arbitrary .4q info max size */
@@ -297,12 +303,17 @@ struct play_s {
   song_t song;
   info_t info;
   uint_t tick;
+  uint_t rate;
+  uint_t max_ticks;
+  uint_t end_detect;
+
   uint_t spr;
   int16_t * mix_buf;
   int pcm_per_tick;
   int has_loop;
 
   FILE *outfp;
+
 
   struct {
     int              id;
@@ -401,7 +412,7 @@ static int bin_alloc(bin_t ** pbin, const char * path,
 {
   bin_t * bin = 0;
   assert(pbin); assert(path);
-  *pbin = bin = malloc((uint_t)(intptr_t)(bin->data+len+xlen));
+  *pbin = bin = malloc((intptr_t)(bin->data+len+xlen));
   if (!bin)
     return sysmsg(path,"alloc");
   bin->size = len;
@@ -633,7 +644,7 @@ static void prepare_vset(vset_t *vset, const char *path)
       int v = (int)(int8_t)pcm[len-1] << 8;
       for (j=0; j<unroll; ++j) {
         v = 3*v >> 2;                   /* v = .75*v */
-        pcm[len+j] = 0x00 /* v>>8 */ ;
+        pcm[len+j] = v>>8;
       }
     } else {
       int lpi = len;
@@ -803,78 +814,94 @@ error:
  * ----------------------------------------------------------------------
  */
 
-#define SET(N) case N: *b++  = (int8_t)(pcm[idx>>16]) << 6; idx += stp
-#define ADD(N) case N: *b++ += (int8_t)(pcm[idx>>16]) << 6; idx += stp
+#ifdef NO_INTERP
 
-static void inline mix_gen(play_t * const P,
-                           const int k,
-                           int16_t * restrict b, const int n)
+# define ADDPCM() *b++ += (int8_t)(pcm[idx>>16]) << 6; idx += stp
+
+#else
+
+/* Lagrange Polynomial Quadratic interpolation.
+ *
+ * GB: This should be good enough for oversampling. This is what we do
+ *     most of the time as we are playing at a higher sampling rate
+ *     than the native quartet sampling rates. Still we should have a
+ *     better re-sampling method for down-sampling.
+ */
+static inline int lagrange(const int8_t * const pcm, uint_t idx)
 {
-  uint_t idx, stp;
+  const int j = (idx >> 9) & 0x7F;
+  const int i = idx >> 16;
+
+  const int p1 = pcm[i+0];
+  const int p2 = pcm[i+1];
+  const int p3 = pcm[i+2];
+
+  const int c =    p1            ;
+  const int b = -3*p1 +4*p2 -  p3;
+  const int a =  2*p1 -4*p2 +2*p3;
+
+  int r =
+    ( ( a * j * j)  +
+      ( b * j << 8 ) +
+      ( c << 16 )
+      );
+
+  r = ( r * 3) >> ( 2+16-6 ); /* scale down a bit to avoid clipping */
+
+#if 0
+  if (r < -0x2000 || r > 0x1fff)
+    dmsg("r[%d,%d,%d,%02x] = %d %05x\n",
+         p1,p2,p3,j, r>>6, r & 0xfffff);
+#endif
+
+#if 0
+  if (r < -0x2000)
+    return -0x2000;
+  if (r > 0x1fff)
+    return 0x1fff;
+#else
+  assert ( r >= -0x2000 );
+  assert ( r <   0x2000 );
+#endif
+
+  return r;
+}
+
+#define ADDPCM() *b += lagrange(pcm,idx); ++b; idx += stp
+
+#endif
+
+static inline
+void mix_gen(play_t * const P, const int k, int16_t * restrict b, int n)
+{
   const int8_t * const pcm = (const int8_t *)P->chan[k].mix.pcm;
 
-  assert(n > 0 && n <= 8);
+  assert(n > 0 && n <= MIXBLK);
   assert(k >= 0 && k < 4);
 
-  idx = P->chan[k].mix.idx;
-  stp = P->chan[k].mix.xtp;
-
-  if ( k == 0 ) {
-    if (!pcm) {
-      memset(b,0,2*8);
-      return;
+  if (pcm) {
+    uint_t idx = P->chan[k].mix.idx;
+    uint_t stp = P->chan[k].mix.xtp;
+    do {
+      ADDPCM();
+    } while(--n);
+    stp = P->chan[k].mix.len;
+    if (idx >= stp) {
+      if (!P->chan[k].mix.lpl)
+        P->chan[k].mix.pcm = 0;
+      else
+        do { } while ( (idx -= P->chan[k].mix.lpl) >= stp );
     }
-    switch (8-n) {
-      SET(0);
-      SET(1);
-      SET(2);
-      SET(3);
-      SET(4);
-      SET(5);
-      SET(6);
-      SET(7); break;
-    default: assert(0);
-
-    }
-  } else {
-    if (!pcm) return;
-    switch (8-n) {
-      ADD(0);
-      ADD(1);
-      ADD(2);
-      ADD(3);
-      ADD(4);
-      ADD(5);
-      ADD(6);
-      ADD(7); break;
-    default: assert(0);
-    }
+    P->chan[k].mix.idx = idx;
   }
-  stp = P->chan[k].mix.len;
-  if (idx >= stp) {
-    if (!P->chan[k].mix.lpl)
-      P->chan[k].mix.pcm = 0;
-    else
-      do { } while ( (idx -= P->chan[k].mix.lpl) >= stp );
-  }
-  P->chan[k].mix.idx = idx;
 }
 
-static void mix_set8(play_t * const P, int16_t * b) {
-  mix_gen(P, 0, b, 8);
+static void mix_add1(play_t * const P, const int k, int16_t * b) {
+  mix_gen(P, k, b, MIXBLK);
 }
 
-static void mix_setN(play_t * const P, int16_t * b, const int n) {
-  mix_gen(P, 0, b, n);
-}
-
-static void mix_add8(play_t * const P, const int k, int16_t * b) {
-  assert( k >= 1 && k < 4 );
-  mix_gen(P, k, b, 8);
-}
-
-static void mix_addN(play_t * const P, const int k, int16_t * b, const int n) {
-  assert( k >= 1 && k < 4 );
+static void mix_addN(play_t * const P, const int k, int16_t * b, const int n)
+{
   mix_gen(P, k, b, n);
 }
 
@@ -882,6 +909,10 @@ static void mix_all(play_t * const P)
 {
   int16_t * restrict b;
   int k, n;
+
+
+  /* Clear mix buffer */
+  memset(P->mix_buf, 0, P->pcm_per_tick<<1);
 
   /* re-scale step to our sampling rate
    *
@@ -892,26 +923,22 @@ static void mix_all(play_t * const P)
     C->mix.xtp = C->mix.stp * P->song.khz * 10u / (P->spr/100u);
   }
 
-  /* Mix per block of 8 samples */
-  for (b=P->mix_buf, n=P->pcm_per_tick; n >= 8; b += 8, n -= 8) {
-    mix_set8(P,    b);
-    mix_add8(P, 1, b);
-    mix_add8(P, 2, b);
-    mix_add8(P, 3, b);
+  /* Mix per block of MIXBLK samples */
+  for (b=P->mix_buf, n=P->pcm_per_tick;
+       n >= MIXBLK;
+       b += MIXBLK, n -= MIXBLK)
+  {
+    for (k=0; k<4; ++k)
+      mix_add1(P, k, b);
   }
 
-  /* Mix remaining */
-  if (n > 0) {
-    mix_setN(P,    b, n);
-    mix_addN(P, 1, b, n);
-    mix_addN(P, 2, b, n);
-    mix_addN(P, 3, b, n);
-  }
+  if (n > 0)
+    for (k=0; k<4; ++k)
+      mix_addN(P, k, b, n);
 }
 
 static int zz_play(play_t * P)
 {
-  const uint_t maxtick = 20*60*opt_tickrate;
   int k;
   assert(P);
 
@@ -941,15 +968,6 @@ static int zz_play(play_t * P)
     int started = 0;
 
     ++P->tick;
-    if (maxtick && P->tick > maxtick) {
-      wmsg("unable to detect song end [%s%s%s%s]. Aborting.\n",
-           "A"+((P->has_loop>>0)&1),
-           "B"+((P->has_loop>>1)&1),
-           "C"+((P->has_loop>>2)&1),
-           "D"+((P->has_loop>>3)&1)
-        );
-      break;
-    }
 
     for (k=0; k<4; ++k) {
       chan_t * const C = P->chan+k;
@@ -984,7 +1002,6 @@ static int zz_play(play_t * P)
              seq-1-C->seq,
              isgraph(cmd)?cmd:'?',
              len,stp,par>>16,(par&0xFFFF));
-
 
         switch (cmd) {
 
@@ -1118,7 +1135,10 @@ static int zz_play(play_t * P)
       C->cur = seq;
     } /* per chan */
 
-    if (P->has_loop == 15)
+
+    /* End detection. */
+    if ( ( P->end_detect && P->has_loop == 15 ) ||
+         ( P->max_ticks && P->tick > P->max_ticks ) )
       break;
 
     /* audio output */
@@ -1126,10 +1146,14 @@ static int zz_play(play_t * P)
       int n = P->pcm_per_tick << 1;
 #ifndef WITHOUT_LIBAO
       if (P->ao.info && P->ao.info->type == AO_TYPE_LIVE) {
+        static int olds = -1;
         FILE * const out = stdout_or_stderr();
-        const uint_t s = P->tick / opt_tickrate;
-        fprintf(out,"\r|> %02u:%02u", s / 60u, s % 60u);
-        newline = 0;
+        const uint_t s = P->tick / P->rate;
+        if (newline || s != olds) {
+          olds = s;
+          fprintf(out,"\r|> %02u:%02u", s / 60u, s % 60u);
+          newline = 0;
+        }
         fflush(out);
       }
 #endif
@@ -1149,17 +1173,63 @@ static int zz_play(play_t * P)
       }
     }
   } /* loop ! */
+
+  if (P->end_detect && P->has_loop != 15)
+    wmsg("unable to detect song end [%s%s%s%s]. Aborting.\n",
+         "A"+((P->has_loop>>0)&1),
+         "B"+((P->has_loop>>1)&1),
+         "C"+((P->has_loop>>2)&1),
+         "D"+((P->has_loop>>3)&1)
+      );
+
   return E_OK;
 }
+
+static const char * tickstr(uint_t ticks, uint_t rate)
+{
+  static char s[80];
+  const int max = sizeof(s)-1;
+  int i=0, l=1;
+  uint_t ms;
+
+  if (!ticks)
+    return "infinity";
+  ms = ticks * 1000u / rate;
+  if (ms >= 3600000u) {
+    i += snprintf(s+i,max-i,"%uh", ms/3600000u);
+    ms %= 3600000u;
+    l = 2;
+  }
+  if (i > 0 || ms >= 60000) {
+    i += snprintf(s+i,max-i,"%0*u'",l,ms/60000u);
+    ms %= 60000u;
+    l = 2;
+  }
+  if (!i || ms) {
+    uint_t sec = ms / 1000u;
+    ms %= 1000u;
+    if (ms)
+      while (ms < 100) ms *= 10u;
+    i += snprintf(s+i,max-i,"%0*u,%03u\"", l, sec, ms);
+
+  }
+
+  i += snprintf(s+i,max-i," (+%u ticks@%uhz)", ticks, rate);
+  s[i] = 0;
+  return s;
+}
+
 
 static int zing_zong(play_t * P)
 {
   int ecode = E_OUT;
 
-  imsg("zinging that zong at %uhz with %u ticks per second\n"
+  imsg("zing that zong at %uhz for %s%s\n"
        "vset: \"%s\" (%ukHz, %u sound)\n"
        "song: \"%s\" (%ukHz, %u, %u, %u:%u)\n",
-       opt_sampling, opt_tickrate,
+       P->spr,
+       P->end_detect ? "max " : "",
+       tickstr(P->max_ticks, P->rate),
        basename(P->setpath), P->vset.khz, P->vset.nbi,
        basename(P->sngpath), P->song.khz, P->song.barm,
        P->song.tempo, P->song.sigm, P->song.sigd);
@@ -1174,7 +1244,6 @@ static int zing_zong(play_t * P)
      * Currently for Windows platform only where we have to set the
      * file mode to binary.
      */
-    P->spr = opt_sampling;
     P->outfp = stdout;
 
     dmsg("output to stdout!\n");
@@ -1204,7 +1273,7 @@ static int zing_zong(play_t * P)
     /* Setup libao */
     ao_initialize();
     P->ao.fmt.bits = 16;
-    P->ao.fmt.rate = opt_sampling;
+    P->ao.fmt.rate = P->spr;
     P->ao.fmt.channels = 1;
     P->ao.fmt.byte_format = AO_FMT_NATIVE;
     P->ao.id = P->wavpath
@@ -1232,14 +1301,22 @@ static int zing_zong(play_t * P)
   }
 #endif
 
-  P->pcm_per_tick = (P->spr + (opt_tickrate>>1)) / opt_tickrate;
-  P->mix_buf = (int16_t *) malloc ( 2 * P->pcm_per_tick );
+  P->pcm_per_tick = (P->spr + (P->rate>>1)) / P->rate;
+  dmsg("pcm per tick: %u (%ux8+%u)\n",
+       P->pcm_per_tick, P->pcm_per_tick>>3, P->pcm_per_tick&7);
+
+  P->mix_buf = (int16_t *) malloc ( 2 * P->pcm_per_tick + 4 );
   if (!P->mix_buf) {
     ecode = sysmsg("audio", "alloc");
     goto error;
   }
+  memcpy(&P->mix_buf[P->pcm_per_tick],"1337",4);
 
   ecode = zz_play(&play);
+
+  ensure_newline();
+  assert(!memcmp(&P->mix_buf[P->pcm_per_tick],"1337",4));
+
 error:
   /* Close and ignore closing error if error is already raised */
   if (P->outfp) {
@@ -1296,24 +1373,35 @@ static void print_usage(void)
     " -V --version       Print version and copyright and exit.\n"
     " -t --tick=HZ       Set player tick rate (default is 200hz)\n"
     " -r --rate=HZ       Set sampling rate (default is %ukHz)\n"
+    " -l --length=TIME   Set play time\n"
     " -c --stdout        Output raw sample to stdout\n"
 #ifndef WITHOUT_LIBAO
     " -w --wav           Generated a .wav file (implicit if output is set)\n"
     " -f --force         Clobber output .wav file.\n"
     "\n"
+
     "OUTPUT:\n"
     " If output is set it creates a .wav file of this name (implies `-w').\n"
     " Else with `-w' alone the .wav file is the song file stripped of its\n"
     " path with its extension replaced by .wav.\n"
     " If output exists the program will refuse to create the file unless\n"
-    " the -f/--force option is used or it is either empty or a RIFF file."
+    " the -f/--force option is used or it is either empty or a RIFF file.\n"
 #else
     "\n"
     "IMPORTANT:\n"
     " This version of zingzong has been built without libao support.\n"
-    " Therefore it can not produce audio output nor RIFF .wav file."
+    " Therefore it can not produce audio output nor RIFF .wav file.\n"
 #endif
-    "\n", SPR_DEF/1000u);
+    "\n"
+    "TIME:\n"
+    "  * pure integer number to represent a number of ticks\n"
+    "  * comma `,' to separate seconds and milliseconds\n"
+    "  * `h' to suffix hours; `m' to suffix minutes\n"
+    " If time is not set the player tries to auto detect the music duration.\n"
+    " However a number of musics are going into unnecessary loops which makes\n"
+    " it hard to properly detect. Detection threshold is set to 1 hour.\n"
+    " If time is set to `0` or `inf` the player will run for ever.\n"
+    , SPR_DEF/1000u);
   puts("");
   puts(copyright);
   puts(license);
@@ -1358,31 +1446,113 @@ static int wav_filename(char ** pwavname, char * sngname)
 
 #endif
 
+static uint_t mystrtoul(char **s)
+{
+  uint_t v; char * errp;
+
+  errno = 0;
+  if (!isdigit((int)**s))
+    return -1;
+  v = strtoul(*s,&errp,10);
+  if (errno)
+    return -1;
+  *s = errp;
+  return v;
+}
+
+/**
+ * Parse time argument (a bit permissive)
+ */
+static int time_parse(uint_t * pticks, char * time)
+{
+  int i, w = 1;
+  uint_t ticks = 0;
+  char *s = time;
+
+  if (!*s) {
+    s = "?";                            /* trigger an error */
+    goto done;
+  }
+
+  if (!strcasecmp(time,"inf")) {
+    ticks = 0; s += 3; goto done;
+  }
+
+  for (i=0; *s && i<3; ++i) {
+    uint_t v = mystrtoul(&s);
+    if (v == (uint_t)-1)
+      s = "?";
+    switch (*s) {
+    case 0:
+      if (!i)
+        ticks = v;
+      else
+        ticks += v * opt_tickrate * w;
+      goto done;
+
+    case ',': case '.':
+      ++s;
+      ticks += v * opt_tickrate;
+      v = mystrtoul(&s);
+      if (v == (uint_t)-1)
+        s = "?";
+      else if (v) {
+        while (v > 1000) v /= 10u;
+        while (v <  100) v *= 10u;
+        ticks += (v * opt_tickrate) / 1000u;
+      }
+      goto done;
+
+    case 'h':
+      if (i>0) goto done;
+      ticks = v * opt_tickrate * 3600u;
+      w = 60u;
+      ++s;
+      break;
+
+    case 'm': case '\'':
+      if (i>1) goto done;
+      ticks += v * opt_tickrate * 60u;
+      w = 1u;
+      ++s;
+      break;
+
+    default:
+      goto done;
+    }
+  }
+
+ done:
+  if (*s) {
+    emsg("invalid argument -- length=%s\n", time);
+    return E_ARG;
+  }
+  *pticks = ticks;
+  return E_OK;
+}
+
 /**
  * Parse integer argument with range check.
  */
 static int uint_arg(char * arg, char * name, uint_t min, uint_t max)
 {
-  uint_t v = -1; char * errp = 0;
+  uint_t v;
+  char * s = arg;
 
-  errno = 0;
-  v = strtoul(arg, &errp, 10);
-  if (errno) {
-    sysmsg("arg","NAN");
-    v = (uint_t) -1;
+  v = mystrtoul(&s);
+  if (v == (uint_t)-1) {
+    emsg("invalid number -- %s=%s\n", name, arg);
   } else {
-    if (errp) {
-      if(*errp == 'k') {
-        v *= 1000u;
-        ++errp;
-      }
-      if (*errp) {
-        emsg("invalid number -- %s=%s\n", name, arg);
-        v = (uint_t) -1;
-      } else if  (v < min || (max && v > max)) {
-        emsg("out range -- %s=%s\n", name, arg);
-        v = (uint_t) -1;
-      }
+    if (*s == 'k') {
+      v *= 1000u;
+      ++s;
+    }
+    if (*s) {
+      emsg("invalid number -- %s=%s\n", name, arg);
+      v = (uint_t) -1;
+    } else if  (v < min || (max && v > max)) {
+      emsg("out range -- %s=%s\n", name, arg);
+      v = (uint_t) -1;
     }
   }
   return v;
@@ -1410,7 +1580,7 @@ static int too_many_arguments(void)
 
 int main(int argc, char *argv[])
 {
-  static char sopts[] = "hV" WAVOPT "c" "r:t:";
+  static char sopts[] = "hV" WAVOPT "c" "r:t:l:";
   static struct option lopts[] = {
     { "help",    0, 0, 'h' },
     { "usage",   0, 0, 'h' },
@@ -1423,6 +1593,7 @@ int main(int argc, char *argv[])
     { "stdout",  0, 0, 'c' },
     { "tick=",   1, 0, 't' },
     { "rate=",   1, 0, 'r' },
+    { "length=", 1, 0, 'l' },
     { 0 }
   };
   int c, can_do_wav=0, ecode=E_ERR;
@@ -1442,6 +1613,7 @@ int main(int argc, char *argv[])
     case 'f': opt_force = 1; break;
 #endif
     case 'c': opt_stdout = 1; break;
+    case 'l': opt_length = optarg; break;
     case 'r':
       if (-1 == (opt_sampling = uint_arg(optarg,"rate",SPR_MIN,SPR_MAX)))
         RETURN (E_ARG);
@@ -1450,7 +1622,6 @@ int main(int argc, char *argv[])
       if (-1 == (opt_tickrate = uint_arg(optarg,"tick",200/4,200*4)))
         RETURN (E_ARG);
       break;
-
     case 0: break;
     case '?':
       if (optopt) {
@@ -1484,6 +1655,16 @@ int main(int argc, char *argv[])
 #endif
 
   memset(&play,0,sizeof(play));
+
+  play.spr        = opt_sampling;
+  play.rate       = opt_tickrate;
+  play.max_ticks  = MAX_DETECT * play.rate;
+  play.end_detect = !opt_length;
+  if (!play.end_detect) {
+    ecode = time_parse(&play.max_ticks, opt_length);
+    if (ecode)
+      goto error_exit;
+  }
 
   /* Get the header of the first file to check if its a .4q file */
   play.setpath = play.sngpath = argv[optind++];

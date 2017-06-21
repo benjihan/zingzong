@@ -36,7 +36,6 @@ If time is set to zero `0` or `inf` the player will run for ever.
 
   * pure integer number to represent a number of ticks
   * comma `,` to separate seconds and milliseconds
-  * colon `:` to separate hours,minutes and seconds
   * `h` to suffix hours; `m` to suffix minutes
 
 ### Output
