@@ -125,6 +125,14 @@ enum {
  * ----------------------------------------------------------------------
  */
 
+#ifndef FMT12
+# if defined(__GNUC__) || defined(__clang__)
+#  define FMT12 __attribute__ ((format (printf, 1, 2)))
+# else
+#  define FMT12
+# endif
+#endif
+
 static int newline = 1; /* Lazy newline tracking for message display */
 
 static FILE * stdout_or_stderr(void)
@@ -146,6 +154,7 @@ static void ensure_newline(void)
   }
 }
 
+FMT12
 static void emsg(const char * fmt, ...)
 {
   va_list list;
@@ -170,6 +179,7 @@ static int sysmsg(const char * obj, const char * alt)
   return E_SYS;
 }
 
+FMT12
 static void wmsg(const char * fmt, ...)
 {
   va_list list;
@@ -182,9 +192,10 @@ static void wmsg(const char * fmt, ...)
   va_end(list);
 }
 
+#if defined(DEBUG) && DEBUG == 1
+FMT12
 static void dmsg(const char *fmt, ...)
 {
-#if defined(DEBUG) && (DEBUG == 1)
   FILE * const out = stdout_or_stderr();
   va_list list;
   va_start(list,fmt);
@@ -193,9 +204,14 @@ static void dmsg(const char *fmt, ...)
   set_newline(fmt);
   fflush(out);
   va_end(list);
-#endif
 }
+#elif defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
+# define dmsg(FMT,...)
+#else
+static void dmsg(const char *fmt, ...) {}
+#endif
 
+FMT12
 static void imsg(const char *fmt, ...)
 {
   FILE * const out = stdout_or_stderr();
@@ -514,7 +530,7 @@ static int song_parse(song_t *song, const char * path, FILE *f,
     if (1) {
       dmsg("%c %04u %c %04x %08x %04x-%04x\n",
            k+'A',
-           seq-song->seq[k],
+           (uint_t)(seq-song->seq[k]),
            isgraph(cmd) ? cmd : '?',
            u16(seq->len),
            u32(seq->stp),
@@ -527,7 +543,7 @@ static int song_parse(song_t *song, const char * path, FILE *f,
     case 'F':                           /* End-Voice */
       if (!has_note) {
         song->seq[k] = (sequ_t *) nullseq;
-        dmsg("%c: replaced by default sequence\n");
+        dmsg("%c: replaced by default sequence\n", 'A'+k);
       }
       has_note = 0;
       ++k;
@@ -611,11 +627,9 @@ static void prepare_vset(vset_t *vset, const char *path)
   }
   assert(tot <= end-beg);
   unroll = (end-beg-tot) / n;
-  dmsg("%u instrument using %u/%u bytes unroll:%u\n",
-       n, tot, end-beg, unroll);
+  dmsg("%u instrument using %u/%u bytes unroll:%i\n",
+       n, tot, (uint_t)(end-beg), unroll);
   qsort(pinst, n, sizeof(*pinst), cmpadr);
-  for (i=0; i<n; ++i)
-    dmsg("%u %p\n", pinst[i] - vset->inst, pinst[i]->pcm);
 
   for (i=0, e=end; i<n; ++i) {
     inst_t * const inst = pinst[i];
@@ -623,13 +637,15 @@ static void prepare_vset(vset_t *vset, const char *path)
     uint8_t * const pcm = e - unroll - len;
 
     if (len == 0) {
-      dmsg("i#%02u is tainted -- ignoring\n", pinst[i]-vset->inst);
+      dmsg("i#%02u is tainted -- ignoring\n", (uint_t)(pinst[i]-vset->inst));
       continue;
     }
 
     dmsg("i#%02u copying %05x to %05x..%05x\n",
-         pinst[i]-vset->inst,
-         pinst[i]->pcm-beg, pcm-beg, pcm-beg+len-1);
+         (uint_t)(pinst[i]-vset->inst),
+         (uint_t)(pinst[i]->pcm-beg),
+         (uint_t)(pcm-beg),
+         (uint_t)(pcm-beg+len-1));
 
     if (pcm <= pinst[i]->pcm)
       for (j=0; j<len; ++j)
@@ -680,7 +696,7 @@ static int vset_parse(vset_t *vset, const char *path, FILE *f,
   dmsg("%s: %u instrument\n", path, vset->nbi);
 
   if (vset->nbi < 1 || vset->nbi > 20) {
-    emsg("instrument count (%U) out of range -- %s\n", vset->nbi, path);
+    emsg("instrument count (%d) out of range -- %s\n", vset->nbi, path);
     goto error;
   }
 
@@ -706,11 +722,11 @@ static int vset_parse(vset_t *vset, const char *path, FILE *f,
      * should be 0.
      */
     if (len & 0xFFFF) {
-      wmsg("I#%02u length LSW is not 0 [08X]\n", i+1, len);
+      wmsg("I#%02i length LSW is not 0 [%08X]\n", i+1, len);
       ++invalid;
     }
     if (lpl & 0xFFFF) {
-      wmsg("I#%02u loop-length LSW is not 0 [08X]\n", i+1, lpl);
+      wmsg("I#%02i loop-length LSW is not 0 [%08X]\n", i+1, lpl);
       ++invalid;
     }
     len >>= 16;
@@ -974,7 +990,10 @@ static int zz_play(play_t * P)
     assert(C->sq0);
     assert(C->sqN);
     dmsg("%c: [%05u..%05u..%05u]\n",
-         'A'+k, C->sq0-C->seq, C->sqN-C->seq, C->end-C->seq);
+         'A'+k,
+         (uint_t)(C->sq0-C->seq),
+         (uint_t)(C->sqN-C->seq),
+         (uint_t)(C->end-C->seq));
   }
 
   for (;;) {
@@ -1010,12 +1029,13 @@ static int zz_play(play_t * P)
         uint_t const par = u32(seq->par);
         ++seq;
 
+#ifdef DEBUG
         dmsg("%c: %04u %c %04x %08x %04x-%04x\n",
              'A'+k,
-             seq-1-C->seq,
+             (uint_t)(seq-1-C->seq),
              isgraph(cmd)?cmd:'?',
              len,stp,par>>16,(par&0xFFFF));
-
+#endif
         switch (cmd) {
 
         case 'F':                       /* End-Voice */
@@ -1039,13 +1059,15 @@ static int zz_play(play_t * P)
 
         case 'P':                       /* Play-Note */
           if (C->curi < 0 || C->curi >= P->vset.nbi) {
-            emsg("@%c[%u]: using invalid instrument number -- %d/%d\n",
-                 'A'+k, seq-1-C->seq, C->curi+1,P->vset.nbi);
+            emsg("%c[%u]@%u: using invalid instrument number -- %d/%d\n",
+                 'A'+k, (uint_t)(seq-1-C->seq), P->tick,
+                 C->curi+1,P->vset.nbi);
             return E_SNG;
           }
           if (!P->vset.inst[C->curi].len) {
-            emsg("@%c[%u]: using tainted instrument -- I#%02u\n",
-                 'A'+k, seq-1-C->seq, C->curi+1);
+            emsg("%c[%u]@%u: using tainted instrument -- I#%02u\n",
+                 'A'+k, (uint_t)(seq-1-C->seq), P->tick,
+                 C->curi+1);
             return E_SET;
           }
 
@@ -1081,10 +1103,11 @@ static int zz_play(play_t * P)
             const int l = C->loop_level++;
             C->loop[l].seq = seq;
             C->loop[l].cnt = 0;
-            dmsg("%c: set loop[%d] point @%u\n",'A'+k, l, seq - C->seq);
+            dmsg("%c: set loop[%d] point @%u\n",
+                 'A'+k, l, (uint_t)(seq-C->seq));
           } else {
             emsg("%c off:%u tick:%u -- loop stack overflow\n",
-                 'A'+k, (unsigned) (seq-C->seq-1), P->tick);
+                 'A'+k, (uint_t)(seq-C->seq-1), P->tick);
             return E_PLA;
           }
           break;
@@ -1122,13 +1145,13 @@ static int zz_play(play_t * P)
               C->loop[l].cnt = (par >> 16) + 1;
             }
             dmsg("%c: set loop[%d] @%u x%u\n",
-                 'A'+k, l, C->loop[l].seq-C->seq,
+                 'A'+k, l, (uint_t)(C->loop[l].seq-C->seq),
                  C->loop[l].cnt-1);
           }
 
           if (--C->loop[l].cnt) {
             dmsg("%c: loop[%d] to @%u rem:%u\n",
-                 'A'+k, l, C->loop[l].seq-C->seq,
+                 'A'+k, l, (uint_t)(C->loop[l].seq-C->seq),
                  C->loop[l].cnt);
             seq = C->loop[l].seq;
           } else {
