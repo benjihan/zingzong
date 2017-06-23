@@ -85,15 +85,14 @@ dist_list := \
  src/zingzong.c src/Makefile src/vcversion.sh \
  _build/build.sh
 
-
 dist: distrib
+distcheck: dist-check
 distrib: dist-arch
-.PHONY: distrib
 
 dist-arch: $(dist_base)
 	@tar -C $(topdir) -cpf - $(dist_list) | tar -C $(dist_base) -xpf -
 	@echo $(VERSION) >$(dist_base)/VERSION
-	@echo $(VERSION) >$(dist_base)/VERSION
+	@echo $(VERSION) >$(dist_base)/src/VERSION
 	@tar --owner=0 --group=0 -czpf $(dist_arch) $(dist_base)/
 	@rm -rf -- $(dist_base)
 	@echo "distrib file -- \"$(dist_arch)\" -- is ready"
@@ -102,13 +101,13 @@ dist-check: dist
 	@test ! -e $(dist_base) || { echo $(dist_base) already exist; false; }
 	@test ! -e _build-$(dist_base) || rm -rf -- _build-$(dist_base)
 	@tar xf $(dist_arch)
-	chmod -R ug-w $(dist_base)/
+	@chmod -R ug-w $(dist_base)/
 	@mkdir _build-$(dist_base)
-	make -C _build-$(dist_base) -f ../$(dist_base)/src/Makefile all dist
+	@$(MAKE) -C _build-$(dist_base) -f ../$(dist_base)/src/Makefile all dist
 	@rm -rf -- _build-$(dist_base)/ $(dist_base)/
 
 
 $(dist_base):
 	@test ! -e "$@" || rm -r -- "$@" && mkdir -- "$@"
 
-.PHONY: dist distrib dist-arch
+.PHONY: distcheck dist-check dist distrib dist-arch

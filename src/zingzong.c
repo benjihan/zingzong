@@ -822,31 +822,44 @@ error:
 
 /* Lagrange Polynomial Quadratic interpolation.
  *
- * GB: This should be good enough for oversampling. This is what we do
- *     most of the time as we are playing at a higher sampling rate
- *     than the native quartet sampling rates. Still we should have a
- *     better re-sampling method for down-sampling.
+ * GB: Interpolation is a reconstruction filter. It's relatively good
+ *     for up-sampling. In most situation the output is at a higher
+ *     sampling rate than the input.
+ *
+ *     However this is not a proper interpolation filter for DSP
+ *     purpose. It causes -- zero-order hold -- distortion in the
+ *     original pass-band. We should pass the interpolated data
+ *     through a low pass filter (anti-imaging or interpolation
+ *     filter). In DSP, interpolation is also called zero-packing.
+ *
+ *     For down-sampling we need anti-aliasing filter usually some
+ *     kind of low-pass filter prior to a simple decimation process.
  */
 static inline int lagrange(const int8_t * const pcm, uint_t idx)
 {
-  const int j = (idx >> 9) & 0x7F;
+  const int j = (idx >> 9) & 0x7F;      /* the mid point is f(.5) */
   const int i = idx >> 16;
 
-  const int p1 = pcm[i+0];
-  const int p2 = pcm[i+1];
-  const int p3 = pcm[i+2];
+  const int p1 = pcm[i+0];              /* f(0) */
+  const int p2 = pcm[i+1];              /* f(.5) */
+  const int p3 = pcm[i+2];              /* f(1) */
 
+  /* f(x) = ax^2+bx+c */
   const int c =    p1            ;
   const int b = -3*p1 +4*p2 -  p3;
   const int a =  2*p1 -4*p2 +2*p3;
 
+  /* x is fp8; x^2 is fp16; r is fp16 => 24bit */
   int r =
-    ( ( a * j * j)  +
+    ( ( a * j * j) +
       ( b * j << 8 ) +
       ( c << 16 )
       );
 
-  r = ( r * 3) >> ( 2+16-6 ); /* scale down a bit to avoid clipping */
+  /* scale r to 14-bit so that 4 voices fit into a 16 bit integer
+   * Apply an empirical additional 3/4 scale to avoid clipping as the
+   * interpolation can generate values outside the sample range. */
+  r = ( r * 3) >> ( 2+24-14 );
 
 #if 0
   if (r < -0x2000 || r > 0x1fff)
