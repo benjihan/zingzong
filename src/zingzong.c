@@ -184,7 +184,7 @@ static void wmsg(const char * fmt, ...)
 {
   va_list list;
   va_start(list,fmt);
-  fprintf(stderr,"\nWARNING: "+newline);
+  fprintf(stderr,"%s","\nWARNING: "+newline);
   newline = 0;
   vfprintf(stderr,fmt,list);
   set_newline(fmt);
