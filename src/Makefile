@@ -14,9 +14,8 @@ VPATH      = $(srcdir)
 PKGCONFIG  = pkg-config
 PACKAGE   := zingzong
 VERSION   := $(shell $(srcdir)vcversion.sh)
-
-ifneq ($(.SHELLSTATUS),0)
-$(error vcversion.sh failed with $(.SHELLSTATUS))
+ifeq ($(VERSION),)
+$(error vcversion.sh failed)
 endif
 
 # ----------------------------------------------------------------------
@@ -26,14 +25,14 @@ CFLAGS	:= -Wall -O2
 endif
 
 ifndef AO_LIBS
-AO_LIBS := $(shell $(PKGCONFIG) --libs ao)
-ifneq ($(.SHELLSTATUS),0)
-$(error pkg-config failed with $(.SHELLSTATUS))
+AO_LIBS := $(shell $(PKGCONFIG) --libs ao || echo X)
+ifeq ($(AO_LIBS),X)
+$(error pkg-config failed)
 endif
 
-AO_CLAGS := $(shell $(PKGCONFIG) --cflags ao)
-ifneq ($(.SHELLSTATUS),0)
-$(error pkg-config failed with $(.SHELLSTATUS))
+AO_CLAGS := $(shell $(PKGCONFIG) --cflags ao || echo X)
+ifeq ($(AO_CLAGS),X)
+$(error pkg-config failed)
 endif
 
 endif
