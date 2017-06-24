@@ -13,8 +13,8 @@ topdir    := $(abspath $(srcdir)..)
 VPATH      = $(srcdir)
 PKGCONFIG  = pkg-config
 PACKAGE   := zingzong
-VERSION   := $(shell $(srcdir)vcversion.sh)
-ifeq ($(VERSION),)
+VERSION   := $(shell $(srcdir)vcversion.sh || echo X)
+ifeq ($(VERSION),X)
 $(error vcversion.sh failed)
 endif
 
