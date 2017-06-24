@@ -12,7 +12,9 @@ else
     if [ -r ./VERSION ]; then
 	cat ./VERSION
     else
-	tagname=$(git tag -l 'v[0-9]*' --sort=-tag -i --no-column | head -n1)
+	which git >/dev/null
+	tagname=$(git tag -l 'v[0-9]*' --sort=-tag | head -n1)
+	test "x$tagname" != x
 	tweaks=$(git rev-list --count HEAD ^$tagname)
 	if [ "${tweaks}" = 0 ]; then
 	    tweaks=''
