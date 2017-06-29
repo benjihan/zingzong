@@ -4,12 +4,35 @@
 #
 # Copyright (c) 2017 Benjamin Gerard AKA Ben/OVR
 #
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 #
-# SET file format
-# =============================================================================
+# ============================================================================
+# .4V file format
+# ----------------------------------------------------------------------------
 # offset        type    length  name            comments
-# -----------------------------------------------------------------------------
+# ............................................................................
+# 0             word    1       sampling rate   replay rate
+# 2             word    1       measure         for the editor only
+# 4             word    1       tempo           for the editor only
+# 6             byte    1       time signature
+# 7             byte    1       time signature
+# 8             byte    8       reserved        (we might use that)
+# 16            byte    12      sequence        1st sequence of channel #1
+# 28            byte    12      sequence        next sequence ...
+#
+# Sequence
+# ............................................................................
+# 0             word    1       command         {P,R,S,V,l,L,F}
+# 2             word    1       duration        never 0
+# 4             long    1       step            sample step (fp16)
+# 8             long    1       parameter
+# 
+#
+# ============================================================================
+# .SET file format
+# ----------------------------------------------------------------------------
+# offset        type    length  name            comments
+# ............................................................................
 # 0             byte    1       sampling rate   ?
 # 1             byte    1       # of sample     +1 [X]
 # 2             char[7] 20
@@ -17,14 +40,17 @@
 # 222           void     0
 #
 # Instruments:
+# ............................................................................
 # off+0        long     1       loop-point      fp16; -1 for no loop
 # off+4        long     1       size            fp16
 # off+8        byte     size    pcm data        unsigned 8-bit PCM
 #
-# AVR file format
 #
+# ============================================================================
+# AVR file format
+# ----------------------------------------------------------------------------
 # offset        type    length  name            comments
-# -----------------------------------------------------------------------------
+# ............................................................................
 # 0     char    4       ID              format ID == "2BIT"
 # 4     char    8       name            sample name (0 filled)
 # 12    short   1       mono/stereo     0=mono, -1 (0xffff)=stereo
@@ -49,16 +75,26 @@
 # 64    byte    64      user data
 # 128   bytes   ?       sample data     12 bits samples are coded on 16 bits
 #                                       0000 xxxx xxxx xxxx
-# -------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 import sys, os, traceback
-from struct import unpack
+from struct import unpack, pack
 from math import log
 from getopt import gnu_getopt as getopt, error as GetOptError
+from fractions import Fraction
 
-version='zingdoctor 0.9'
-opt_verbose=0
-opt_mode=None
+# ----------------------------------------------------------------------------
+#  Globales
+# ----------------------------------------------------------------------------
+
+version     = 'zingdoctor 0.9'
+opt_verbose = 0
+opt_mode    = None
+opt_unroll  = None
+
+# ----------------------------------------------------------------------------
+#  Messages
+# ----------------------------------------------------------------------------
 
 def dmsg(s):
     if opt_verbose >= 2:
@@ -90,135 +126,280 @@ def emsg(s):
     e += str(s)+"\n"
     sys.stderr.write(e)
 
+# ----------------------------------------------------------------------------
+#  Parent class for all our error exceptions
+# ----------------------------------------------------------------------------
+    
 class Error(Exception):
     def __init__(self,msg,exit_code=1):
         self.exit_code = int(exit_code)
         super().__init__(msg)
 
-# def step2note(istp):
-#     return int( round (log(istp/65536.0,2.0) * 12.0 * 256.0) )
+######################################################################
+#
+# Song related class
+#
+######################################################################
+        
+def step2note(istp):
+    return int( round (log(istp/65536.0,2.0) * 12.0 * 256.0) )
 
-# def note2step(note):
-#     return int(round(2.0**(note/(256*12.0))*65536.0))
+def note2step(note):
+    return int(round(2.0**(note/(256*12.0))*65536.0))
 
-# class Seq:
+class Seq:
+    class Err(Error): pass
 
-#     note_min = -24*256
-#     note_max = +24*256
+    note_min = -30*256
+    note_max = +30*256
 
-#     class Err : Exception:
-#         pass
+    def __str__(self):
+        return '[%05d] %c %04X %08X %04X-%04X' \
+            % (int(self.i), chr(self.c),
+               self.l,self.s,self.p>>16,self.p&0xFFFF)
 
-#     def self.check(clean=True):
-#         c = chr(self.c)
+    def Check(self,clean=True):
+        c = chr(self.c)
 
-#         if c == 'N':
-#             if self.l < 1 or self.l > 0xFFFF:
-#                 raise SeqErr('Invalid "N"ote length -- %04x'%self.l)
-#             note = step2note(self.s)
-#             if (note & 255) or note < note_min or note > note_max:
-#                 raise SeqErr('Invalid "N"ote step -- %08x'%self.s)
-#             if clean: self.p = 0
+        if c == 'P':
+            if self.l < 1 or self.l > 0xFFFF:
+                raise Seq.Err('Invalid "P"lay length -- %04x'%self.l)
+            note = step2note(self.s)
+            if (note & 255) or note < Seq.note_min or note > Seq.note_max:
+                raise Seq.Err('Invalid "P"lay step -- %08x (%04x)' \
+                              %(self.s,note))
+            if clean: self.p = 0
 
-#         elif c == 'V':
-#             if (self.p & 0xFFFFFF83):
-#                 raise SeqErr('Invalid "V"oice parameter -- %08x'%self.p)
-#             if clean:
-#                 self.s = self.l = 0
-#                 self.p = self.p & (31<<2)
-#         elif c == 'R':
-#             if self.l < 1 or self.l > 0xFFFF:
-#                 raise SeqErr('Invalid "R"est length -- %04x'%self.l)
-#             if clean: self.s = self.p = 0
+        elif c == 'V':
+            if self.p & ~(31*4):
+                raise Seq.Err('Invalid "V"oice parameter -- %08x'%self.p)
+            if self.p > 20*4:
+                raise Seq.Err('Invalid "V"oice number -- %u'%(self.p>>2))
+            if clean: self.s = self.l = 0
 
-#         elif c == 'S':
-#             if self.l < 1 or self.l > 0xFFFF:
-#                 raise SeqErr('Invalid "R"est length -- %04x'%self.l)
-#             # We could probably the slide test range (self.p)
-#             if clean: pass
+        elif c == 'R':
+            if self.l < 1 or self.l > 0xFFFF:
+                raise Seq.Err('Invalid "R"est length -- %04x'%self.l)
+            if clean: self.s = self.p = 0
 
-#         elif c == 'l':
-#             if clean: self.l = self.s = self.p = 0
+        elif c == 'S':
+            if self.l < 1 or self.l > 0xFFFF:
+                raise Seq.Err('Invalid "R"est length -- %04x'%self.l)
+            # We could probably the slide test range (self.p)
+            if clean: pass
 
-#         elif c == 'L':
-#             if clean:
-#                 self.l = self.s = 0
-#                 self.p = self.p & 0xFFFF0000
-#             if not (self.p & 0xFFFF0000):
-#                 raise Seq.Err('"L"oop count can not be 0')
+        elif c == 'l':
+            if clean: self.l = self.s = self.p = 0
 
-#         elif c == 'F':
-#             if clean: self.l = self.s = self.p = 0
+        elif c == 'L':
+            if clean:
+                self.l = self.s = 0
+                self.p = self.p & 0xFFFF0000
 
-#         else:
-#             raise Seq.Err('unknown command -- %s %04x'%(repr(c),self.c))
+        elif c == 'F':
+            if clean: self.l = self.s = self.p = 0
 
-#     def fromtuple(self, t):
-#         self.c, self.l, self.s, self.p = t
-#         self.check()
+        else:
+            raise Seq.Err('unknown command -- %s %04x'%(repr(c),self.c))
 
-#     def fromstr(self.s):
-#         self.fromtuple(s.unpack('>UULL'))
+    def FromTuple(self,t):
+        self.c, self.l, self.s, self.p = t
+        self.Check()
 
-#     def __init__(self, cmd = None):
-#         self.c = self.l = self.s = self.p = 0
-#         if cmd is not None:
-#             t = type(cmd)
-#             if t is tuple: self.fromtuple(cmd)
-#             else: self.fromstr(str(cmd))
+    def FromStr(self,s):
+        self.FromTuple(unpack('>HHII',s))
 
-# class Chan:
-#     class Err : Exception: pass
-
-#     def __init__(self, num):
-#         if num <0 or num > 3:
-#             raise Chan.Err('Invalid channel number -- %s'%repr(num))
-
-#         self.num = num          # channel number [0..3]
-#         self.seq = []           # sequence array
-#         self.duration = None    # duration in tick (None=unknown)
-
-# class Song:
-
-#     def parse_header(self, buf, check = True):
-#         khz, bar, spd, sig, null = buf.unpack('>UUU2B8s')
-#         if check:
-#             pass
-
-#     def parse(self, buf):
-#         l = len(buf)
-#         if l < 16*4*12:
-#             raise Song.Err('invalid song (too few data)')
-#         self.parse_header(buf[0:16])
-#         o = 16                  # offset in buffer
-#         k = i = 0               # channel, row
-#         while (o+11 < l):
-#             seq = Seq(buf[o:o+12])
-#             o += 12
-#             cmd = chr(seq.c)
-
-#             if chan is None:
-#                 self.chan.append(Chan(k))
-#                 chan = chan[-1]
-#             chan.seq.append(seq)
-
-#             if cmd == 'F':
-#                 k,i = k+1
-#                 chan = None
+    def __init__(self, cmd=None):
+        self.c = self.l = self.s = self.p = self.i = None
+        
+        if cmd is not None:
+            t = type(cmd)
+            if t is tuple:
+                self.FromTuple(cmd)
+            else:
+                self.FromStr(cmd)
 
 
-#             if k == 4: break
+class Loop:
 
-#         if k != 4:
-#             raise Song.Err('invalid song (incomplete sequence #%d)'%k)
-#         if o != l:
-#             wmsg('%d garbage bytes at end of song' % l-o)
+    def __str__(self):
+        return 'L{%u..%s}%sx%u' \
+            % (self.beg, repr(self.end), repr(self.cnt), self.tic)
+    
+    def __init__(self, beg):
+        self.beg = beg          # Loop point
+        self.end = None
+        self.cnt = None
+        self.tic = 0
+    
+class Chan:
+    class Err(Error): pass
+
+    def __str__(self):
+        return '%c[%u]/%s/%s' \
+            % ( chr(65+self.num),
+                len(self.seq),
+                str(self.tic),
+                str(self.lvl) )
+    
+    def __init__(self, num):
+        if num <0 or num > 3:
+            raise Chan.Err('Invalid channel number -- '+repr(num))
+
+        self.num = num          # channel number [0..3]
+        self.seq = []           # sequence array
+        self.tic = None         # duration in tick (None=unknown)
+        self.lvl = None         # maximum loop depth
+
+class Song:
+    class Err(Error): pass
+
+    def __str__(self):
+        return (
+            'sng: "%s" / %2ukHz / %u / %u / %u:%u' %
+             ( str(self.name), self.khz, self.bar, self.spd,
+               *self.sig )
+            ) \
+            + "\n    " + str(self.chan[0]) \
+            + " " + str(self.chan[1]) \
+            + " " + str(self.chan[2]) \
+            + " " + str(self.chan[3])
+
+    def ParseHeader(self,buf):
+        khz,bar,spd,sigm,sigd,res = unpack('>HHH2B8s',buf)
+
+        if khz < 4 or khz > 20:
+            raise Song.Err('sampling rate out of range -- %d'%khz)
+        self.khz = khz
+
+        if spd < 4 or spd > 40:
+            raise Song.Err('tempo out of range range -- %d'%spd)
+        self.spd = spd
+
+        # $$$ TODO: add sanity check for those:
+        self.bar = bar
+        self.sig = (sigm,sigd)
+        if res != b'\0'*8:
+            wmsg('reserved data not nil')
+        
+
+    def Check(self):
+        for chn in self.chan:
+
+            chn.miss_loop = 0
+            chn.tic = chn.lvl = 0
+            loop = [ ]
+            for seq in chn.seq:
+                c = chr(seq.c)
+
+                # Check duration against song tempo
+                if c in [ 'P', 'R', 'S' ]:
+                    if seq.l % self.spd:
+                        raise Song.Err('length %d is not a multiple tempo %d' \
+                                       % (seq.l , self.spd))
+                    if loop:
+                        loop[-1].tic += seq.l
+                    else:
+                        chn.tic += seq.l
+                    
+                # Check instrument
+                elif c == 'V':
+                    pass        # Can check that here
+
+                elif c == 'l':
+                    loop.append( Loop(seq.i) )
+                elif c == 'L':
+                    cnt = (seq.p >> 16) + 1
+                    if not loop:
+                        lp = Loop(0)
+                        loop.append(lp)
+                        lp.tic = chn.tic # inherit channel tics
+                        chn.tic = 0
+                    lp = loop.pop()
+                    lp.cnt, lp.end = cnt, seq.i
+                    if loop:
+                        loop[-1].tic += lp.cnt * lp.tic
+                    else:
+                        chn.tic += lp.cnt * lp.tic
+
+                elif c == 'F':
+                    pass
+
+                else:
+                    raise Song.Err('unexpected '+chr(65+chn.num)+str(seq))
+                    
+                chn.lvl = max(int(chn.lvl),len(loop))
+
+            if loop:
+                for lp in loop[::-1]:
+                    chn.tic += lp.tic
+                    seq = chn.seq.pop(lp.beg)
+                    wmsg('Delete loop point ' + \
+                         chr(65+chn.num) + ': ' + str(lp) + ' ' + str(seq))
+                    assert seq.c == ord('l') and seq.i == lp.beg
 
 
-#     def __init__(self):
-#         self.chan = []
+                    
+    def Parse(self, buf):
+        l = len(buf)
+        if l < 16+4*12:
+            raise Song.Err('invalid song (too few data)')
+        self.ParseHeader(buf[0:16])
+        self.chan = [ None, None, None, None ]
+        
+        o = 16                  # offset in buffer
+        k = i = 0               # channel, row
+        chan = None             # current channel
+        while (o+11 < l):
+            try:
+                seq = Seq(buf[o:o+12])
+                seq.i = i
+            except Seq.Err as e:
+                raise Song.Err('%c[%u/%u] %s' % (chr(65+k),o,l,str(e)))
+                
+            o += 12
+            i += 1
+            cmd = chr(seq.c)
+
+            if self.chan[k] is None:
+                chan = self.chan[k] = Chan(k)
+                chan.off = o-12, None
+            chan.end = o
+            chan.seq.append(seq)
+
+            if cmd == 'F':
+                k,i = k+1,0
+                chan = None
+
+            if k == 4: break
+
+        if k != 4:
+            raise Song.Err('invalid song (incomplete sequence #%d)'%k)
+        if o != l:
+            wmsg('%d garbage bytes at end of song' % (l-o))
 
 
+    def __init__(self, data, path):
+        base = os.path.basename(path)
+        name = os.path.splitext(base)[0]
+        self.name = name
+        self.path = path
+        self.khz = self.bar = self.spd = 0
+        self.sig = (0,0)
+        self.chan = [ None, None, None, None ]
+        
+        save = set_error_object(base)
+        
+        self.Parse(data)
+        self.Check()
+        set_error_object(save)
+
+
+######################################################################
+#
+# Instrument related class
+#
+######################################################################
 
 class Avr:
     """ AVR sample format """
@@ -326,8 +507,9 @@ class Avr:
         # self.lend = self.size
 
 class Inst:
-
     class Err(Error): pass
+
+    maxsize = 128<<10           # 128KB seems reasonnable
 
     def __eq__(self,other):
         return \
@@ -350,25 +532,30 @@ class Inst:
             raise Inst.Err("I#%02d out of range"%num)
 
         if len(name) != 7:
-            raise Inst.Err("I#%02d invalid name length (%d)" \
+            raise Inst.Err("I#%02d invalid name length -- %d" \
                            % (num,len(name)))
 
         if addr & ~0xFFFFFE:
-            raise Inst.Err("I#%02d odd address %d" % (num,addr))
+            raise Inst.Err("I#%02d odd address -- %d" % (num,addr))
 
         if addr < 8 or addr >= datasz:
-            raise Inst.Err("I#%02d start address out of range %d >= %d" \
+            raise Inst.Err("I#%02d start address out of range -- %d >= %d" \
                            % (num,addr,datasz))
+
+        if size <= 0 or size > Inst.maxsize:
+            raise Inst.Err("I#%02d size out of range -- %d" % (num,size))
+            
+        
         if addr+size > datasz:
             if datasz & 1: datasz += 1
             if addr+size > datasz:
-                raise Inst.Err("I#%02d end address out of range %d > %d" \
+                raise Inst.Err("I#%02d end address out of range -- %d > %d" \
                                % (num,addr+size,datasz))
             else:
                 wmsg("I#%02u is out of range but saved by alignment")
 
         if loop > size:
-            raise Inst.Err("I#%02d loop out of range %d > %d" \
+            raise Inst.Err("I#%02d loop out of range -- %d > %d" \
                            % (num,loop,size))
 
         self.num  = num
@@ -390,9 +577,9 @@ class Inst:
         loop, size = unpack('>2L',data[addr-8:addr])
         if loop == 0xFFFFFFFF: loop = 0
         if size & 0xFFFF:
-            raise Vset.Err('I#%02u: invalid size (MSW not 0) -- %08x'%(i,size))
+            raise Inst.Err('I#%02u: invalid size (MSW not 0) -- %08x'%(i,size))
         if loop & 0xFFFF:
-            raise Vset.Err('I#%02u: invalid loop (MSW not 0) -- %08x'%(i,loop))
+            raise Inst.Err('I#%02u: invalid loop (MSW not 0) -- %08x'%(i,loop))
         size, loop = size >> 16, loop >> 16
         return Inst(i, name, data, addr, size, loop)
 
@@ -453,7 +640,7 @@ class Vset:
             inst.avr = spc >= 120 \
                        and self.data[adr-120:adr-120+4] == b'2BIT'
             return inst
-        except Vset.Err:
+        except Inst.Err:
             pass
         return None
 
@@ -611,7 +798,7 @@ class Vset:
         self.name = name
         self.path = path
         save = set_error_object(base)
-        self.nbi = self.spr = 0
+        self.nbi = self.khz = 0
         self.inst = [ None ] * 20
         self.data = [ ]
         self.modified = [ ]
@@ -625,6 +812,7 @@ class Vset:
 # Usage
 #
 ######################################################################
+
 def print_usage():
     print("""\
 Usage: zingdoctor.py [OPTIONS] file.4q ...
@@ -635,7 +823,7 @@ Options:
  -V --version ........... Print version and copyright and exit
  -c --check ............. Only check (default)
  -f --fix ............... Fix error
- -u --unroll=N .......... Add loop unroll buffer"""
+ -u --unroll=N .......... Add N-bytes of loop unroll buffer"""
     )
 
 def print_version():
@@ -652,15 +840,15 @@ Licensed under MIT license""" % version)
 ######################################################################
 
 def main(argc, argv):
-    global opt_verbose, opt_mode
+    global opt_verbose, opt_mode, opt_unroll
     vsetpath = songpath = infopath = None
     vsetdata = songdata = infodata = None
 
     try:
-        opts, args = getopt(argv, "hV" "vq" "cf",
+        opts, args = getopt(argv, "hV" "vq" "cf" "u:",
                             [ 'help','usage','version',
                               'verbose','quiet',
-                              'check','fix'
+                              'check','fix','unroll='
                             ])
     except GetOptError as e:
         raise Error(str(e))
@@ -687,10 +875,15 @@ def main(argc, argv):
             if opt_mode and opt_mode != "fix":
                 raise Error("option "+opt+" incompatible with -c/--check")
             opt_mode = "fix"
-
+        elif opt in [ '-u', '--unroll' ]:
+            try:
+                opt_unroll = int(arg)
+                if opt_unroll < 0 or opt_unroll > 8192:
+                    raise Error("option "+opt+" out of range -- %d"%opt_unroll)
+            except ValueError:
+                raise Error("option "+opt+" not an integer -- "+repr(arg))
         else:
             raise Error("option "+opt+" not implemented")
-
 
     opt_mode = opt_mode or "check"
     args = args[1:]
@@ -708,7 +901,7 @@ def main(argc, argv):
     if hd == b"QUARTET\0":
         qid = hd
         qsng, qset, qinf = unpack(">3L",f.read(12))
-        imsg("QUARTET detected: set=%u song=%u info=%u" %
+        mesg("QUARTET detected: set=%u song=%u info=%u" %
              (qset, qsng, qinf))
         vsetpath = songpath = infopath = path
         songdata = f.read(qsng)
@@ -721,7 +914,12 @@ def main(argc, argv):
         vsetdata = hd+f.read()
         vsetpath = path
 
+
     vset = Vset(vsetdata,vsetpath)
+    if songdata:
+        song = Song(songdata,songpath)
+        mesg(str(song))
+        
 
     return int(bool(vset.modified))
 
