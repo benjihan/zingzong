@@ -26,7 +26,7 @@
 # 2             word    1       duration        never 0
 # 4             long    1       step            sample step (fp16)
 # 8             long    1       parameter
-# 
+#
 #
 # ============================================================================
 # .SET file format
@@ -79,7 +79,7 @@
 
 import sys, os, traceback
 from struct import unpack, pack
-from math import log
+from math import log, gcd
 from getopt import gnu_getopt as getopt, error as GetOptError
 from fractions import Fraction
 
@@ -129,7 +129,7 @@ def emsg(s):
 # ----------------------------------------------------------------------------
 #  Parent class for all our error exceptions
 # ----------------------------------------------------------------------------
-    
+
 class Error(Exception):
     def __init__(self,msg,exit_code=1):
         self.exit_code = int(exit_code)
@@ -140,7 +140,7 @@ class Error(Exception):
 # Song related class
 #
 ######################################################################
-        
+
 def step2note(istp):
     return int( round (log(istp/65536.0,2.0) * 12.0 * 256.0) )
 
@@ -211,7 +211,7 @@ class Seq:
 
     def __init__(self, cmd=None):
         self.c = self.l = self.s = self.p = self.i = None
-        
+
         if cmd is not None:
             t = type(cmd)
             if t is tuple:
@@ -221,34 +221,34 @@ class Seq:
 
 
 class Loop:
-
     def __str__(self):
         return 'L{%u..%s}%sx%u' \
             % (self.beg, repr(self.end), repr(self.cnt), self.tic)
-    
+
     def __init__(self, beg):
         self.beg = beg          # Loop point
         self.end = None
         self.cnt = None
         self.tic = 0
-    
+
 class Chan:
     class Err(Error): pass
 
     def __str__(self):
         return '%c[%u]/%s/%s' \
-            % ( chr(65+self.num),
+            % ( self.tag,
                 len(self.seq),
                 str(self.tic),
                 str(self.lvl) )
-    
+
+
     def __init__(self, num):
         if num <0 or num > 3:
             raise Chan.Err('Invalid channel number -- '+repr(num))
-
         self.num = num          # channel number [0..3]
+        self.tag = chr(65+self.num)
         self.seq = []           # sequence array
-        self.tic = None         # duration in tick (None=unknown)
+        self.tic = None         # duration in tick
         self.lvl = None         # maximum loop depth
 
 class Song:
@@ -264,6 +264,7 @@ class Song:
             + " " + str(self.chan[1]) \
             + " " + str(self.chan[2]) \
             + " " + str(self.chan[3])
+
 
     def ParseHeader(self,buf):
         khz,bar,spd,sigm,sigd,res = unpack('>HHH2B8s',buf)
@@ -281,31 +282,53 @@ class Song:
         self.sig = (sigm,sigd)
         if res != b'\0'*8:
             wmsg('reserved data not nil')
-        
 
-    def Check(self):
+
+    def Check(self, fix=False, nbi=None):
+
+        inst = [ (0,0) ] * 20   # ref-count / play-count
+
         for chn in self.chan:
-
             chn.miss_loop = 0
             chn.tic = chn.lvl = 0
             loop = [ ]
+            curi = None
             for seq in chn.seq:
                 c = chr(seq.c)
 
-                # Check duration against song tempo
+                # Check "P"lay / "R"est / "S"lide
                 if c in [ 'P', 'R', 'S' ]:
+                    # Check duration against tempo
                     if seq.l % self.spd:
-                        raise Song.Err('length %d is not a multiple tempo %d' \
-                                       % (seq.l , self.spd))
+                        raise Song.Err(
+                            'length is not a multiple tempo %d -- %s' \
+                            % (self.spd), str(seq))
                     if loop:
                         loop[-1].tic += seq.l
                     else:
                         chn.tic += seq.l
-                    
-                # Check instrument
-                elif c == 'V':
-                    pass        # Can check that here
 
+                    # Check "P"lay
+                    if c == 'P':
+                        if curi is None:
+                            raise Song.Err(
+                                'No "V"oice set -- '+str(seq))
+                        if nbi is not None and curi >= nbi:
+                            raise  Song.Err(
+                                '"P"lay invalid "V"oice #'
+                                +str(curi)+' -- '+str(seq))
+                        inst[curi] = ( inst[curi][0], inst[curi][1]+1 )
+
+                # Check "V"oice
+                elif c == 'V':
+                    curi = seq.p//4
+                    if nbi is None:
+                        pass
+                    elif curi >= nbi:
+                        wmsg('"V"oice out of range (%d>=%d)\n>> %s'
+                             % ( curi, nbi, str(seq)))
+
+                # Check loop and count tics
                 elif c == 'l':
                     loop.append( Loop(seq.i) )
                 elif c == 'L':
@@ -317,79 +340,120 @@ class Song:
                         chn.tic = 0
                     lp = loop.pop()
                     lp.cnt, lp.end = cnt, seq.i
+
+                    if lp.cnt == 1:
+                        pass    # useless loop
+                    elif lp.tic == 0:
+                        raise Song.Err('Infinite loop '+str(lp))
+
                     if loop:
                         loop[-1].tic += lp.cnt * lp.tic
                     else:
                         chn.tic += lp.cnt * lp.tic
+                    dmsg( chn.tag + ( ('.'*len(loop)) +
+                            ( ' += %dx%d +%d'
+                              % (lp.cnt,lp.tic,lp.cnt*lp.tic))))
+
 
                 elif c == 'F':
                     pass
 
                 else:
-                    raise Song.Err('unexpected '+chr(65+chn.num)+str(seq))
-                    
+                    raise Song.Err('unexpected sequence\n>> '
+                                   + chn.tag + str(seq))
+
                 chn.lvl = max(int(chn.lvl),len(loop))
 
             if loop:
                 for lp in loop[::-1]:
                     chn.tic += lp.tic
                     seq = chn.seq.pop(lp.beg)
-                    wmsg('Delete loop point ' + \
-                         chr(65+chn.num) + ': ' + str(lp) + ' ' + str(seq))
+                    wmsg('Delete loop point\n>>' + \
+                         chn.tag + str(seq) + '\n>> ' + str(lp))
                     assert seq.c == ord('l') and seq.i == lp.beg
+            dmsg( str(chn) )
 
 
-                    
+        self.tic = max([ chn.tic for chn in self.chan ])
+        if not self.tic:
+            raise Song.Err('Empty song ?\n>> '+str(self))
+
+
+        for i in range(4):
+            for j in range(i+1,4):
+                print( self.chan[i].tag,
+                       self.chan[i].tic // self.spd,
+                       self.chan[j].tag,
+                       self.chan[j].tic // self.spd,
+                       gcd ( self.chan[i].tic//self.spd,
+                             self.chan[j].tic//self.spd ) )
+            
+
+
+        
+        for chn in self.chan:
+            if chn.tic and self.tic % chn.tic:
+                wmsg('song duration '
+                     + str(self.tic)
+                     + ' not a multiple of channel duration'
+                     + '\n>> ' + str(chn))
+
+                
     def Parse(self, buf):
         l = len(buf)
         if l < 16+4*12:
             raise Song.Err('invalid song (too few data)')
         self.ParseHeader(buf[0:16])
         self.chan = [ None, None, None, None ]
-        
+
+        x = 0
         o = 16                  # offset in buffer
         k = i = 0               # channel, row
-        chan = None             # current channel
+        chn = None              # current channel
         while (o+11 < l):
             try:
                 seq = Seq(buf[o:o+12])
                 seq.i = i
             except Seq.Err as e:
-                raise Song.Err('%c[%u/%u] %s' % (chr(65+k),o,l,str(e)))
-                
-            o += 12
-            i += 1
-            cmd = chr(seq.c)
+                x += 1
+                if x < 2:
+                    wmsg('%c[%u/%u] %s' % (chr(65+k),o,l,str(e)))
+                else:
+                    raise Song.Err('%c[%u/%u] %s' % (chr(65+k),o,l,str(e)))
+
+            o,i,cmd = o+12, i+1, chr(seq.c)
 
             if self.chan[k] is None:
-                chan = self.chan[k] = Chan(k)
-                chan.off = o-12, None
-            chan.end = o
-            chan.seq.append(seq)
+                chn = self.chan[k] = Chan(k)
+                chn.off = o-12
+            chn.end = o
+            chn.seq.append(seq)
 
             if cmd == 'F':
-                k,i = k+1,0
-                chan = None
+                k,i,chn = k+1,0,None
+                if k == 4: break
 
-            if k == 4: break
+        for chn in self.chan:
+            if not chn.seq or chr(chn.seq[-1].c) != 'F':
+                wmsg('closing channel %c' % chn.tag)
+                chn.seq.append(Seq((ord('F'),0,0,0)))
+                
+        # if k != 4:
+        #     raise Song.Err('invalid song (incomplete sequence %c)'%chr(65+k))
 
-        if k != 4:
-            raise Song.Err('invalid song (incomplete sequence #%d)'%k)
         if o != l:
             wmsg('%d garbage bytes at end of song' % (l-o))
 
 
     def __init__(self, data, path):
         base = os.path.basename(path)
-        name = os.path.splitext(base)[0]
-        self.name = name
+        self.name = os.path.splitext(base)[0]
         self.path = path
         self.khz = self.bar = self.spd = 0
         self.sig = (0,0)
         self.chan = [ None, None, None, None ]
-        
+
         save = set_error_object(base)
-        
         self.Parse(data)
         self.Check()
         set_error_object(save)
@@ -544,8 +608,8 @@ class Inst:
 
         if size <= 0 or size > Inst.maxsize:
             raise Inst.Err("I#%02d size out of range -- %d" % (num,size))
-            
-        
+
+
         if addr+size > datasz:
             if datasz & 1: datasz += 1
             if addr+size > datasz:
@@ -919,7 +983,7 @@ def main(argc, argv):
     if songdata:
         song = Song(songdata,songpath)
         mesg(str(song))
-        
+
 
     return int(bool(vset.modified))
 
