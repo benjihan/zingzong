@@ -24,6 +24,7 @@ Alternatively `zingzong` supports an convenient format that bundles both files i
     -t --tick=HZ       Set player tick rate (default is 200hz).
     -r --rate=HZ       Set sampling rate (default is 48kHz).
     -l --length=TIME   Set play time.
+    -m --mute=ABCD     Mute selected channels (bit-field or string).
     -w --wav           Generated a .wav file (implicit if output is set).
     -f --force         Clobber output .wav file.
     -c --stdout        Output raw sample to stdout.

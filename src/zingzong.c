@@ -100,7 +100,7 @@ static const char bugreport[] =                                 \
 #endif
 
 static char me[] = PACKAGE_NAME;
-static int opt_sampling = SPR_DEF, opt_tickrate = 200, opt_stdout;
+static int opt_sampling = SPR_DEF, opt_tickrate = 200, opt_stdout, opt_mute;
 static char *opt_length;
 
 #ifndef WITHOUT_LIBAO
@@ -1014,6 +1014,7 @@ static int zz_play(play_t * P)
          (uint_t)(C->sqN-C->seq),
          (uint_t)(C->end-C->seq));
   }
+  P->has_loop = opt_mute;
 
   for (;;) {
     int started = 0;
@@ -1023,6 +1024,9 @@ static int zz_play(play_t * P)
     for (k=0; k<4; ++k) {
       chan_t * const C = P->chan+k;
       sequ_t * seq = C->cur;
+
+      if ( opt_mute & (1<<k) )
+        continue;
 
       /* Portamento */
       if (C->pta.stp) {
@@ -1426,12 +1430,13 @@ static void print_usage(void)
     "OPTIONS:\n"
     " -h --help --usage  Print this message and exit.\n"
     " -V --version       Print version and copyright and exit.\n"
-    " -t --tick=HZ       Set player tick rate (default is 200hz)\n"
-    " -r --rate=HZ       Set sampling rate (default is %ukHz)\n"
-    " -l --length=TIME   Set play time\n"
-    " -c --stdout        Output raw sample to stdout\n"
+    " -t --tick=HZ       Set player tick rate (default is 200hz).\n"
+    " -r --rate=HZ       Set sampling rate (default is %ukHz).\n"
+    " -l --length=TIME   Set play time.\n"
+    " -m --mute=ABCD     Mute selected channels (bit-field or string).\n"
+    " -c --stdout        Output raw sample to stdout.\n"
 #ifndef WITHOUT_LIBAO
-    " -w --wav           Generated a .wav file (implicit if output is set)\n"
+    " -w --wav           Generated a .wav file (implicit if output is set).\n"
     " -f --force         Clobber output .wav file.\n"
     "\n"
 
@@ -1501,14 +1506,14 @@ static int wav_filename(char ** pwavname, char * sngname)
 
 #endif
 
-static uint_t mystrtoul(char **s)
+static uint_t mystrtoul(char **s, const int base)
 {
   uint_t v; char * errp;
 
   errno = 0;
   if (!isdigit((int)**s))
     return -1;
-  v = strtoul(*s,&errp,10);
+  v = strtoul(*s,&errp,base);
   if (errno)
     return -1;
   *s = errp;
@@ -1534,7 +1539,7 @@ static int time_parse(uint_t * pticks, char * time)
   }
 
   for (i=0; *s && i<3; ++i) {
-    uint_t v = mystrtoul(&s);
+    uint_t v = mystrtoul(&s,10);
     if (v == (uint_t)-1)
       s = "?";
     switch (*s) {
@@ -1548,7 +1553,7 @@ static int time_parse(uint_t * pticks, char * time)
     case ',': case '.':
       ++s;
       ticks += v * opt_tickrate;
-      v = mystrtoul(&s);
+      v = mystrtoul(&s,10);
       if (v == (uint_t)-1)
         s = "?";
       else if (v) {
@@ -1589,12 +1594,12 @@ static int time_parse(uint_t * pticks, char * time)
 /**
  * Parse integer argument with range check.
  */
-static int uint_arg(char * arg, char * name, uint_t min, uint_t max)
+static int uint_arg(char * arg, char * name, uint_t min, uint_t max, int base)
 {
   uint_t v;
   char * s = arg;
 
-  v = mystrtoul(&s);
+  v = mystrtoul(&s,base);
   if (v == (uint_t)-1) {
     emsg("invalid number -- %s=%s\n", name, arg);
   } else {
@@ -1606,11 +1611,34 @@ static int uint_arg(char * arg, char * name, uint_t min, uint_t max)
       emsg("invalid number -- %s=%s\n", name, arg);
       v = (uint_t) -1;
     } else if  (v < min || (max && v > max)) {
-      emsg("out range -- %s=%s\n", name, arg);
+      emsg("out of range -- %s=%s\n", name, arg);
       v = (uint_t) -1;
     }
   }
   return v;
+}
+
+/**
+ * Parse -m/--mute option argument. Either a string := [A-D]\+ or an
+ * integer {0..15}
+ */
+static int uint_mute(char * arg, char * name)
+{
+  int c = tolower(*arg), mute;
+  if (c >= 'a' && c <= 'd') {
+    char *s = arg;
+    mute = 0;
+    do {
+      mute |= 1 << (c-'a');
+    } while (c = tolower(*++s), (c >= 'a' && c <= 'd') );
+    if (c) {
+      emsg("invalid channels -- %s=%s\n",name,arg);
+      mute = -1;
+    }
+  } else {
+    mute = uint_arg(arg,name,0,15,0);
+  }
+  return mute;
 }
 
 static int too_few_arguments(void)
@@ -1635,7 +1663,7 @@ static int too_many_arguments(void)
 
 int main(int argc, char *argv[])
 {
-  static char sopts[] = "hV" WAVOPT "c" "r:t:l:";
+  static char sopts[] = "hV" WAVOPT "c" "r:t:l:m:";
   static struct option lopts[] = {
     { "help",    0, 0, 'h' },
     { "usage",   0, 0, 'h' },
@@ -1649,6 +1677,7 @@ int main(int argc, char *argv[])
     { "tick=",   1, 0, 't' },
     { "rate=",   1, 0, 'r' },
     { "length=", 1, 0, 'l' },
+    { "mute=",   1, 0, 'm' },
     { 0 }
   };
   int c, can_do_wav=0, ecode=E_ERR;
@@ -1670,11 +1699,15 @@ int main(int argc, char *argv[])
     case 'c': opt_stdout = 1; break;
     case 'l': opt_length = optarg; break;
     case 'r':
-      if (-1 == (opt_sampling = uint_arg(optarg,"rate",SPR_MIN,SPR_MAX)))
+      if (-1 == (opt_sampling = uint_arg(optarg,"rate",SPR_MIN,SPR_MAX,0)))
         RETURN (E_ARG);
       break;
     case 't':
-      if (-1 == (opt_tickrate = uint_arg(optarg,"tick",200/4,200*4)))
+      if (-1 == (opt_tickrate = uint_arg(optarg,"tick",200/4,200*4,0)))
+        RETURN (E_ARG);
+      break;
+    case 'm':
+      if (-1 == (opt_mute = uint_mute(optarg,"mute")))
         RETURN (E_ARG);
       break;
     case 0: break;
