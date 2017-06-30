@@ -43,7 +43,7 @@ static const char bugreport[] =                                 \
 #endif
 
 #if !defined(DEBUG) && !defined(NDEBUG)
-#define NDEBUG 1
+# define NDEBUG 1
 #endif
 
 #ifndef WITHOUT_LIBAO
@@ -509,8 +509,9 @@ static int song_parse(song_t *song, const char * path, FILE *f,
   dmsg("%s: rate: %ukHz, bar:%u, tempo:%u, signature:%u/%u\n",
        path, song->khz, song->barm, song->tempo, song->sigm, song->sigd);
 
-  /* Load data */
-  ecode = bin_load(&song->bin, path, f, size, 0, SONG_MAX_SIZE);
+  /* Load data (add 12 extra bytes to close truncated sequence if
+   * needed). */
+  ecode = bin_load(&song->bin, path, f, size, 12, SONG_MAX_SIZE);
   if (ecode)
     goto error;
   ecode = E_SNG;
@@ -553,22 +554,40 @@ static int song_parse(song_t *song, const char * path, FILE *f,
     case 'S': case 'R':
     case 'l': case 'L': case 'V':
       break;
+
     default:
+      /* if (k == 3 && has_note) { */
+      /*   wmsg("channel hacking the last sequence to close the deal\n"); */
+      /*   seq->cmd[0] = 0; */
+      /*   seq->cmd[1] = 'F'; */
+      /*   off -= 12; */
+      /*   break; */
+      /* } */
       emsg("invalid sequence command $%04x('%c') at %c:%u\n",
            cmd, isgraph(cmd)?cmd:'.', 'A'+k, off);
       goto error;
     }
   }
 
-  if (k != 4) {
-    emsg("channel %c is truncated\n", 'A'+k);
-    goto error;
-  }
-
   if (off != song->bin->size) {
     wmsg("garbage data after voice sequences -- %u bytes\n",
          song->bin->size - off);
   }
+
+  for ( ;k<4; ++k) {
+    if (has_note) {
+      /* Add 'F'inish mark */
+      sequ_t * const seq = (sequ_t *)(song->bin->data+off);
+      seq->cmd[0] = 0; seq->cmd[1] = 'F';
+      off += 12;
+      has_note = 0;
+      wmsg("channel %c is truncated\n", 'A'+k);
+    } else {
+      wmsg("channel %c is MIA\n", 'A'+k);
+      song->seq[k] = (sequ_t *) nullseq;
+    }
+  }
+
 
   ecode = E_OK;
 error:
