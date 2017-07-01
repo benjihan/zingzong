@@ -67,7 +67,7 @@ For example to build a win64 standalone executable with a cross gcc
         CC=x86_64-w64-mingw32-gcc \
         PKGCONFIG="x86_64-w64-mingw32-pkg-config --static" \
         CFLAGS="-O3 -static -static-libgcc" \
-	SRATE_CFLAGS="-DNO_SRATE"
+        SRATE_CFLAGS="-DNO_SRATE"
 
 ### Defines that alter the built
 
