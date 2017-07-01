@@ -57,8 +57,8 @@ If output exists the program will refuse to create the file unless the -f`/`--fo
 ## Building
 
 The provided Makefile should work in most GNU environment. You should have pkg-config. Dependency library/modules are:
-  * `ao` module provides support for both audio output and RIFF wave file generation. It is usually distributed as `libao-dev` package. Alternatively you can define `AO_LIBS` and `AO_CFLAGS` directly or disable it by setting `AO_CFLAGS=-DNO_AO`.
-  * `samplerate` module provides support for a variety of better resample methods. Without it zingzong still provide a relatively good output specially for decent (standard) output sampling rate. It is usually distributed as `libsamplerate-dev` package. Alternatively you can define `SRATE_LIBS` and `SRATE_CFLAGS` directly or disable it by setting `SRATE_CFLAGS=-DNO_SRATE`.
+  * `ao` module provides support for both audio output and RIFF wave file generation. It is usually distributed as `libao-dev` package. Alternatively you can set `AO_LIBS` and `AO_CFLAGS` directly or disable it by setting `AO_CFLAGS=-DNO_AO`.
+  * `samplerate` module provides support for a variety of better resample methods. Without it zingzong still provide a relatively good output specially for the default output sampling rate. It is usually distributed as `libsamplerate-dev` package. Alternatively you can set `SRATE_LIBS` and `SRATE_CFLAGS` directly or disable it by setting `SRATE_CFLAGS=-DNO_SRATE`.
 
 
 For example to build a win64 standalone executable with a cross gcc
@@ -66,8 +66,8 @@ For example to build a win64 standalone executable with a cross gcc
       make \
         CC=x86_64-w64-mingw32-gcc \
         PKGCONFIG="x86_64-w64-mingw32-pkg-config --static" \
-        CFLAGS="-O3 -static -static-libgcc -DNO_SRATE" \
-        SRATE_LIBS=""
+        CFLAGS="-O3 -static -static-libgcc" \
+	SRATE_CFLAGS="-DNO_SRATE"
 
 ### Defines that alter the built
 
