@@ -325,7 +325,9 @@ struct chan_s {
 #ifndef NO_SRATE
   struct {
     SRC_STATE * st;
+    SRC_DATA    sd;
     double ratio;
+
     float inp[256];
     float out[256];
   } resample;
@@ -2230,8 +2232,11 @@ int main(int argc, char *argv[])
     for ( k=0; k<4; ++k ) {
       chan_t * C = play.chan+k;
       SRC_STATE * st;
-      /* st = src_new(play.splmode, 1, &err); */
+#if 0
+      st = src_new(play.splmode, 1, &err);
+#else
       st = src_callback_new(fill_cb, play.splmode, 1, &err, C);
+#endif
       if (!st) {
         emsg("%c: resample(converter=%d): %s\n",
              'A'+k, play.splmode, src_strerror(err));
