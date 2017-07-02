@@ -2238,7 +2238,7 @@ int main(int argc, char *argv[])
     for ( k=0; k<4; ++k ) {
       chan_t * C = play.chan+k;
       SRC_STATE * st;
-      st = src_callback_new(fill_cb, play.splmode, 1, &err, C);
+      st = src_new(play.splmode, 1, &err);
       if (!st) {
         emsg("%c: resample(converter=%d): %s\n",
              'A'+k, play.splmode, src_strerror(err));
