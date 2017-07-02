@@ -21,21 +21,38 @@ endif
 # ----------------------------------------------------------------------
 
 ifndef CFLAGS
-CFLAGS	:= -Wall -O2
+CFLAGS := -Wall -O2
 endif
 
-ifndef AO_LIBS
+# ----------------------------------------------------------------------
+#  libao (AO_CFLAGS="-DNO_AO" to disable)
+
+ifndef AO_CFLAGS
 AO_LIBS := $(shell $(PKGCONFIG) --libs ao || echo X)
 ifeq ($(AO_LIBS),X)
-$(error pkg-config failed)
+$(error pkg-config failed -- ao --libs)
 endif
-
 AO_CLAGS := $(shell $(PKGCONFIG) --cflags ao || echo X)
 ifeq ($(AO_CLAGS),X)
-$(error pkg-config failed)
+$(error pkg-config failed -- ao --cflags)
+endif
 endif
 
+# ----------------------------------------------------------------------
+#  samplerate (SRATE_CFLAGS="-DNO_SRATE" to disable)
+
+ifndef SRATE_CFLAGS
+SRATE_LIBS := $(shell $(PKGCONFIG) --libs samplerate || echo X)
+ifeq ($(SRATE_LIBS),X)
+$(error pkg-config failed -- samplerate --libs)
 endif
+SRATE_CLAGS := $(shell $(PKGCONFIG) --cflags samplerate || echo X)
+ifeq ($(SRATE_CLAGS),X)
+$(error pkg-config failed -- samplerate --cflags)
+endif
+endif
+
+# ----------------------------------------------------------------------
 
 PACKAGE_CPPFLAGS  = \
  -DPACKAGE_NAME='"$(NAME)"' \
@@ -46,18 +63,14 @@ original_CFLAGS   := $(CFLAGS)
 original_LDLIBS   := $(LDLIBS)
 
 zingzong_CPPFLAGS  = $(original_CPPFLAGS) $(PACKAGE_CPPFLAGS)
-zingzong_CFLAGS    = $(original_CFLAGS) $(AO_CFLAGS)
-zingzong_LDLIBS    = $(original_LDLIBS) $(AO_LIBS)
-
-zingzafe_CPPFLAGS  = $(original_CPPFLAGS) $(PACKAGE_CPPFLAGS)
-zingzafe_CFLAGS    = $(original_CFLAGS) $(AO_CFLAGS)
-zingzafe_LDLIBS    = $(original_LDLIBS) $(AO_LIBS)
+zingzong_CFLAGS    = $(original_CFLAGS) $(AO_CFLAGS) $(SRATE_CFLAGS)
+zingzong_LDLIBS    = $(original_LDLIBS) $(AO_LIBS) $(SRATE_LIBS)
 
 # ----------------------------------------------------------------------
-# Build 
+#  Build 
 # ----------------------------------------------------------------------
 
-all: zingzong #zingzafe
+all: zingzong
 .PHONY: all
 
 clean: ; -rm -f zingzong zingzafe
@@ -68,13 +81,8 @@ zingzong: CPPFLAGS = $(zingzong_CPPFLAGS)
 zingzong: CFLAGS   = $(zingzong_CFLAGS)
 zingzong: LDLIBS   = $(zingzong_LDLIBS)
 
-zingzafe: NAME     = zingzafe
-zingzafe: CPPFLAGS = $(zingzafe_CPPFLAGS)
-zingzafe: CFLAGS   = $(zingzafe_CFLAGS)
-zingzafe: LDLIBS   = $(zingzafe_LDLIBS)
-
 # ----------------------------------------------------------------------
-# Distrib
+#  Distrib
 # ----------------------------------------------------------------------
 
 dist_base := zingzong-$(VERSION)

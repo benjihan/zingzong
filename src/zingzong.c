@@ -46,29 +46,25 @@ static const char bugreport[] =                                 \
 # define NDEBUG 1
 #endif
 
-#ifndef WITHOUT_LIBAO
-/* libao */
-# include <ao/ao.h>
-# define WAVOPT "wf"
-#else
-# define WAVOPT
-#endif
-
 #ifndef MAX_DETECT
-#define MAX_DETECT 3600     /* maximum seconds for length detection */
+# define MAX_DETECT 3600    /* maximum seconds for length detection */
 #endif
 
 #ifndef SPR_MIN
-#define SPR_MIN 4000                    /* sampling rate minimum */
+# define SPR_MIN 4000                   /* sampling rate minimum */
 #endif
 
 #ifndef SPR_MAX
-#define SPR_MAX 96000                   /* sampling rate maximum */
+# define SPR_MAX 96000                  /* sampling rate maximum */
 #endif
 
 #ifndef SPR_DEF
-#define SPR_DEF 48000                   /* sampling rate default */
+# define SPR_DEF 48000                  /* sampling rate default */
 #endif
+
+/* ----------------------------------------------------------------------
+ * Includes
+ * ---------------------------------------------------------------------- */
 
 /* stdc */
 #include <assert.h>
@@ -87,6 +83,20 @@ static const char bugreport[] =                                 \
 #include <fcntl.h>
 #endif
 
+/* libs */
+#ifndef NO_AO
+# include <ao/ao.h>                     /* Xiph ao */
+#endif
+#ifndef NO_SRATE
+# include <math.h>
+# include <samplerate.h>                /* samplerate */
+static float i8tofl[256];
+#endif
+
+/* ----------------------------------------------------------------------
+ * Package info
+ * ---------------------------------------------------------------------- */
+
 #ifndef PACKAGE_NAME
 #define PACKAGE_NAME "zingzong"
 #endif
@@ -100,10 +110,12 @@ static const char bugreport[] =                                 \
 #endif
 
 static char me[] = PACKAGE_NAME;
-static int opt_sampling = SPR_DEF, opt_tickrate = 200, opt_stdout, opt_mute;
+
+static int opt_splrate=SPR_DEF, opt_splmode=-1, opt_tickrate=200,
+opt_stdout, opt_mute;
 static char *opt_length;
 
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
 static int opt_wav, opt_force;
 #endif
 
@@ -116,7 +128,7 @@ static int opt_wav, opt_force;
 #define MAX_LOOP      67      /* max loop depth (singsong.prg) */
 
 enum {
-  E_OK, E_ERR, E_ARG, E_SYS, E_SET, E_SNG, E_OUT, E_PLA,
+  E_OK, E_ERR, E_ARG, E_SYS, E_SET, E_SNG, E_OUT, E_PLA, E_MIX,
   E_666 = 66
 };
 
@@ -281,6 +293,9 @@ struct info_s {
 };
 
 struct chan_s {
+  char     id[4];                       /* just for type verification  */
+  int      num;                         /* channel number [0..3] */
+
   sequ_t * seq;                         /* sequence address */
   sequ_t * cur;                         /* next sequence */
   sequ_t * end;                         /* last sequence */
@@ -303,16 +318,27 @@ struct chan_s {
     int aim, stp;
   } pta;
 
-  int curi;                            /* current instrument number */
-  int wait;                            /* number of tick left to wait */
-  int has_loop;                        /* has loop (counter) */
+  int trig;                          /* note has been triggered */
+  int curi;                          /* current instrument number */
+  int wait;                          /* number of tick left to wait */
+  int has_loop;                      /* has loop (counter) */
+
+#ifndef NO_SRATE
+  struct {
+    SRC_STATE * st;
+    float buf[16*16];
+    int idx;
+  } resample;
+#endif
+
 };
 
 struct play_s {
   char *setpath;
   char *sngpath;
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
   char *wavpath;
+  char *wavfree;
 #endif
 
   vset_t vset;
@@ -323,17 +349,22 @@ struct play_s {
   uint_t max_ticks;
   uint_t end_detect;
 
+  int splmode;
   uint_t spr;
+
   int16_t * mix_buf;
+  float   * mix_flt;
+
   int pcm_per_tick;
   int has_loop;
 
   FILE *outfp;
 
+  int (*mixer)(play_t * const);
 
   struct {
     int              id;
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
     ao_device       *dev;
     ao_info         *info;
     ao_sample_format fmt;
@@ -341,6 +372,7 @@ struct play_s {
     void *dev;
 #endif
   } ao;
+
 
   chan_t chan[4];
 };
@@ -356,6 +388,40 @@ struct songhd {
 
 static play_t play;
 
+/* ----------------------------------------------------------------------
+ * allocation functions
+ * ----------------------------------------------------------------------
+ */
+
+static void my_free(const char * obj, void * pptr)
+{
+  void ** const p = (void **) pptr;
+  if (*p) {
+    errno = 0;
+    free(*p);
+    *p = 0;
+    if (errno)
+      sysmsg(obj,"free");
+  }
+}
+
+static void *my_alloc(const char * obj, const uint_t size, const int clear)
+{
+  void * ptr = clear ? calloc(1,size) : malloc(size);
+  if (!ptr)
+    sysmsg(obj,"alloc");
+  return ptr;
+}
+
+static void *my_calloc(const char * obj, const uint_t size)
+{
+  return my_alloc(obj, size, 1);
+}
+
+static void *my_malloc(const char * obj, const uint_t size)
+{
+  return my_alloc(obj, size, 0);
+}
 
 /* ----------------------------------------------------------------------
  * File functions
@@ -364,7 +430,6 @@ static play_t play;
 
 static int my_fopen(FILE **pf, const char * path)
 {
-  dmsg("%s: opening\n",path);
   return !(*pf = fopen(path,"rb"))
     ? sysmsg(path,"open")
     : E_OK
@@ -375,8 +440,6 @@ static int my_fclose(FILE **pf, const char * path)
 {
   FILE *f = *pf;
   *pf = 0;
-  if (f)
-    dmsg("%s: closing\n", path);
   return (f && fclose(f))
     ? sysmsg(path,"close")
     : E_OK
@@ -385,7 +448,6 @@ static int my_fclose(FILE **pf, const char * path)
 
 static int my_fread(FILE *f, const char * path, void * buf, uint_t n)
 {
-  dmsg("%s: reading %u bytes\n", path, n);
   return (n != fread(buf,1,n,f))
     ? sysmsg(path,"too short")
     : E_OK
@@ -406,7 +468,6 @@ static int my_fsize(FILE *f, const char * path, uint_t *psize)
     return E_ERR;
   }
   *psize = size - tell;
-  dmsg("%s: tell=%u size=%u\n",path,(uint_t)tell,(uint_t)size);
   return E_OK;
 }
 
@@ -417,10 +478,7 @@ static int my_fsize(FILE *f, const char * path, uint_t *psize)
 
 static void bin_free(bin_t ** pbin)
 {
-  if (*pbin) {
-    free(*pbin);
-    *pbin = 0;
-  }
+  my_free("bin-free", (void**)pbin);
 }
 
 static int bin_alloc(bin_t ** pbin, const char * path,
@@ -428,9 +486,9 @@ static int bin_alloc(bin_t ** pbin, const char * path,
 {
   bin_t * bin = 0;
   assert(pbin); assert(path);
-  *pbin = bin = malloc((intptr_t)(bin->data+len+xlen));
+  *pbin = bin = my_malloc("bin-alloc",(intptr_t)(bin->data+len+xlen));
   if (!bin)
-    return sysmsg(path,"alloc");
+    return E_SYS;
   bin->size = len;
   bin->xtra = xlen;
   return E_OK;
@@ -623,6 +681,7 @@ error:
  * quartet voiceset
  * ----------------------------------------------------------------------
  */
+
 static int cmpadr(const void * a, const void * b)
 {
   return (*((inst_t **)b))->pcm - (*((inst_t **)a))->pcm;
@@ -844,16 +903,215 @@ error:
   return ecode;
 }
 
+static void chan_kill(chan_t * C)
+{
+  if (C) {
+#ifndef NO_SRATE
+    if (C->resample.st) {
+      src_delete(C->resample.st);
+      C->resample.st = 0;
+    }
+#endif
+  }
+}
+
+static void play_kill(play_t * P)
+{
+  if (P) {
+    int k;
+    for (k=0; k<4; ++k) {
+      chan_kill(P->chan+k);
+    }
+    my_free("wav-path",(void **)&P->wavfree);
+  }
+}
+
 /* ----------------------------------------------------------------------
- * quartet player
+ *  libresample mixer
  * ----------------------------------------------------------------------
  */
 
-#ifdef NO_INTERP
+#ifndef NO_SRATE
 
+static void init_i8tofl(void)
+{
+  if (i8tofl[128] == 0.0) {
+    int i; const float scale = 3.0 / (4.0*4.0*128.0);
+    /* int i; const float scale = 3.0 / 16.0; /\* 1/4 * 3/4 *\/ */
+    for (i=-128; i<128; ++i)
+      i8tofl[i&255u] = (float)i * scale;
+  }
+}
+
+static long fill_cb(void *cb_data, float **data)
+{
+  chan_t * C = (chan_t *) cb_data;
+  const uint8_t * const pcm = C->mix.pcm;
+
+  const int n = 16;
+  const int N = sizeof(C->resample.buf) / sizeof(*C->resample.buf) - n;
+  float * buf, * end;
+
+  assert( !memcmp(C->id,"CHA",3) && C->id[3] == '0'+C->num );
+  assert( N == 256-16 );
+
+  buf = *data = C->resample.buf + C->resample.idx;
+  end = buf + n;
+
+  C->resample.idx += n;
+  if (C->resample.idx >= N)
+    C->resample.idx = 0;
+
+  if (!pcm)
+    memset(C->resample.buf,0,n*sizeof(float));
+  else {
+    int j = C->mix.idx;
+    do {
+      *buf++ = i8tofl[pcm[j++]];
+    } while ( buf < end );
+
+    if (j >= C->mix.len) {
+      if (!C->mix.lpl) {
+        C->mix.pcm = 0;
+        j = 0;
+      } else {
+        while ( (j -= C->mix.lpl) >= C->mix.len );
+      }
+    }
+    C->mix.idx = j;
+  }
+  return n;
+}
+
+static int mix_resample(play_t * const P)
+{
+  static float data[1<<6];
+  const int nmaxi = sizeof(data)/sizeof(*data);
+
+  const int n = P->pcm_per_tick;
+  const double sc = (65.536 * P->spr) /P->song.khz;
+  int i, k, err;
+
+  for (k=0; k<4; ++k) {
+
+    chan_t * C = P->chan + k;
+    const int8_t * const pcm = C->mix.pcm;
+
+    if (!pcm) {
+      if (k == 0)
+        memset(P->mix_flt, 0, n* sizeof(float));
+      continue;
+    }
+
+    const double ratio = sc / (double) C->mix.stp;
+
+    float * flt = P->mix_flt;
+    int nneed = n;
+
+    if (C->trig) {
+      err = src_reset(C->resample.st);
+      if (err) {
+        emsg("%c: resample(reset): %s\n",
+             'A'+C->num, src_strerror (err));
+        return E_MIX;
+      }
+      assert (ratio > 1.0/20.0 && ratio<20.0);
+      assert (C->mix.idx == 0);
+      err = src_set_ratio(C->resample.st, ratio);
+      if (err) {
+        emsg("%c: resample(ratio:%.3lf): %s\n",
+             'A'+C->num, ratio, src_strerror (err));
+        return E_MIX;
+      }
+    }
+
+
+    /* Fill this voice */
+    for ( nneed = n; nneed > 0; ) {
+      int nread, nwant;
+
+      if ( ( nwant = nneed ) > nmaxi )
+        nwant = nmaxi;
+
+      nread = src_callback_read(C->resample.st, ratio, nwant, data);
+
+      /* dmsg("'%c: nwant:%d nread:%d\n", 'A'+k, nwant, nread); */
+      /* assert (nread == nwant); */
+
+      if (k == 0) {
+        for ( i=0; i<nread; ++i )
+          *flt++ = data[i];
+      } else {
+        for ( i=0; i<nread; ++i )
+          *flt++ += data[i];
+      }
+
+      if (nread <= 0) break;
+      nneed -= nread;
+    }
+
+    assert(flt-n == P->mix_flt);
+    assert(nneed == 0);
+  }
+
+
+  if (1) {
+    int i;
+    for (i=0 ; i<n; ++i) {
+      int v; float f = P->mix_flt[i];
+
+      assert( ! isnan(f) );
+
+      if ( f < -1.0f || f >= 1.0 ) {
+        dmsg("X[%i]=%.3f\n", i, f);
+      }
+
+      /* assert ( f >= -1.0f ); */
+      /* assert ( f <=  1.0f ); */
+
+      /* assert ( f >= -32768.0f ); */
+      /* assert ( f <=  32767.0f ); */
+
+      v = (int) (f * 32768.0 );
+
+      dmsg("X[%i] = %i (%f)\n", i, v, f);
+      assert ( v >= -32768 );
+      assert ( v <=  32767 );
+
+      if (1) {
+        static int max, min;
+        if ( v > max ) {
+          max = v;
+          dmsg("MAX=[%i] %i\n", i, v);
+        }
+        if ( v < min ) {
+          min = v;
+          dmsg("MIN=[%i] %i\n", i, v);
+        }
+      }
+
+      P->mix_buf[i] = v;
+    }
+  } else {
+    src_float_to_short_array(P->mix_flt, P->mix_buf, n);
+  }
+
+  return E_OK;
+}
+
+
+#endif
+
+/* ----------------------------------------------------------------------
+ * Native legacy mixer
+ * ----------------------------------------------------------------------
+ */
+
+#ifdef NO_QERP
+# define NERP "none"
 # define ADDPCM() *b++ += (int8_t)(pcm[idx>>16]) << 6; idx += stp
-
 #else
+# define NERP "qerp"
 
 /* Lagrange Polynomial Quadratic interpolation.
  *
@@ -922,25 +1180,26 @@ static inline int lagrange(const int8_t * const pcm, uint_t idx)
 static inline
 void mix_gen(play_t * const P, const int k, int16_t * restrict b, int n)
 {
-  const int8_t * const pcm = (const int8_t *)P->chan[k].mix.pcm;
+  chan_t * const C = P->chan + k;
+  const int8_t * const pcm = (const int8_t *)C->mix.pcm;
 
   assert(n > 0 && n <= MIXBLK);
   assert(k >= 0 && k < 4);
 
   if (pcm) {
-    uint_t idx = P->chan[k].mix.idx;
-    uint_t stp = P->chan[k].mix.xtp;
+    uint_t idx = C->mix.idx;
+    uint_t stp = C->mix.xtp;
     do {
       ADDPCM();
     } while(--n);
-    stp = P->chan[k].mix.len;
+    stp = C->mix.len;
     if (idx >= stp) {
-      if (!P->chan[k].mix.lpl)
-        P->chan[k].mix.pcm = 0;
+      if (!C->mix.lpl)
+        C->mix.pcm = 0;
       else
-        do { } while ( (idx -= P->chan[k].mix.lpl) >= stp );
+        while ( (idx -= C->mix.lpl) >= stp );
     }
-    P->chan[k].mix.idx = idx;
+    C->mix.idx = idx;
   }
 }
 
@@ -953,19 +1212,16 @@ static void mix_addN(play_t * const P, const int k, int16_t * b, const int n)
   mix_gen(P, k, b, n);
 }
 
-static void mix_all(play_t * const P)
+
+static int mix_all(play_t * const P)
 {
   int16_t * restrict b;
   int k, n;
 
-
   /* Clear mix buffer */
   memset(P->mix_buf, 0, P->pcm_per_tick<<1);
 
-  /* re-scale step to our sampling rate
-   *
-   * GB: we could pre-compute this but once a frame is not to much.
-   */
+  /* re-scale step to our sampling rate */
   for (k=0; k<4; ++k) {
     chan_t * const C = P->chan+k;
     C->mix.xtp = C->mix.stp * P->song.khz * 10u / (P->spr/100u);
@@ -975,15 +1231,21 @@ static void mix_all(play_t * const P)
   for (b=P->mix_buf, n=P->pcm_per_tick;
        n >= MIXBLK;
        b += MIXBLK, n -= MIXBLK)
-  {
     for (k=0; k<4; ++k)
       mix_add1(P, k, b);
-  }
 
   if (n > 0)
     for (k=0; k<4; ++k)
       mix_addN(P, k, b, n);
+
+  return E_OK;
 }
+
+
+/* ----------------------------------------------------------------------
+ * quartet player
+ * ----------------------------------------------------------------------
+ */
 
 static int zz_play(play_t * P)
 {
@@ -991,11 +1253,13 @@ static int zz_play(play_t * P)
   assert(P);
 
   /* Setup player */
-  memset(P->chan,0,sizeof(P->chan));
   for (k=0; k<4; ++k) {
     chan_t * const C = P->chan+k;
     sequ_t * seq;
     uint_t cmd;
+
+    memcpy(C->id, "CHA", 3); C->id[3] = '0'+k;
+    C->num = k;
     C->seq = P->song.seq[k];
     C->cur = P->chan[k].seq;
     for ( seq=C->seq; (cmd=u16(seq->cmd)) != 'F' ; ++seq) {
@@ -1017,7 +1281,7 @@ static int zz_play(play_t * P)
   P->has_loop = opt_mute;
 
   for (;;) {
-    int started = 0;
+    int triggered = 0;
 
     ++P->tick;
 
@@ -1027,6 +1291,7 @@ static int zz_play(play_t * P)
 
       if ( opt_mute & (1<<k) )
         continue;
+      C->trig = 0;
 
       /* Portamento */
       if (C->pta.stp) {
@@ -1052,7 +1317,7 @@ static int zz_play(play_t * P)
         uint_t const par = u32(seq->par);
         ++seq;
 
-#ifdef DEBUG
+#if 0 && defined(DEBUG)
         dmsg("%c: %04u %c %04x %08x %04x-%04x\n",
              'A'+k,
              (uint_t)(seq-1-C->seq),
@@ -1094,31 +1359,37 @@ static int zz_play(play_t * P)
             return E_SET;
           }
 
+          C->trig = 1;
+
           /* Copy current instrument to channel */
-          C->mix.len = P->vset.inst[C->curi].len << 16;
-          C->mix.lpl = P->vset.inst[C->curi].lpl << 16;
-          C->mix.pcm = P->vset.inst[C->curi].pcm;
           C->mix.idx = 0;
+          C->mix.pcm = P->vset.inst[C->curi].pcm;
+          C->mix.len = P->vset.inst[C->curi].len;
+          C->mix.lpl = P->vset.inst[C->curi].lpl;
+          if (P->mixer == mix_all) {
+            C->mix.len <<= 16;
+            C->mix.lpl <<= 16;
+          }
 
           /* Set step and duration / reset slide */
           C->mix.stp = C->pta.aim = stp;
           C->pta.stp = 0;
           C->wait = len;
 
-          started |= 1<<(k<<3);
+          triggered |= 1<<(k<<3);
           break;
 
         case 'R':                       /* Rest */
           C->mix.pcm = 0;
           C->wait = len;
-          started |= 2<<(k<<3);
+          triggered |= 2<<(k<<3);
           break;
 
         case 'S':                       /* Slide-to-note */
           C->pta.aim = stp;
           C->wait    = len;
           C->pta.stp = (int32_t)par;
-          started |= 4<<(k<<3);
+          triggered |= 4<<(k<<3);
           break;
 
         case 'l':                       /* Set-Loop-Point */
@@ -1194,7 +1465,6 @@ static int zz_play(play_t * P)
       C->cur = seq;
     } /* per chan */
 
-
     /* End detection. */
     if ( ( P->end_detect && P->has_loop == 15 ) ||
          ( P->max_ticks && P->tick > P->max_ticks ) )
@@ -1203,7 +1473,7 @@ static int zz_play(play_t * P)
     /* audio output */
     if (P->ao.dev || P->outfp) {
       int n = P->pcm_per_tick << 1;
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
       if (P->ao.info && P->ao.info->type == AO_TYPE_LIVE) {
         static int olds = -1;
         FILE * const out = stdout_or_stderr();
@@ -1216,11 +1486,11 @@ static int zz_play(play_t * P)
         fflush(out);
       }
 #endif
-
-      mix_all(P);
+      if (P->mixer(P))
+        return E_MIX;
 
       if (P->ao.dev) {
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
         if (!ao_play(P->ao.dev, (void*)P->mix_buf, n)) {
           emsg("libao: failed to play buffer #%d \"%s\"\n",
                P->ao.id, P->ao.info->short_name);
@@ -1292,7 +1562,7 @@ static int zing_zong(play_t * P)
        basename(P->setpath), P->vset.khz, P->vset.nbi,
        basename(P->sngpath), P->song.khz, P->song.barm,
        P->song.tempo, P->song.sigm, P->song.sigd);
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
   if (P->wavpath)
     imsg("wave: \"%s\"\n", P->wavpath);
 #endif
@@ -1327,7 +1597,7 @@ static int zing_zong(play_t * P)
 #endif
   }
 
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
   else {
     /* Setup libao */
     ao_initialize();
@@ -1360,22 +1630,41 @@ static int zing_zong(play_t * P)
   }
 #endif
 
+  /* ----------------------------------------
+   *  Mix buffers
+   * ---------------------------------------- */
+
   P->pcm_per_tick = (P->spr + (P->rate>>1)) / P->rate;
   dmsg("pcm per tick: %u (%ux8+%u)\n",
        P->pcm_per_tick, P->pcm_per_tick>>3, P->pcm_per_tick&7);
 
-  P->mix_buf = (int16_t *) malloc ( 2 * P->pcm_per_tick + 4 );
+  P->mix_buf = (int16_t *) my_malloc("mix-buf",2*P->pcm_per_tick+4);
   if (!P->mix_buf) {
-    ecode = sysmsg("audio", "alloc");
-    goto error;
+    ecode = E_SYS; goto error;
   }
   memcpy(&P->mix_buf[P->pcm_per_tick],"1337",4);
 
+  if (P->splmode >= 0) {
+    P->mix_flt = (float *) my_malloc("mix-flt",4*P->pcm_per_tick+4);
+    if (!P->mix_flt) {
+      ecode = E_SYS; goto error;
+    }
+    memcpy(&P->mix_flt[P->pcm_per_tick],"1337",4);
+  }
+
+  /* ----------------------------------------
+   *  Run
+   * ---------------------------------------- */
+
   ecode = zz_play(&play);
-
   ensure_newline();
-  assert(!memcmp(&P->mix_buf[P->pcm_per_tick],"1337",4));
 
+  assert(!memcmp(&P->mix_buf[P->pcm_per_tick],"1337",4));
+  assert(!P->mix_flt || !memcmp(&P->mix_flt[P->pcm_per_tick],"1337",4));
+
+  /* ----------------------------------------
+   *  Clean up
+   * ---------------------------------------- */
 error:
   /* Close and ignore closing error if error is already raised */
   if (P->outfp) {
@@ -1385,7 +1674,7 @@ error:
     P->outfp = 0;
   }
 
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
   if (!opt_stdout) {
     if (P->ao.dev && !ao_close(P->ao.dev) && ecode == E_OK) {
       sysmsg("audio","close");
@@ -1397,10 +1686,12 @@ error:
   }
 #endif
 
-  free(P->mix_buf);
+  my_free("mix-buf", &P->mix_buf);
+  my_free("mix-flt", &P->mix_flt);
   bin_free(&P->vset.bin);
   bin_free(&P->song.bin);
   bin_free(&P->info.bin);
+
   return ecode;
 }
 
@@ -1413,7 +1704,7 @@ error:
  * Print usage message.
  */
 
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
 # define OUTWAV " [output.wav]"
 #else
 # define OUTWAV ""
@@ -1421,7 +1712,7 @@ error:
 
 static void print_usage(void)
 {
-  printf(
+  puts(
     "Usage: zingzong [OPTIONS] <inst.set> <song.4v>" OUTWAV "\n"
     "       zingzong [OPTIONS] <music.q4>" OUTWAV "\n"
     "\n"
@@ -1430,12 +1721,45 @@ static void print_usage(void)
     "OPTIONS:\n"
     " -h --help --usage  Print this message and exit.\n"
     " -V --version       Print version and copyright and exit.\n"
-    " -t --tick=HZ       Set player tick rate (default is 200hz).\n"
-    " -r --rate=HZ       Set sampling rate (default is %ukHz).\n"
+    " -t --tick=HZ       Set player tick rate (default is 200hz)."
+    );
+#ifdef NO_SRATE
+  printf(
+    " -r --rate=HZ       Set sampling rate (default is %ukHz).\n",
+    SPR_DEF/1000u);
+#else
+  printf(
+    " -r --rate=[M,]HZ   Set re-sampling method and rate (%s,%uK).\n",
+    "Best",
+    SPR_DEF/1000u);
+
+  if (1) {
+    int i;
+    static const char *x[][2] = {
+#ifdef NO_QERP
+      { NERP,"No interp" },
+#else
+      { NERP, "Lagrange quadratic interp" },
+#endif
+      { "best", "Band limited sinc interp (145dB SNR, 96% BW)" },
+      { "medium", "Band limited sinc interp (121dB SNR, 90% BW)" },
+      { "fast", "Band limited sinc interp ( 97dB SNR, 80% BW)" },
+      { "zoh", "Zero order hold interp (very fast, poor quality)." },
+      { "linear", "Linear interp (very fast, poor quality)." },
+      { 0,0 }
+    };
+    for (i=0; x[i][0]; ++i)
+      printf("%6s `%s' %s %s\n",
+             i?"" : "M :=",
+             x[i][0], "........."+strlen(x[i][0]),x[i][1]);
+  }
+#endif
+
+  puts(
     " -l --length=TIME   Set play time.\n"
     " -m --mute=ABCD     Mute selected channels (bit-field or string).\n"
     " -c --stdout        Output raw sample to stdout.\n"
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
     " -w --wav           Generated a .wav file (implicit if output is set).\n"
     " -f --force         Clobber output .wav file.\n"
     "\n"
@@ -1460,8 +1784,7 @@ static void print_usage(void)
     " If time is not set the player tries to auto detect the music duration.\n"
     " However a number of musics are going into unnecessary loops which makes\n"
     " it hard to properly detect. Detection threshold is set to 1 hour.\n"
-    " If time is set to `0` or `inf` the player will run for ever.\n"
-    , SPR_DEF/1000u);
+    " If time is set to `0` or `inf` the player will run for ever.");
   puts("");
   puts(copyright);
   puts(license);
@@ -1476,9 +1799,13 @@ static void print_version(void)
   puts(PACKAGE_STRING "\n");
   puts(copyright);
   puts(license);
+
+#ifndef NO_AO
+  printf("\n");
+#endif
 }
 
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
 
 static char * fileext(char * base)
 {
@@ -1496,9 +1823,7 @@ static int wav_filename(char ** pwavname, char * sngname)
 {
   char *leaf=basename(sngname), *ext=fileext(leaf), *wavname;
   int l = ext - leaf;
-  *pwavname = wavname = malloc(l+5);
-  if (!wavname)
-    return sysmsg(leaf,"alloc");
+  *pwavname = wavname = my_malloc("wav-path", l+5);
   memcpy(wavname, leaf, l);
   strcpy(wavname+l, ".wav");
   return E_OK;
@@ -1594,7 +1919,8 @@ static int time_parse(uint_t * pticks, char * time)
 /**
  * Parse integer argument with range check.
  */
-static int uint_arg(char * arg, char * name, uint_t min, uint_t max, int base)
+static int uint_arg(char * arg, const char * name,
+                    uint_t min, uint_t max, int base)
 {
   uint_t v;
   char * s = arg;
@@ -1616,6 +1942,59 @@ static int uint_arg(char * arg, char * name, uint_t min, uint_t max, int base)
     }
   }
   return v;
+}
+
+
+
+/**
+ * Parse -r,--rate=[M,Hz].
+ */
+static int uint_spr(char * arg, const char * name, int * prate, int * pmode)
+{
+  int rate=SPR_DEF, ret=-1, i;
+  static const struct {
+    int   mode;
+    char *name;
+  } modes[] = {
+    { -1, NERP },
+#ifndef NO_SRATE
+    { SRC_SINC_BEST_QUALITY,"best" },
+    { SRC_SINC_MEDIUM_QUALITY, "medium"},
+    { SRC_SINC_FASTEST, "fast" },
+    { SRC_ZERO_ORDER_HOLD, "zoh" },
+    { SRC_LINEAR, "linear" },
+#endif
+    { 666, 0 }
+  };
+
+  if (isalpha(arg[0])) {
+    /* Get re-sampling mode */
+    for (i=0; modes[i].name; ++i) {
+      int a, b, j;
+      for (a=b=j=0 ; ; ++j) {
+        a = tolower(modes[i].name[j]);
+        b = tolower(arg[j]);
+        if (!a || !b || a != b)
+          break;
+      }
+      if (!b || b == ',') {
+        *pmode = modes[i].mode;
+        dmsg("smode=%s(%d) rem=[%s]\n", modes[i].name, modes[i].mode, arg);
+        arg = !b ? 0 : arg+j+1;
+        break;
+      }
+    }
+    if (!modes[i].name) {
+      emsg("invalid sampling mode -- %s=%s\n", name, arg);
+      return -1;
+    }
+  }
+  if (arg)
+    rate = uint_arg(arg, name, SPR_MIN, SPR_MAX, 10);
+no_rate:
+  if (rate != -1)
+    *prate = rate;
+  return rate;
 }
 
 /**
@@ -1653,13 +2032,18 @@ static int too_many_arguments(void)
   return E_ARG;
 }
 
-
 /* ----------------------------------------------------------------------
  * Main
  * ----------------------------------------------------------------------
  */
 
 #define RETURN(V) do { ecode = V; goto error_exit; } while(0)
+
+#ifndef NO_AO
+# define WAVOPT "wf"  /* libao adds support for wav file generation */
+#else
+# define WAVOPT
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -1669,7 +2053,7 @@ int main(int argc, char *argv[])
     { "usage",   0, 0, 'h' },
     { "version", 0, 0, 'V' },
     /**/
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
     { "wav",     0, 0, 'w' },
     { "force",   0, 0, 'f' },
 #endif
@@ -1692,14 +2076,14 @@ int main(int argc, char *argv[])
     switch (c) {
     case 'h': print_usage(); return E_OK;
     case 'V': print_version(); return E_OK;
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
     case 'w': opt_wav = 1; break;
     case 'f': opt_force = 1; break;
 #endif
     case 'c': opt_stdout = 1; break;
     case 'l': opt_length = optarg; break;
     case 'r':
-      if (-1 == (opt_sampling = uint_arg(optarg,"rate",SPR_MIN,SPR_MAX,0)))
+      if (-1 == uint_spr(optarg, "rate", &opt_splrate, &opt_splmode))
         RETURN (E_ARG);
       break;
     case 't':
@@ -1734,7 +2118,7 @@ int main(int argc, char *argv[])
   if (optind >= argc)
     RETURN (too_few_arguments());
 
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
   if (opt_wav && opt_stdout) {
     emsg("-w/--wav and -c/--stdout are exclusive\n");
     RETURN (E_ARG);
@@ -1743,8 +2127,8 @@ int main(int argc, char *argv[])
 #endif
 
   memset(&play,0,sizeof(play));
-
-  play.spr        = opt_sampling;
+  play.mixer      = mix_all;
+  play.spr        = opt_splrate;
   play.rate       = opt_tickrate;
   play.max_ticks  = MAX_DETECT * play.rate;
   play.end_detect = !opt_length;
@@ -1795,17 +2179,17 @@ int main(int argc, char *argv[])
   if (ecode)
     goto error_exit;
 
-#ifndef WITHOUT_LIBAO
+#ifndef NO_AO
   if (optind < argc) {
     play.wavpath = argv[optind++];
     opt_wav = 1;
   }
 
   if (opt_wav && !play.wavpath) {
-    ecode = wav_filename(&play.wavpath, play.sngpath);
+    ecode = wav_filename(&play.wavfree, play.sngpath);
     if (ecode)
       goto error_exit;
-    opt_wav = 2;                        /* mark for free */
+    play.wavpath = play.wavfree;
   }
 
   if (!opt_force && play.wavpath) {
@@ -1826,16 +2210,34 @@ int main(int argc, char *argv[])
   }
 #endif
 
+
+  play.splmode = opt_splmode;
+#ifndef NO_SRATE
+  if (opt_splmode >= 0) {
+    int k, err;
+    init_i8tofl();
+
+    for ( k=0; k<4; ++k ) {
+      chan_t * C = play.chan+k;
+      SRC_STATE * st;
+      st = src_callback_new(fill_cb, play.splmode, 1, &err, C);
+      if (!st) {
+        emsg("%c: resample(converter=%d): %s\n",
+             'A'+k, play.splmode, src_strerror(err));
+        RETURN (E_ERR);
+      }
+      C->resample.st = st;
+    }
+    play.mixer = mix_resample;
+  }
+#endif
+
   ecode = zing_zong(&play);
 
 error_exit:
   /* clean exit */
   my_fclose(&f,play.setpath);
-#ifndef WITHOUT_LIBAO
-  if (opt_wav == 2)
-    free(play.wavpath);
-#endif
-
+  play_kill(&play);
   ensure_newline();
   return ecode;
 }
