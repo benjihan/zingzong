@@ -90,7 +90,7 @@ static const char bugreport[] =                                 \
 #ifndef NO_SRATE
 # include <math.h>
 # include <samplerate.h>                /* samplerate */
-static float i8tofl[256];
+static float i8tofl_lut[256];
 #endif
 
 /* ----------------------------------------------------------------------
@@ -293,13 +293,12 @@ struct info_s {
 };
 
 struct chan_s {
-  char     id[4];                       /* just for type verification  */
+  int      id;                          /* letter ['A'..'D'] */
   int      num;                         /* channel number [0..3] */
 
   sequ_t * seq;                         /* sequence address */
   sequ_t * cur;                         /* next sequence */
   sequ_t * end;                         /* last sequence */
-
   sequ_t * sq0;                         /* First wait-able command */
   sequ_t * sqN;                         /* Last  wait-able command */
 
@@ -326,8 +325,9 @@ struct chan_s {
 #ifndef NO_SRATE
   struct {
     SRC_STATE * st;
-    float buf[16*16];
-    int idx;
+    double ratio;
+    float out[64];
+    float inp[64];
   } resample;
 #endif
 
@@ -349,6 +349,7 @@ struct play_s {
   uint_t max_ticks;
   uint_t end_detect;
 
+  double splratio;
   int splmode;
   uint_t spr;
 
@@ -707,6 +708,10 @@ static void prepare_vset(vset_t *vset, const char *path)
   unroll = (end-beg-tot) / n;
   dmsg("%u instrument using %u/%u bytes unroll:%i\n",
        n, tot, (uint_t)(end-beg), unroll);
+
+  if (unroll < VSET_UNROLL)
+    wmsg("Have less unroll space than expected -- %d\n", unroll-VSET_UNROLL);
+
   qsort(pinst, n, sizeof(*pinst), cmpadr);
 
   for (i=0, e=end; i<n; ++i) {
@@ -933,44 +938,77 @@ static void play_kill(play_t * P)
 
 #ifndef NO_SRATE
 
-static void init_i8tofl(void)
+static void i8tofl_init(void)
 {
-  if (i8tofl[128] == 0.0) {
-    int i; const float scale = 3.0 / (4.0*4.0*128.0);
-    /* int i; const float scale = 3.0 / 16.0; /\* 1/4 * 3/4 *\/ */
+  if (i8tofl_lut[128] == 0.0) {
+    const float sc = 3.0 / (4.0*4.0*128.0);
+    int i;
     for (i=-128; i<128; ++i)
-      i8tofl[i&255u] = (float)i * scale;
+      i8tofl_lut[i&0xFF] = sc * (float)i;
+  }
+}
+
+static void i8tofl(float * const d, const uint8_t * const s, const int n)
+{
+  int i;
+
+  assert(d);
+  assert(s);
+  assert(n > 0);
+  assert(n < VSET_UNROLL);
+
+  for (i=0; i<n; ++i) {
+    d[i] = i8tofl_lut[s[i]];
+    /* dmsg("i8->fl[%i] %02X -> %.3f\n",i, s[i], d[i]); */
+  }
+
+}
+
+static void fltoi16(int16_t * const d, const float * const s, const int n)
+{
+  const float sc = 32768.0;
+  int i;
+
+  assert(d);
+  assert(s);
+  assert(n > 0);
+  assert(n < VSET_UNROLL);
+
+  /* $$$ Slow conversion. Need some improvement once everything work */
+  for (i=0; i<n; ++i) {
+    const float f = s[i] * sc;
+    /* const */ int   v = (int) f;
+
+
+    if (v < -32768) {
+      /* dmsg("[%d] %.3f %d\n",i,f,v); */
+      v = -32768;
+    } else if (v >= 32768) {
+      /* dmsg("[%d] %.3f %d\n", i, f, v); */
+      v = 32767;
+    }
+
+    assert (v >= -32768 );
+    assert (v <   32768 );
+
+    d[i] = v;
   }
 }
 
 static long fill_cb(void *cb_data, float **data)
 {
   chan_t * C = (chan_t *) cb_data;
-  const uint8_t * const pcm = C->mix.pcm;
+  const int n = sizeof(C->resample.inp) / sizeof(*C->resample.inp);
 
-  const int n = 16;
-  const int N = sizeof(C->resample.buf) / sizeof(*C->resample.buf) - n;
-  float * buf, * end;
-
-  assert( !memcmp(C->id,"CHA",3) && C->id[3] == '0'+C->num );
-  assert( N == 256-16 );
-
-  buf = *data = C->resample.buf + C->resample.idx;
-  end = buf + n;
-
-  C->resample.idx += n;
-  if (C->resample.idx >= N)
-    C->resample.idx = 0;
-
-  if (!pcm)
-    memset(C->resample.buf,0,n*sizeof(float));
+  if (!C->mix.pcm)
+    memset(C->resample.inp,0,n*sizeof(float));
   else {
     int j = C->mix.idx;
-    do {
-      *buf++ = i8tofl[pcm[j++]];
-    } while ( buf < end );
 
-    if (j >= C->mix.len) {
+    assert(j < C->mix.len);
+    i8tofl(C->resample.inp, C->mix.pcm+j, n);
+
+    if ( (j += n) >= C->mix.len) {
       if (!C->mix.lpl) {
         C->mix.pcm = 0;
         j = 0;
@@ -980,118 +1018,100 @@ static long fill_cb(void *cb_data, float **data)
     }
     C->mix.idx = j;
   }
+  dmsg("%c: fill(%p,%d)\n", C->id, C->resample.inp, n);
   return n;
 }
 
 static int mix_resample(play_t * const P)
 {
-  static float data[1<<6];
-  const int nmaxi = sizeof(data)/sizeof(*data);
-
+  int k;
   const int n = P->pcm_per_tick;
-  const double sc = (65.536 * P->spr) /P->song.khz;
-  int i, k, err;
 
   for (k=0; k<4; ++k) {
-
     chan_t * C = P->chan + k;
-    const int8_t * const pcm = C->mix.pcm;
 
-    if (!pcm) {
+    if (!C->mix.pcm) {
       if (k == 0)
         memset(P->mix_flt, 0, n* sizeof(float));
       continue;
-    }
+    } else {
+      const int nmaxi = sizeof(C->resample.out)/sizeof(*C->resample.out);
+      const double ratio = 1.0/* P->splratio / (double) C->mix.stp */;
+      int i, err;
+      float * flt = P->mix_flt;
+      int nneed = n;
 
-    const double ratio = sc / (double) C->mix.stp;
-
-    float * flt = P->mix_flt;
-    int nneed = n;
-
-    if (C->trig) {
-      err = src_reset(C->resample.st);
-      if (err) {
-        emsg("%c: resample(reset): %s\n",
-             'A'+C->num, src_strerror (err));
-        return E_MIX;
-      }
-      assert (ratio > 1.0/20.0 && ratio<20.0);
-      assert (C->mix.idx == 0);
-      err = src_set_ratio(C->resample.st, ratio);
-      if (err) {
-        emsg("%c: resample(ratio:%.3lf): %s\n",
-             'A'+C->num, ratio, src_strerror (err));
-        return E_MIX;
-      }
-    }
-
-
-    /* Fill this voice */
-    for ( nneed = n; nneed > 0; ) {
-      int nread, nwant;
-
-      if ( ( nwant = nneed ) > nmaxi )
-        nwant = nmaxi;
-
-      nread = src_callback_read(C->resample.st, ratio, nwant, data);
-
-      /* dmsg("'%c: nwant:%d nread:%d\n", 'A'+k, nwant, nread); */
-      /* assert (nread == nwant); */
-
-      if (k == 0) {
-        for ( i=0; i<nread; ++i )
-          *flt++ = data[i];
-      } else {
-        for ( i=0; i<nread; ++i )
-          *flt++ += data[i];
+      if (C->trig) {
+        err = src_reset(C->resample.st);
+        if (err) {
+          emsg("%c: resample(reset): %s\n",
+               C->id, src_strerror(err));
+          return E_MIX;
+        }
+        assert (ratio > 1.0/20.0 && ratio<20.0);
+        assert (C->mix.idx == 0);
+        err = src_set_ratio(C->resample.st, ratio);
+        if (err) {
+          emsg("%c: resample(ratio:%.3lf): %s\n",
+               C->id, ratio, src_strerror(err));
+          return E_MIX;
+        }
       }
 
-      if (nread <= 0) break;
-      nneed -= nread;
-    }
+      /* Fill this voice */
+      for ( nneed = n; nneed > 0; ) {
+        int nread, nwant;
 
-    assert(flt-n == P->mix_flt);
-    assert(nneed == 0);
+        if ( ( nwant = nneed ) > nmaxi )
+          nwant = nmaxi;
+
+
+
+        { int i;
+          for (i=0; i<nwant; ++i) {
+            C->resample.out[i] = i;
+          }
+        }
+        nread = src_callback_read(C->resample.st, ratio, nwant, C->resample.out);
+        if (nread <= 0) {
+          err = src_error(C->resample.st);
+          emsg("%c: resample(read,%p,%.3lf,%d): %s\n",
+               C->id, C->resample.out, ratio, nwant, src_strerror(err));
+          return E_MIX;
+        }
+
+        assert(nread == nwant);
+
+        { int i;
+          for (i=0; i < nread; ++i) {
+            dmsg("%c[%i] = %.3f\n", C->id, i, C->resample.out[i]);
+          }
+        }
+
+
+
+        dmsg("%c: nneed:%d nwant:%d nread:%d\n", C->id, nneed, nwant, nread);
+        /* assert (nread == nwant); */
+
+        if (k == 0) {
+          for ( i=0; i<nread; ++i )
+            *flt++ = C->resample.out[i];
+        } else {
+          for ( i=0; i<nread; ++i )
+            *flt++ += C->resample.out[i];
+        }
+
+        nneed -= nread;
+      }
+
+      assert(flt-n == P->mix_flt);
+      assert(nneed == 0);
+    }
   }
 
 
   if (1) {
-    int i;
-    for (i=0 ; i<n; ++i) {
-      int v; float f = P->mix_flt[i];
-
-      assert( ! isnan(f) );
-
-      if ( f < -1.0f || f >= 1.0 ) {
-        dmsg("X[%i]=%.3f\n", i, f);
-      }
-
-      /* assert ( f >= -1.0f ); */
-      /* assert ( f <=  1.0f ); */
-
-      /* assert ( f >= -32768.0f ); */
-      /* assert ( f <=  32767.0f ); */
-
-      v = (int) (f * 32768.0 );
-
-      dmsg("X[%i] = %i (%f)\n", i, v, f);
-      assert ( v >= -32768 );
-      assert ( v <=  32767 );
-
-      if (1) {
-        static int max, min;
-        if ( v > max ) {
-          max = v;
-          dmsg("MAX=[%i] %i\n", i, v);
-        }
-        if ( v < min ) {
-          min = v;
-          dmsg("MIN=[%i] %i\n", i, v);
-        }
-      }
-
-      P->mix_buf[i] = v;
-    }
+    fltoi16(P->mix_buf, P->mix_flt, n);
   } else {
     src_float_to_short_array(P->mix_flt, P->mix_buf, n);
   }
@@ -1203,7 +1223,8 @@ void mix_gen(play_t * const P, const int k, int16_t * restrict b, int n)
   }
 }
 
-static void mix_add1(play_t * const P, const int k, int16_t * b) {
+static void mix_add1(play_t * const P, const int k, int16_t * b)
+{
   mix_gen(P, k, b, MIXBLK);
 }
 
@@ -1211,7 +1232,6 @@ static void mix_addN(play_t * const P, const int k, int16_t * b, const int n)
 {
   mix_gen(P, k, b, n);
 }
-
 
 static int mix_all(play_t * const P)
 {
@@ -1241,7 +1261,6 @@ static int mix_all(play_t * const P)
   return E_OK;
 }
 
-
 /* ----------------------------------------------------------------------
  * quartet player
  * ----------------------------------------------------------------------
@@ -1258,7 +1277,7 @@ static int zz_play(play_t * P)
     sequ_t * seq;
     uint_t cmd;
 
-    memcpy(C->id, "CHA", 3); C->id[3] = '0'+k;
+    C->id  = 'A'+k;
     C->num = k;
     C->seq = P->song.seq[k];
     C->cur = P->chan[k].seq;
@@ -1799,10 +1818,6 @@ static void print_version(void)
   puts(PACKAGE_STRING "\n");
   puts(copyright);
   puts(license);
-
-#ifndef NO_AO
-  printf("\n");
-#endif
 }
 
 #ifndef NO_AO
@@ -1951,7 +1966,7 @@ static int uint_arg(char * arg, const char * name,
  */
 static int uint_spr(char * arg, const char * name, int * prate, int * pmode)
 {
-  int rate=SPR_DEF, ret=-1, i;
+  int rate=SPR_DEF, i;
   static const struct {
     int   mode;
     char *name;
@@ -1991,7 +2006,6 @@ static int uint_spr(char * arg, const char * name, int * prate, int * pmode)
   }
   if (arg)
     rate = uint_arg(arg, name, SPR_MIN, SPR_MAX, 10);
-no_rate:
   if (rate != -1)
     *prate = rate;
   return rate;
@@ -2215,7 +2229,11 @@ int main(int argc, char *argv[])
 #ifndef NO_SRATE
   if (opt_splmode >= 0) {
     int k, err;
-    init_i8tofl();
+    i8tofl_init();
+
+    assert(play.spr);
+    assert(play.song.khz);
+    play.splratio = (65.536 * play.spr) / play.song.khz;
 
     for ( k=0; k<4; ++k ) {
       chan_t * C = play.chan+k;
