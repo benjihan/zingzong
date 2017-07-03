@@ -91,6 +91,7 @@ static const char bugreport[] =                                 \
 # include <math.h>
 # include <samplerate.h>                /* samplerate */
 static float i8tofl_lut[256];
+#define RESAMPLE_MODE 2
 #endif
 
 /* ----------------------------------------------------------------------
@@ -262,6 +263,7 @@ struct bin_s {
 struct inst_s {
   int len;                            /* size in byte */
   int lpl;                            /* loop length in byte */
+  int end;                            /* unroll end */
   uint8_t * pcm;                      /* sample address */
 };
 
@@ -309,7 +311,7 @@ struct chan_s {
   } loop[MAX_LOOP];
 
   struct {
-    uint8_t * pcm;
+    uint8_t * pcm, * end;
     uint_t xtp, stp, idx, len, lpl;
   } mix;
 
@@ -328,8 +330,11 @@ struct chan_s {
     SRC_DATA    sd;
     double ratio;
 
-    float inp[256];
-    float out[256];
+    long out_cnt;
+    long inp_cnt;
+
+    float inp[64];
+    float out[64];
   } resample;
 #endif
 
@@ -416,10 +421,12 @@ static void *my_alloc(const char * obj, const uint_t size, const int clear)
   return ptr;
 }
 
+#if 0
 static void *my_calloc(const char * obj, const uint_t size)
 {
   return my_alloc(obj, size, 1);
 }
+#endif
 
 static void *my_malloc(const char * obj, const uint_t size)
 {
@@ -725,6 +732,7 @@ static void prepare_vset(vset_t *vset, const char *path)
       dmsg("i#%02u is tainted -- ignoring\n", (uint_t)(pinst[i]-vset->inst));
       continue;
     }
+    inst->end = len + unroll;
 
     dmsg("i#%02u copying %05x to %05x..%05x\n",
          (uint_t)(pinst[i]-vset->inst),
@@ -845,6 +853,7 @@ static int vset_parse(vset_t *vset, const char *path, FILE *f,
            o, o+len-lpl, o+len);
     }
 
+    vset->inst[i].end = len;
     vset->inst[i].len = len;
     vset->inst[i].lpl = lpl;
     vset->inst[i].pcm = pcm;
@@ -955,35 +964,20 @@ static void i8tofl_init(void)
 static void i8tofl(float * const d, const uint8_t * const s, const int n)
 {
   int i;
-
-  assert(d);
-  assert(s);
-  assert(n > 0);
-  assert(n < VSET_UNROLL);
-
   for (i=0; i<n; ++i) {
     d[i] = i8tofl_lut[s[i]];
-    /* dmsg("i8->fl[%i] %02X -> %.3f\n",i, s[i], d[i]); */
   }
-
 }
 
 /* Convert normalized float PCM buffer to in16_t PCM */
 static void fltoi16(int16_t * const d, const float * const s, const int n)
 {
-  const float sc = 32768.0;
-  int i;
-
-  assert(d);
-  assert(s);
-  assert(n > 0);
-  assert(n < VSET_UNROLL);
+  const float sc = 32768.0; int i;
 
   /* $$$ Slow conversion. Need some improvement once everything work */
   for (i=0; i<n; ++i) {
     const float f = s[i] * sc;
     /* const */ int   v = (int) f;
-
 
     if (v < -32768) {
       /* dmsg("[%d] %.3f %d\n",i,f,v); */
@@ -1002,6 +996,9 @@ static void fltoi16(int16_t * const d, const float * const s, const int n)
 
 static void chan_flread(float * const d, chan_t * const C, const int n)
 {
+  if (!n) return;
+  assert(n > 0);
+  assert(n < VSET_UNROLL);
   if (!C->mix.pcm)
     memset(d, 0, n*sizeof(float));
   else {
@@ -1011,17 +1008,164 @@ static void chan_flread(float * const d, chan_t * const C, const int n)
     i8tofl(d, C->mix.pcm+j, n);
 
     if ( (j += n) >= C->mix.len) {
+
+      assert(C->mix.pcm+j >= C->mix.pcm);
+      assert(C->mix.pcm+j <= C->mix.end);
       if (!C->mix.lpl) {
         C->mix.pcm = 0;
         j = 0;
       } else {
         while ( (j -= C->mix.lpl) >= C->mix.len );
+        assert(j >= C->mix.len-C->mix.lpl);
+        assert(j <  C->mix.len);
       }
+
     }
-    assert(j>=0 && j<C->mix.len);
+    assert( j >= 0 && j < C->mix.len);
     C->mix.idx = j;
   }
 }
+
+#if RESAMPLE_MODE == 1
+
+static int mix_resample(play_t * const P)
+{
+  int k; const int n = P->pcm_per_tick;
+
+  for ( k=0; k<4; ++k ) {
+    chan_t * C = P->chan + k;
+
+    if (!C->mix.pcm) {
+      if (k == 0)
+        memset(P->mix_flt, 0, n * sizeof(float));
+      continue;
+    } else {
+
+      const int inpsz = sizeof(C->resample.inp) / sizeof(*C->resample.inp);
+      const int outsz = sizeof(C->resample.out) / sizeof(*C->resample.out);
+      const double ratio = P->splratio / (double) C->mix.stp;
+      int i, err, nneed;
+      float * flt;
+
+      assert (ratio > 1.0/20.0 && ratio<20.0);
+      C->resample.sd.src_ratio = ratio;
+
+      if (C->trig) {
+        assert(C->mix.pcm);
+        assert(!C->mix.idx);
+
+        C->resample.inp_cnt = 0;
+        C->resample.out_cnt = 0;
+
+        C->resample.sd.input_frames = 0;
+        err = src_reset(C->resample.st);
+        if (err) {
+          emsg("%c: resample(reset): %s\n",
+               C->id, src_strerror(err));
+          return E_MIX;
+        }
+        err = src_set_ratio(C->resample.st, ratio);
+        if (err) {
+          emsg("%c: resample(ratio:%.3lf): %s\n",
+               C->id, ratio, src_strerror(err));
+          return E_MIX;
+        }
+        dmsg("%c: trigger %.3lf\n", C->id, ratio);
+      }
+
+      /* Fill this voice */
+      for ( nneed = n, flt = P->mix_flt; nneed > 0; ) {
+        int nread, nfree, nused;
+
+        nused = C->resample.sd.input_frames;
+        nfree = inpsz - nused;
+
+        /* Fill input */
+        if (nfree > 0) {
+          chan_flread(C->resample.inp+nused, C, nfree);
+          dmsg("%c: filled %d\n", C->id, nfree);
+        }
+
+        /* Setup src data */
+        C->resample.sd.data_in = C->resample.inp;
+        C->resample.sd.input_frames = inpsz;
+        C->resample.sd.input_frames_used = 0;
+
+        C->resample.sd.data_out = C->resample.out;
+        C->resample.sd.output_frames = nneed < outsz ? nneed : outsz;
+        C->resample.sd.output_frames_gen = 0;
+
+        C->resample.sd.end_of_input = 0;
+
+        err = src_process(C->resample.st, &C->resample.sd);
+
+        C->resample.inp_cnt += C->resample.sd.input_frames_used;
+        C->resample.out_cnt += C->resample.sd.output_frames_gen;
+
+        dmsg("%c: %.3lf INP:%2d/%2d -> OUT:%2d/%2d TOT:%6d/%6d -> %.3lf\n",
+             C->id,
+             C->resample.sd.src_ratio,
+             (int) C->resample.sd.input_frames_used,
+             (int) C->resample.sd.input_frames,
+             (int) C->resample.sd.output_frames_gen,
+             (int) C->resample.sd.output_frames,
+             (int) C->resample.inp_cnt,
+             (int) C->resample.out_cnt,
+             (double) C->resample.out_cnt / (double) C->resample.inp_cnt
+          );
+
+        if (err) {
+          emsg("%c: resample(proc,%.3lf/[%p,%d]/[%p,%d]): %s\n",
+               C->id, C->resample.sd.src_ratio,
+               C->resample.sd.data_in,  (int)C->resample.sd.input_frames,
+               C->resample.sd.data_out, (int)C->resample.sd.output_frames,
+               src_strerror(err));
+          return E_MIX;
+        }
+
+        /* Shift input */
+        assert ( inpsz == C->resample.sd.input_frames );
+        nused = C->resample.sd.input_frames_used;
+        nfree = inpsz - nused;
+        assert (nfree >= 0);
+        if (nfree > 0)  {
+          memmove(C->resample.inp,
+                  C->resample.inp+nfree,
+                  nfree * sizeof(float));
+        }
+        C->resample.sd.input_frames = nfree;
+
+        /* Number of PCM in buffer */
+        nread = C->resample.sd.output_frames_gen;
+
+        /* assert(nread > 0); */
+        assert(nread <= nneed);
+
+        /* Add generated PCM to Float mix buffer */
+        if (k == 0) {
+          for ( i=0; i<nread; ++i )
+            *flt++ = C->resample.out[i];
+        } else {
+          for ( i=0; i<nread; ++i )
+            *flt++ += C->resample.out[i];
+        }
+        nneed -= nread;
+      }
+      assert(flt-n == P->mix_flt);
+      assert(nneed == 0);
+    }
+  } /* Per channel */
+
+  if (1) {
+    fltoi16(P->mix_buf, P->mix_flt, n);
+  } else {
+    src_float_to_short_array(P->mix_flt, P->mix_buf, n);
+  }
+
+  return E_OK;
+}
+
+#else
 
 static long fill_cb(void *cb_data, float **data)
 {
@@ -1112,7 +1256,7 @@ static int mix_resample(play_t * const P)
 
   return E_OK;
 }
-
+#endif
 
 #endif
 
@@ -1379,6 +1523,8 @@ static int zz_play(play_t * P)
           C->mix.pcm = P->vset.inst[C->curi].pcm;
           C->mix.len = P->vset.inst[C->curi].len;
           C->mix.lpl = P->vset.inst[C->curi].lpl;
+          C->mix.end = P->vset.inst[C->curi].end + C->mix.pcm;
+
           if (P->mixer == mix_all) {
             C->mix.len <<= 16;
             C->mix.lpl <<= 16;
@@ -1514,6 +1660,10 @@ static int zz_play(play_t * P)
         return sysmsg("<stdout>","write");
       }
     }
+
+    assert(!memcmp(&P->mix_buf[P->pcm_per_tick],"1337",4));
+    assert(!P->mix_flt || !memcmp(&P->mix_flt[P->pcm_per_tick],"1337",4));
+
   } /* loop ! */
 
   if (P->end_detect && P->has_loop != 15)
@@ -2232,7 +2382,7 @@ int main(int argc, char *argv[])
     for ( k=0; k<4; ++k ) {
       chan_t * C = play.chan+k;
       SRC_STATE * st;
-#if 0
+#if RESAMPLE_MODE == 1
       st = src_new(play.splmode, 1, &err);
 #else
       st = src_callback_new(fill_cb, play.splmode, 1, &err, C);
@@ -2243,6 +2393,9 @@ int main(int argc, char *argv[])
         RETURN (E_ERR);
       }
       C->resample.st = st;
+      C->resample.sd.data_in = C->resample.inp;
+      C->resample.sd.data_out = C->resample.out;
+      C->resample.sd.src_ratio = 1.0;
     }
     play.mixer = mix_resample;
   }

@@ -45,7 +45,7 @@ if [ s${CFLAGS+et} != set ]; then
     if [ s${DEBUG+et} != set ]; then
 	CFLAGS='-O3 -Wall'
     else
-	CFLAGS='-O0 -g -DDEBUG=1 -Wall'
+	CFLAGS="-O0 -g -DDEBUG=${DEBUG:-1} -Wall"
     fi
 fi
 
@@ -67,11 +67,25 @@ case "$arch" in
 	exit 1 ;;
 esac
 
-## If AO_LIBS is set add its definition as well as AO_CFLAGS to the
-#  make command line
-if [ s${AO_LIBS+et} = set ]; then
+## AO_CFLAGS / AO_LIBS
+#
+if [ s${AO_CFLAGS+et} = set ]; then
     set -- "$@" AO_LIBS="$AO_LIBS" AO_CFLAGS="$AO_CFLAGS"
 fi
+
+## SRATE_CFLAGS / SRATE_LIBS
+#
+if [ s${SRATE_CFLAGS+et} = set ]; then
+    set -- "$@" SRATE_LIBS="$SRATE_LIBS" SRATE_CFLAGS="$SRATE_CFLAGS"
+fi
+
+## Other variables of interest
+#
+for var in CC CFLAGS PKGCONFIG; do
+    if eval test s\${$var+et} = set; then
+	eval set -- '"$@"' \"x_$var=\${$var}\"
+    fi
+done
 
 make \
     -B -f ${top}/../src/Makefile\
