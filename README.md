@@ -23,17 +23,15 @@ Alternatively `zingzong` supports an convenient format that bundles both files i
     -V --version       Print version and copyright and exit.
     -t --tick=HZ       Set player tick rate (default is 200hz).
     -r --rate=[M,]HZ   Set re-sampling method and rate (Best,48K).
-     M := `qerp` ..... Lagrange quadratic interp
-          `best` ..... Band limited sinc interp (145dB SNR, 96% BW)
-          `medium` ... Band limited sinc interp (121dB SNR, 90% BW)
-          `fast` ..... Band limited sinc interp ( 97dB SNR, 80% BW)
-          `zoh` ...... Zero order hold interp (very fast, poor quality).
-          `linear` ... Linear interp (very fast, poor quality).
+     M := `none' ..... no interpolation (very fast/LQ).
+          `qerp' ..... lagrange quadratic interpolation (fast,MQ).
+          `soxr' ..... The SoX resampler (not so fast/HQ).
     -l --length=TIME   Set play time.
     -m --mute=ABCD     Mute selected channels (bit-field or string).
+    -c --stdout        Output raw sample to stdout.
+    -n --null          Output to the void.
     -w --wav           Generated a .wav file (implicit if output is set).
     -f --force         Clobber output .wav file.
-    -c --stdout        Output raw sample to stdout.
 
 ### Time
 

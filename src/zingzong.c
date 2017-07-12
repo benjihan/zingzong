@@ -35,32 +35,11 @@ static const char copyright[] = \
   "Copyright (c) 2017 Benjamin Gerard AKA Ben/OVR";
 static const char license[] = \
   "Licensed under MIT license";
-static const char bugreport[] =                                 \
+static const char bugreport[] = \
   "Report bugs to <https://github.com/benjihan/zingzong/issues>";
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include "zz_private.h"
 
-#if !defined(DEBUG) && !defined(NDEBUG)
-# define NDEBUG 1
-#endif
-
-#ifndef MAX_DETECT
-# define MAX_DETECT 3600    /* maximum seconds for length detection */
-#endif
-
-#ifndef SPR_MIN
-# define SPR_MIN 4000                   /* sampling rate minimum */
-#endif
-
-#ifndef SPR_MAX
-# define SPR_MAX 96000                  /* sampling rate maximum */
-#endif
-
-#ifndef SPR_DEF
-# define SPR_DEF 48000                  /* sampling rate default */
-#endif
 
 /* ----------------------------------------------------------------------
  * Includes
@@ -87,12 +66,6 @@ static const char bugreport[] =                                 \
 #ifndef NO_AO
 # include <ao/ao.h>                     /* Xiph ao */
 #endif
-#ifndef NO_SRATE
-# include <math.h>
-# include <samplerate.h>                /* samplerate */
-static float i8tofl_lut[256];
-#define RESAMPLE_MODE 2
-#endif
 
 /* ----------------------------------------------------------------------
  * Package info
@@ -110,1572 +83,37 @@ static float i8tofl_lut[256];
 #define PACKAGE_STRING PACKAGE_NAME " " PACKAGE_VERSION
 #endif
 
-static char me[] = PACKAGE_NAME;
 
-static int opt_splrate=SPR_DEF, opt_splmode=-1, opt_tickrate=200,
-opt_stdout, opt_mute;
+/* ----------------------------------------------------------------------
+ * Globals
+ * ---------------------------------------------------------------------- */
+
+char me[] = PACKAGE_NAME;
+
+/* Options */
+static int opt_splrate=SPR_DEF, opt_mixerid=-1, opt_tickrate=200;
+static int opt_stdout, opt_null, opt_mute;
 static char *opt_length;
-
 #ifndef NO_AO
 static int opt_wav, opt_force;
 #endif
 
-#define MIXBLK        16
-#define VSET_UNROLL   1024u             /* Over estimated */
-#define VSET_XSIZE    (20u*VSET_UNROLL) /* Additional space for loops  */
-#define VSET_MAX_SIZE (1<<21) /* arbitrary .set max size */
-#define SONG_MAX_SIZE (1<<18) /* arbitrary .4v max size  */
-#define INFO_MAX_SIZE 4096    /* arbitrary .4q info max size */
-#define MAX_LOOP      67      /* max loop depth (singsong.prg) */
-
-enum {
-  E_OK, E_ERR, E_ARG, E_SYS, E_SET, E_SNG, E_OUT, E_PLA, E_MIX,
-  E_666 = 66
-};
-
-/* ----------------------------------------------------------------------
- *  Messages
- * ----------------------------------------------------------------------
- */
-
-#ifndef FMT12
-# if defined(__GNUC__) || defined(__clang__)
-#  define FMT12 __attribute__ ((format (printf, 1, 2)))
-# else
-#  define FMT12
-# endif
-#endif
-
-static int newline = 1; /* Lazy newline tracking for message display */
-
-static FILE * stdout_or_stderr(void)
-{
-  return opt_stdout ? stderr : stdout;
-}
-
-static void set_newline(const char * fmt)
-{
-  if (*fmt)
-    newline = fmt[strlen(fmt)-1] == '\n';
-}
-
-static void ensure_newline(void)
-{
-  if (!newline) {
-    fputc('\n',stdout_or_stderr());
-    newline = 1;
-  }
-}
-
-FMT12
-static void emsg(const char * fmt, ...)
-{
-  va_list list;
-  va_start(list,fmt);
-  fprintf(stderr,"\n%s: "+newline, me);
-  newline = 0;
-  vfprintf(stderr,fmt,list);
-  set_newline(fmt);
-  va_end(list);
-}
-
-static int sysmsg(const char * obj, const char * alt)
-{
-  const char * msg = errno ? strerror(errno) : alt;
-
-  if (obj && msg)
-    emsg("%s -- %s\n", msg, obj);
-  else if (obj)
-    emsg("%s\n", obj);
-  else if (msg)
-    emsg("%s\n", msg);
-  return E_SYS;
-}
-
-FMT12
-static void wmsg(const char * fmt, ...)
-{
-  va_list list;
-  va_start(list,fmt);
-  fprintf(stderr,"%s","\nWARNING: "+newline);
-  newline = 0;
-  vfprintf(stderr,fmt,list);
-  set_newline(fmt);
-  fflush(stderr);
-  va_end(list);
-}
-
-#if defined(DEBUG) && DEBUG == 1
-FMT12
-static void dmsg(const char *fmt, ...)
-{
-  FILE * const out = stdout_or_stderr();
-  va_list list;
-  va_start(list,fmt);
-  ensure_newline();
-  vfprintf(out,fmt,list);
-  set_newline(fmt);
-  fflush(out);
-  va_end(list);
-}
-#elif defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
-# define dmsg(FMT,...)
-#else
-static void dmsg(const char *fmt, ...) {}
-#endif
-
-FMT12
-static void imsg(const char *fmt, ...)
-{
-  FILE * const out = stdout_or_stderr();
-  va_list list;
-  va_start(list,fmt);
-  ensure_newline();
-  vfprintf(out,fmt,list);
-  set_newline(fmt);
-  fflush(out);
-  va_end(list);
-}
-
-/* ----------------------------------------------------------------------
- *  Types definitions
- * ----------------------------------------------------------------------
- */
-
-typedef unsigned int   uint_t;
-typedef unsigned short ushort_t;
-typedef struct info_s  info_t;
-typedef struct inst_s  inst_t;
-typedef struct vset_s  vset_t;
-typedef struct song_s  song_t;
-typedef struct sequ_s  sequ_t;
-typedef struct bin_s   bin_t;
-
-typedef struct play_s play_t;
-typedef struct chan_s chan_t;
-
-struct bin_s {
-  uint_t   size;                  /* data size */
-  uint_t   xtra;                  /* xtra allocated bytes */
-  uint8_t  data[sizeof(int)];
-};
-
-struct inst_s {
-  int len;                            /* size in byte */
-  int lpl;                            /* loop length in byte */
-  int end;                            /* unroll end */
-  uint8_t * pcm;                      /* sample address */
-};
-
-struct vset_s {
-  bin_t * bin;
-
-  int khz;                          /* sampling rate from .set */
-  int nbi;                          /* number of instrument [1..20] */
-  inst_t inst[20];
-};
-
-struct sequ_s {
-  uint8_t cmd[2],len[2],stp[4],par[4];
-};
-
-struct song_s {
-  bin_t * bin;
-  uint8_t khz;
-  uint8_t barm;
-  uint8_t tempo;
-  uint8_t sigm;
-  uint8_t sigd;
-  sequ_t *seq[4];
-};
-
-struct info_s {
-  bin_t *bin;
-  char * comment;
-};
-
-struct chan_s {
-  int      id;                          /* letter ['A'..'D'] */
-  int      num;                         /* channel number [0..3] */
-
-  sequ_t * seq;                         /* sequence address */
-  sequ_t * cur;                         /* next sequence */
-  sequ_t * end;                         /* last sequence */
-  sequ_t * sq0;                         /* First wait-able command */
-  sequ_t * sqN;                         /* Last  wait-able command */
-
-  int loop_level;
-  struct {
-    sequ_t * seq;                       /* loop point */
-    int      cnt;                       /* loop count */
-  } loop[MAX_LOOP];
-
-  struct {
-    uint8_t * pcm, * end;
-    uint_t xtp, stp, idx, len, lpl;
-  } mix;
-
-  struct {
-    int aim, stp;
-  } pta;
-
-  int trig;                          /* note has been triggered */
-  int curi;                          /* current instrument number */
-  int wait;                          /* number of tick left to wait */
-  int has_loop;                      /* has loop (counter) */
-
-#ifndef NO_SRATE
-  struct {
-    SRC_STATE * st;
-    SRC_DATA    sd;
-    double ratio;
-
-    long out_cnt;
-    long inp_cnt;
-
-    float inp[64];
-    float out[64];
-  } resample;
-#endif
-
-};
-
-struct play_s {
-  char *setpath;
-  char *sngpath;
-#ifndef NO_AO
-  char *wavpath;
-  char *wavfree;
-#endif
-
-  vset_t vset;
-  song_t song;
-  info_t info;
-  uint_t tick;
-  uint_t rate;
-  uint_t max_ticks;
-  uint_t end_detect;
-
-  double splratio;
-  int splmode;
-  uint_t spr;
-
-  int16_t * mix_buf;
-  float   * mix_flt;
-
-  int pcm_per_tick;
-  int has_loop;
-
-  FILE *outfp;
-
-  int (*mixer)(play_t * const);
-
-  struct {
-    int              id;
-#ifndef NO_AO
-    ao_device       *dev;
-    ao_info         *info;
-    ao_sample_format fmt;
-#else
-    void *dev;
-#endif
-  } ao;
-
-
-  chan_t chan[4];
-};
-
-typedef struct songhd songhd_t;
-struct songhd {
-  uint8_t rate[2];
-  uint8_t measure[2];
-  uint8_t tempo[2];
-  uint8_t timesig[2];
-  uint8_t reserved[2*4];
-};
-
 static play_t play;
 
-/* ----------------------------------------------------------------------
- * allocation functions
- * ----------------------------------------------------------------------
- */
-
-static void my_free(const char * obj, void * pptr)
-{
-  void ** const p = (void **) pptr;
-  if (*p) {
-    errno = 0;
-    free(*p);
-    *p = 0;
-    if (errno)
-      sysmsg(obj,"free");
-  }
-}
-
-static void *my_alloc(const char * obj, const uint_t size, const int clear)
-{
-  void * ptr = clear ? calloc(1,size) : malloc(size);
-  if (!ptr)
-    sysmsg(obj,"alloc");
-  return ptr;
-}
-
-#if 0
-static void *my_calloc(const char * obj, const uint_t size)
-{
-  return my_alloc(obj, size, 1);
-}
+static mixer_t * const mixers[] = {
+  &mixer_none,
+  &mixer_qerp,
+#ifndef NO_SOXR
+  &mixer_soxr,
 #endif
-
-static void *my_malloc(const char * obj, const uint_t size)
-{
-  return my_alloc(obj, size, 0);
-}
+  0
+};
+static const int def_mixer_id = 1;
 
 /* ----------------------------------------------------------------------
- * File functions
- * ----------------------------------------------------------------------
- */
-
-static int my_fopen(FILE **pf, const char * path)
-{
-  return !(*pf = fopen(path,"rb"))
-    ? sysmsg(path,"open")
-    : E_OK
-    ;
-}
-
-static int my_fclose(FILE **pf, const char * path)
-{
-  FILE *f = *pf;
-  *pf = 0;
-  return (f && fclose(f))
-    ? sysmsg(path,"close")
-    : E_OK
-    ;
-}
-
-static int my_fread(FILE *f, const char * path, void * buf, uint_t n)
-{
-  return (n != fread(buf,1,n,f))
-    ? sysmsg(path,"too short")
-    : E_OK
-    ;
-}
-
-static int my_fsize(FILE *f, const char * path, uint_t *psize)
-{
-  size_t tell, size;
-  assert(f); assert(psize);
-  if (-1 == (tell = ftell(f)) ||        /* save position */
-      -1 == fseek(f,0,SEEK_END) ||      /* go to end */
-      -1 == (size = ftell(f)) ||        /* size = position */
-      -1 == fseek(f,tell,SEEK_SET))     /* restore position */
-    return sysmsg(path,"file size");
-  else if (size < tell || size >= UINT_MAX) {
-    emsg("too large (fsize) -- %s\n", path);
-    return E_ERR;
-  }
-  *psize = size - tell;
-  return E_OK;
-}
-
-/* ----------------------------------------------------------------------
- * Load binaries
- * ----------------------------------------------------------------------
- */
-
-static void bin_free(bin_t ** pbin)
-{
-  my_free("bin-free", (void**)pbin);
-}
-
-static int bin_alloc(bin_t ** pbin, const char * path,
-                     uint_t len, uint_t xlen)
-{
-  bin_t * bin = 0;
-  assert(pbin); assert(path);
-  *pbin = bin = my_malloc("bin-alloc",(intptr_t)(bin->data+len+xlen));
-  if (!bin)
-    return E_SYS;
-  bin->size = len;
-  bin->xtra = xlen;
-  return E_OK;
-}
-
-static int bin_read(bin_t * bin, const char * path,
-                    FILE *f, uint_t off, uint_t len)
-{
-  return my_fread(f,path,bin->data+off,len);
-}
-
-static int bin_load(bin_t ** pbin, const char * path,
-                    FILE *f, uint_t len, uint_t xlen, uint_t max)
-{
-  int ecode;
-
-  if (!len) {
-    ecode = my_fsize(f, path, &len);
-    if (ecode)
-      goto error;
-  }
-  if (max && len > max) {
-    emsg("too large (load > %u) -- %s\n", max, path);
-    ecode = E_ERR;
-    goto error;
-  }
-  ecode = bin_alloc(pbin, path, len, xlen);
-  if (ecode)
-    goto error;
-  dmsg("%s: allocated: %u +%u = %u\n", path, len, xlen, len+xlen);
-  ecode = bin_read(*pbin, path, f, 0, len);
-
-error:
-  if (ecode)
-    bin_free(pbin);
-  return ecode;
-}
-
-
-/* ----------------------------------------------------------------------
- */
-
-static inline uint_t u16(const uint8_t * const v) {
-  return ((uint_t)v[0]<<8) | v[1];
-}
-
-static inline uint_t u32(const uint8_t * const v) {
-  return (u16(v)<<16) | u16(v+2);
-}
-
-/* ----------------------------------------------------------------------
- * quartet song
- * ----------------------------------------------------------------------
- */
-
-static int song_parse(song_t *song, const char * path, FILE *f,
-                      uint8_t *hd, uint_t size)
-{
-  int ecode, k, has_note=0;
-  uint_t off;
-
-  /* sequence to use in case of empty sequence to avoid endless loop
-   * condition and allow to properly measure music length.
-   */
-  static uint8_t nullseq[2][12] = {
-    { 0,'R', 0, 1 },                    /* "R"est 1 tick */
-    { 0,'F' }                           /* "F"in */
-  };
-
-  /* Parse song header */
-  song->khz   = u16(hd+0);
-  song->barm  = u16(hd+2);
-  song->tempo = u16(hd+4);
-  song->sigm  = hd[6];
-  song->sigd  = hd[7];
-  dmsg("%s: rate: %ukHz, bar:%u, tempo:%u, signature:%u/%u\n",
-       path, song->khz, song->barm, song->tempo, song->sigm, song->sigd);
-
-  /* Load data (add 12 extra bytes to close truncated sequence if
-   * needed). */
-  ecode = bin_load(&song->bin, path, f, size, 12, SONG_MAX_SIZE);
-  if (ecode)
-    goto error;
-  ecode = E_SNG;
-  size = (song->bin->size / 12u) * 12u;
-
-  /* Basic parsing of the sequences to find the end. It replaces
-   * empty sequences by something that won't loop endlessly and won't
-   * disrupt the end of music detection.
-   */
-  for (k=off=0; k<4 && off<size; off+=12) {
-    sequ_t * const seq = (sequ_t *)(song->bin->data+off);
-    uint_t   const cmd = u16(seq->cmd);
-
-    if (!song->seq[k])
-      song->seq[k] = seq;               /* Sequence */
-
-    if (1) {
-      dmsg("%c %04u %c %04x %08x %04x-%04x\n",
-           k+'A',
-           (uint_t)(seq-song->seq[k]),
-           isgraph(cmd) ? cmd : '?',
-           u16(seq->len),
-           u32(seq->stp),
-           u16(seq->par),
-           u16(seq->par+2));
-    }
-
-
-    switch (cmd) {
-    case 'F':                           /* End-Voice */
-      if (!has_note) {
-        song->seq[k] = (sequ_t *) nullseq;
-        dmsg("%c: replaced by default sequence\n", 'A'+k);
-      }
-      has_note = 0;
-      ++k;
-      break;
-    case 'P':                           /* Play-Note */
-      has_note = 1;
-    case 'S': case 'R':
-    case 'l': case 'L': case 'V':
-      break;
-
-    default:
-      /* if (k == 3 && has_note) { */
-      /*   wmsg("channel hacking the last sequence to close the deal\n"); */
-      /*   seq->cmd[0] = 0; */
-      /*   seq->cmd[1] = 'F'; */
-      /*   off -= 12; */
-      /*   break; */
-      /* } */
-      emsg("invalid sequence command $%04x('%c') at %c:%u\n",
-           cmd, isgraph(cmd)?cmd:'.', 'A'+k, off);
-      goto error;
-    }
-  }
-
-  if (off != song->bin->size) {
-    wmsg("garbage data after voice sequences -- %u bytes\n",
-         song->bin->size - off);
-  }
-
-  for ( ;k<4; ++k) {
-    if (has_note) {
-      /* Add 'F'inish mark */
-      sequ_t * const seq = (sequ_t *)(song->bin->data+off);
-      seq->cmd[0] = 0; seq->cmd[1] = 'F';
-      off += 12;
-      has_note = 0;
-      wmsg("channel %c is truncated\n", 'A'+k);
-    } else {
-      wmsg("channel %c is MIA\n", 'A'+k);
-      song->seq[k] = (sequ_t *) nullseq;
-    }
-  }
-
-
-  ecode = E_OK;
-error:
-  if (ecode)
-    bin_free(&song->bin);
-  return ecode;
-}
-
-static int song_load(song_t *song, const char *path)
-{
-  uint8_t hd[16];
-  FILE *f = 0;
-  int ecode = my_fopen(&f, path);
-  if (ecode)
-    goto error;
-
-  ecode = my_fread(f,path,hd,16);
-  if (ecode)
-    goto error;
-  ecode = song_parse(song,path,f,hd,0);
-
-error:
-  my_fclose(&f, path);
-  if (ecode) {
-    if (ecode != E_SYS)
-      ecode = E_SNG;
-    bin_free(&song->bin);
-  }
-  return ecode;
-}
-
-/* ----------------------------------------------------------------------
- * quartet voiceset
- * ----------------------------------------------------------------------
- */
-
-static int cmpadr(const void * a, const void * b)
-{
-  return (*((inst_t **)b))->pcm - (*((inst_t **)a))->pcm;
-}
-
-static void prepare_vset(vset_t *vset, const char *path)
-{
-  const int n = vset->nbi;
-  uint8_t * const beg = vset->bin->data;
-  uint8_t * const end = vset->bin->data+vset->bin->size+vset->bin->xtra;
-  uint8_t * e;
-  int i,j,tot,unroll;
-  inst_t *pinst[20];
-
-  assert(n>0 && n<=20);
-
-  /* Re-order instrument in memory order. */
-  for (i=tot=0; i<n; ++i) {
-    pinst[i] = vset->inst+i;
-    tot += vset->inst[i].len;
-  }
-  assert(tot <= end-beg);
-  unroll = (end-beg-tot) / n;
-  dmsg("%u instrument using %u/%u bytes unroll:%i\n",
-       n, tot, (uint_t)(end-beg), unroll);
-
-  if (unroll < VSET_UNROLL)
-    wmsg("Have less unroll space than expected -- %d\n", unroll-VSET_UNROLL);
-
-  qsort(pinst, n, sizeof(*pinst), cmpadr);
-
-  for (i=0, e=end; i<n; ++i) {
-    inst_t * const inst = pinst[i];
-    const uint_t len = inst->len;
-    uint8_t * const pcm = e - unroll - len;
-
-    if (len == 0) {
-      dmsg("i#%02u is tainted -- ignoring\n", (uint_t)(pinst[i]-vset->inst));
-      continue;
-    }
-    inst->end = len + unroll;
-
-    dmsg("i#%02u copying %05x to %05x..%05x\n",
-         (uint_t)(pinst[i]-vset->inst),
-         (uint_t)(pinst[i]->pcm-beg),
-         (uint_t)(pcm-beg),
-         (uint_t)(pcm-beg+len-1));
-
-    if (pcm <= pinst[i]->pcm)
-      for (j=0; j<len; ++j)
-        pcm[j] = 0x80 ^ pinst[i]->pcm[j];
-    else
-      for (j=len-1; j>=0; --j)
-        pcm[j] = 0x80 ^ pinst[i]->pcm[j];
-    pinst[i]->pcm = pcm;
-
-    if (!inst->lpl) {
-      /* Instrument does not loop -- smooth to middle point */
-      int v = (int)(int8_t)pcm[len-1] << 8;
-      for (j=0; j<unroll; ++j) {
-        v = 3*v >> 2;                   /* v = .75*v */
-        pcm[len+j] = v>>8;
-      }
-    } else {
-      int lpi = len;
-      /* Copy loop */
-      for (j=0; j<unroll; ++j) {
-        if (lpi >= len)
-          lpi -= inst->lpl;
-        assert(lpi < len);
-        assert(lpi >= len-inst->lpl);
-        pcm[len+j] = pcm[lpi++];
-      }
-    }
-    e = pcm;
-  }
-}
-
-static int vset_parse(vset_t *vset, const char *path, FILE *f,
-                      uint8_t *hd, uint_t size)
-{
-  int ecode = E_SET, i;
-  bin_t * bin;
-
-  /* Check sampling rate */
-  vset->khz = hd[0];
-  dmsg("%s: %u hz\n", path, vset->khz);
-  if (vset->khz < 4u || vset->khz > 20u) {
-    emsg("sampling rate (%u) out of range -- %s\n", vset->khz, path);
-    goto error;
-  }
-
-  /* Check instrument number */
-  vset->nbi = hd[1]-1;
-  dmsg("%s: %u instrument\n", path, vset->nbi);
-
-  if (vset->nbi < 1 || vset->nbi > 20) {
-    emsg("instrument count (%d) out of range -- %s\n", vset->nbi, path);
-    goto error;
-  }
-
-  /* Load data */
-  ecode = bin_load(&vset->bin, path, f, size, VSET_XSIZE, VSET_MAX_SIZE);
-  if (ecode)
-    goto error;
-
-  for (i=0, ecode=E_SET, bin=vset->bin; i<vset->nbi; ++i) {
-    int off = u32(&hd[142+4*i]), invalid = 0;
-    int o = off - 222 + 8;
-    uint_t len, lpl;
-    uint8_t * pcm;
-
-    pcm = bin->data+o;
-    len = u32(pcm-4);
-    lpl = u32(pcm-8);
-    if (lpl == 0xFFFFFFFF)
-      lpl = 0;
-
-    /* These 2 tests might be a little pedantic but as the format is
-     * not very robust It might be a nice safety net. These 2 words
-     * should be 0.
-     */
-    if (len & 0xFFFF) {
-      wmsg("I#%02i length LSW is not 0 [%08X]\n", i+1, len);
-      ++invalid;
-    }
-    if (lpl & 0xFFFF) {
-      wmsg("I#%02i loop-length LSW is not 0 [%08X]\n", i+1, lpl);
-      ++invalid;
-    }
-    len >>= 16;
-    lpl >>= 16;
-
-    if (!len) {
-      wmsg("I#%02u has no data\n", i+1);
-      ++invalid;
-    }
-
-    if (lpl > len) {
-      wmsg("I#%02u loop-length > length [%08X > %08X] \n",
-           i+1, lpl, len);
-      ++invalid;
-    }
-
-    /* Is the sample inside out memory range ? */
-    if ( o < 8 || o >= bin->size || (o+len > bin->size) ) {
-      wmsg("I#%02u data out of range [%05x..%05x] not in [%05x..%05x] +%u\n",
-           i+1, o,o+len, 8,bin->size, o+len-bin->size);
-      ++invalid;
-    }
-
-    if (invalid) {
-      pcm = 0;
-      len = lpl = 0;
-    } else {
-      dmsg("I#%02u \"%7s\" [$%05X:$%05X:$%05X] [$%05X:$%05X:$%05X]\n",
-           i+1, hd+2+7*i,
-           0, len-lpl, len,
-           o, o+len-lpl, o+len);
-    }
-
-    vset->inst[i].end = len;
-    vset->inst[i].len = len;
-    vset->inst[i].lpl = lpl;
-    vset->inst[i].pcm = pcm;
-  }
-
-  prepare_vset(vset, path);
-  ecode = E_OK;
-error:
-  if (ecode)
-    bin_free(&vset->bin);
-  return ecode;
-}
-
-/**
- * Load .q4 file (after header).
- */
-static int q4_load(FILE * f, char * path, play_t * P,
-                   uint_t sngsize, uint_t setsize, uint_t infsize)
-{
-  int ecode;
-  uint8_t hd[222];
-
-  assert(ftell(f) == 20);
-
-  if (sngsize < 16 + 12*4) {
-    emsg("invalid .4q song size (%u) -- %s", sngsize, path);
-    ecode = E_SNG;
-    goto error;
-  }
-
-  if (setsize < 222) {
-    emsg("invalid .4q set size (%u) -- %s", setsize, path);
-    ecode = E_SNG;
-    goto error;
-  }
-
-  ecode = my_fread(f, path, hd, 16);
-  if (ecode)
-    goto error;
-  ecode = song_parse(&play.song, path, f, hd, sngsize-16);
-  if (ecode)
-    goto error;
-
-  /* Voice set */
-  ecode = my_fread(f,path,hd,222);
-  if (ecode)
-    goto error;
-  ecode = vset_parse(&play.vset, path, f, hd, setsize-222);
-  if (ecode)
-    goto error;
-
-  /* Ignoring the comment for now. */
-#if 0
-  /* info (ignoring errors) */
-  if (!bin_load(&play.info.bin, path, f, infsize, INFO_MAX_SIZE)
-      && play.info.bin->size > 1) {
-    play.info.comment = (char *) play.info.bin->data;
-    dmsg("Comments:\n%s\n", play.info.comment);
-  }
-#endif
-
-error:
-  return ecode;
-}
-
-static void chan_kill(chan_t * C)
-{
-  if (C) {
-#ifndef NO_SRATE
-    if (C->resample.st) {
-      src_delete(C->resample.st);
-      C->resample.st = 0;
-    }
-#endif
-  }
-}
-
-static void play_kill(play_t * P)
-{
-  if (P) {
-    int k;
-    for (k=0; k<4; ++k) {
-      chan_kill(P->chan+k);
-    }
-    my_free("wav-path",(void **)&P->wavfree);
-  }
-}
-
-/* ----------------------------------------------------------------------
- *  libresample mixer
- * ----------------------------------------------------------------------
- */
-
-#ifndef NO_SRATE
-
-/** Initialize int8_t to float PCM look up table. */
-static void i8tofl_init(void)
-{
-  if (i8tofl_lut[128] == 0.0) {
-    const float sc = 3.0 / (4.0*4.0*128.0);
-    int i;
-    for (i=-128; i<128; ++i)
-      i8tofl_lut[i&0xFF] = sc * (float)i;
-  }
-}
-
-/* Convert int8_t PCM buffer to float PCM */
-static void i8tofl(float * const d, const uint8_t * const s, const int n)
-{
-  int i;
-  for (i=0; i<n; ++i) {
-    d[i] = i8tofl_lut[s[i]];
-  }
-}
-
-/* Convert normalized float PCM buffer to in16_t PCM */
-static void fltoi16(int16_t * const d, const float * const s, const int n)
-{
-  const float sc = 32768.0; int i;
-
-  /* $$$ Slow conversion. Need some improvement once everything work */
-  for (i=0; i<n; ++i) {
-    const float f = s[i] * sc;
-    /* const */ int   v = (int) f;
-
-    if (v < -32768) {
-      /* dmsg("[%d] %.3f %d\n",i,f,v); */
-      v = -32768;
-    } else if (v >= 32768) {
-      /* dmsg("[%d] %.3f %d\n", i, f, v); */
-      v = 32767;
-    }
-
-    assert (v >= -32768 );
-    assert (v <   32768 );
-
-    d[i] = v;
-  }
-}
-
-static void chan_flread(float * const d, chan_t * const C, const int n)
-{
-  if (!n) return;
-  assert(n > 0);
-  assert(n < VSET_UNROLL);
-  if (!C->mix.pcm)
-    memset(d, 0, n*sizeof(float));
-  else {
-    int j = C->mix.idx;
-
-    assert(j < C->mix.len);
-    i8tofl(d, C->mix.pcm+j, n);
-
-    if ( (j += n) >= C->mix.len) {
-
-      assert(C->mix.pcm+j >= C->mix.pcm);
-      assert(C->mix.pcm+j <= C->mix.end);
-      if (!C->mix.lpl) {
-        C->mix.pcm = 0;
-        j = 0;
-      } else {
-        while ( (j -= C->mix.lpl) >= C->mix.len );
-        assert(j >= C->mix.len-C->mix.lpl);
-        assert(j <  C->mix.len);
-      }
-
-    }
-    assert( j >= 0 && j < C->mix.len);
-    C->mix.idx = j;
-  }
-}
-
-#if RESAMPLE_MODE == 1
-
-static int mix_resample(play_t * const P)
-{
-  int k; const int n = P->pcm_per_tick;
-
-  for ( k=0; k<4; ++k ) {
-    chan_t * C = P->chan + k;
-
-    if (!C->mix.pcm) {
-      if (k == 0)
-        memset(P->mix_flt, 0, n * sizeof(float));
-      continue;
-    } else {
-
-      const int inpsz = sizeof(C->resample.inp) / sizeof(*C->resample.inp);
-      const int outsz = sizeof(C->resample.out) / sizeof(*C->resample.out);
-      const double ratio = P->splratio / (double) C->mix.stp;
-      int i, err, nneed;
-      float * flt;
-
-      assert (ratio > 1.0/20.0 && ratio<20.0);
-      C->resample.sd.src_ratio = ratio;
-
-      if (C->trig) {
-        assert(C->mix.pcm);
-        assert(!C->mix.idx);
-
-        C->resample.inp_cnt = 0;
-        C->resample.out_cnt = 0;
-
-        C->resample.sd.input_frames = 0;
-        err = src_reset(C->resample.st);
-        if (err) {
-          emsg("%c: resample(reset): %s\n",
-               C->id, src_strerror(err));
-          return E_MIX;
-        }
-        err = src_set_ratio(C->resample.st, ratio);
-        if (err) {
-          emsg("%c: resample(ratio:%.3lf): %s\n",
-               C->id, ratio, src_strerror(err));
-          return E_MIX;
-        }
-        dmsg("%c: trigger %.3lf\n", C->id, ratio);
-      }
-
-      /* Fill this voice */
-      for ( nneed = n, flt = P->mix_flt; nneed > 0; ) {
-        int nread, nfree, nused;
-
-        nused = C->resample.sd.input_frames;
-        nfree = inpsz - nused;
-
-        /* Fill input */
-        if (nfree > 0) {
-          chan_flread(C->resample.inp+nused, C, nfree);
-          dmsg("%c: filled %d\n", C->id, nfree);
-        }
-
-        /* Setup src data */
-        C->resample.sd.data_in = C->resample.inp;
-        C->resample.sd.input_frames = inpsz;
-        C->resample.sd.input_frames_used = 0;
-
-        C->resample.sd.data_out = C->resample.out;
-        C->resample.sd.output_frames = nneed < outsz ? nneed : outsz;
-        C->resample.sd.output_frames_gen = 0;
-
-        C->resample.sd.end_of_input = 0;
-
-        err = src_process(C->resample.st, &C->resample.sd);
-
-        C->resample.inp_cnt += C->resample.sd.input_frames_used;
-        C->resample.out_cnt += C->resample.sd.output_frames_gen;
-
-        dmsg("%c: %.3lf INP:%2d/%2d -> OUT:%2d/%2d TOT:%6d/%6d -> %.3lf\n",
-             C->id,
-             C->resample.sd.src_ratio,
-             (int) C->resample.sd.input_frames_used,
-             (int) C->resample.sd.input_frames,
-             (int) C->resample.sd.output_frames_gen,
-             (int) C->resample.sd.output_frames,
-             (int) C->resample.inp_cnt,
-             (int) C->resample.out_cnt,
-             (double) C->resample.out_cnt / (double) C->resample.inp_cnt
-          );
-
-        if (err) {
-          emsg("%c: resample(proc,%.3lf/[%p,%d]/[%p,%d]): %s\n",
-               C->id, C->resample.sd.src_ratio,
-               C->resample.sd.data_in,  (int)C->resample.sd.input_frames,
-               C->resample.sd.data_out, (int)C->resample.sd.output_frames,
-               src_strerror(err));
-          return E_MIX;
-        }
-
-        /* Shift input */
-        assert ( inpsz == C->resample.sd.input_frames );
-        nused = C->resample.sd.input_frames_used;
-        nfree = inpsz - nused;
-        assert (nfree >= 0);
-        if (nfree > 0)  {
-          memmove(C->resample.inp,
-                  C->resample.inp+nfree,
-                  nfree * sizeof(float));
-        }
-        C->resample.sd.input_frames = nfree;
-
-        /* Number of PCM in buffer */
-        nread = C->resample.sd.output_frames_gen;
-
-        /* assert(nread > 0); */
-        assert(nread <= nneed);
-
-        /* Add generated PCM to Float mix buffer */
-        if (k == 0) {
-          for ( i=0; i<nread; ++i )
-            *flt++ = C->resample.out[i];
-        } else {
-          for ( i=0; i<nread; ++i )
-            *flt++ += C->resample.out[i];
-        }
-        nneed -= nread;
-      }
-      assert(flt-n == P->mix_flt);
-      assert(nneed == 0);
-    }
-  } /* Per channel */
-
-  if (1) {
-    fltoi16(P->mix_buf, P->mix_flt, n);
-  } else {
-    src_float_to_short_array(P->mix_flt, P->mix_buf, n);
-  }
-
-  return E_OK;
-}
-
-#else
-
-static long fill_cb(void *cb_data, float **data)
-{
-  chan_t * C = (chan_t *) cb_data;
-  const int n = sizeof(C->resample.inp) / sizeof(*C->resample.inp);
-  chan_flread(*data = C->resample.inp, C, n);
-  dmsg("%c: fill(%p,%d)\n", C->id, C->resample.inp, n);
-  return n;
-}
-
-static int mix_resample(play_t * const P)
-{
-  int k;
-  const int n = P->pcm_per_tick;
-
-  for (k=0; k<4; ++k) {
-    chan_t * C = P->chan + k;
-
-    if (!C->mix.pcm) {
-      if (k == 0)
-        memset(P->mix_flt, 0, n* sizeof(float));
-      continue;
-    } else {
-      const int nmaxi = sizeof(C->resample.out)/sizeof(*C->resample.out);
-      const double ratio = P->splratio / (double) C->mix.stp;
-      int i, err;
-      float * flt = P->mix_flt;
-      int nneed = n;
-
-      if (C->trig) {
-        err = src_reset(C->resample.st);
-        if (err) {
-          emsg("%c: resample(reset): %s\n",
-               C->id, src_strerror(err));
-          return E_MIX;
-        }
-        assert (ratio > 1.0/20.0 && ratio<20.0);
-        assert (C->mix.idx == 0);
-        err = src_set_ratio(C->resample.st, ratio);
-        if (err) {
-          emsg("%c: resample(ratio:%.3lf): %s\n",
-               C->id, ratio, src_strerror(err));
-          return E_MIX;
-        }
-      }
-
-      /* Fill this voice */
-      for ( nneed = n; nneed > 0; ) {
-        int nread, nwant;
-
-        if ( ( nwant = nneed ) > nmaxi )
-          nwant = nmaxi;
-
-        nread = src_callback_read(C->resample.st, ratio, nwant, C->resample.out);
-        if (nread <= 0) {
-          err = src_error(C->resample.st);
-          emsg("%c: resample(read,%p,%.3lf,%d): %s\n",
-               C->id, C->resample.out, ratio, nwant, src_strerror(err));
-          return E_MIX;
-        }
-
-        assert(nread == nwant);
-
-        dmsg("%c: nneed:%d nwant:%d nread:%d\n", C->id, nneed, nwant, nread);
-
-        if (k == 0) {
-          for ( i=0; i<nread; ++i )
-            *flt++ = C->resample.out[i];
-        } else {
-          for ( i=0; i<nread; ++i )
-            *flt++ += C->resample.out[i];
-        }
-
-        nneed -= nread;
-      }
-
-      assert(flt-n == P->mix_flt);
-      assert(nneed == 0);
-    }
-  }
-
-
-  if (1) {
-    fltoi16(P->mix_buf, P->mix_flt, n);
-  } else {
-    src_float_to_short_array(P->mix_flt, P->mix_buf, n);
-  }
-
-  return E_OK;
-}
-#endif
-
-#endif
-
-/* ----------------------------------------------------------------------
- * Native legacy mixer
- * ----------------------------------------------------------------------
- */
-
-#ifdef NO_QERP
-# define NERP "none"
-# define ADDPCM() *b++ += (int8_t)(pcm[idx>>16]) << 6; idx += stp
-#else
-# define NERP "qerp"
-
-/* Lagrange Polynomial Quadratic interpolation.
  *
- * GB: Interpolation is a reconstruction filter. It's relatively good
- *     for up-sampling. In most situation the output is at a higher
- *     sampling rate than the input.
- *
- *     However this is not a proper interpolation filter for DSP
- *     purpose. It causes -- zero-order hold -- distortion in the
- *     original pass-band. We should pass the interpolated data
- *     through a low pass filter (anti-imaging or interpolation
- *     filter). In DSP, interpolation is also called zero-packing.
- *
- *     For down-sampling we need anti-aliasing filter usually some
- *     kind of low-pass filter prior to a simple decimation process.
- */
-static inline int lagrange(const int8_t * const pcm, uint_t idx)
-{
-  const int j = (idx >> 9) & 0x7F;      /* the mid point is f(.5) */
-  const int i = idx >> 16;
-
-  const int p1 = pcm[i+0];              /* f(0) */
-  const int p2 = pcm[i+1];              /* f(.5) */
-  const int p3 = pcm[i+2];              /* f(1) */
-
-  /* f(x) = ax^2+bx+c */
-  const int c =    p1            ;
-  const int b = -3*p1 +4*p2 -  p3;
-  const int a =  2*p1 -4*p2 +2*p3;
-
-  /* x is fp8; x^2 is fp16; r is fp16 => 24bit */
-  int r =
-    ( ( a * j * j) +
-      ( b * j << 8 ) +
-      ( c << 16 )
-      );
-
-  /* scale r to 14-bit so that 4 voices fit into a 16 bit integer
-   * Apply an empirical additional 3/4 scale to avoid clipping as the
-   * interpolation can generate values outside the sample range. */
-  r = ( r * 3) >> ( 2+24-14 );
-
-#if 0
-  if (r < -0x2000 || r > 0x1fff)
-    dmsg("r[%d,%d,%d,%02x] = %d %05x\n",
-         p1,p2,p3,j, r>>6, r & 0xfffff);
-#endif
-
-#if 0
-  if (r < -0x2000)
-    return -0x2000;
-  if (r > 0x1fff)
-    return 0x1fff;
-#else
-  assert ( r >= -0x2000 );
-  assert ( r <   0x2000 );
-#endif
-
-  return r;
-}
-
-#define ADDPCM() *b += lagrange(pcm,idx); ++b; idx += stp
-
-#endif
-
-static inline
-void mix_gen(play_t * const P, const int k, int16_t * restrict b, int n)
-{
-  chan_t * const C = P->chan + k;
-  const int8_t * const pcm = (const int8_t *)C->mix.pcm;
-
-  assert(n > 0 && n <= MIXBLK);
-  assert(k >= 0 && k < 4);
-
-  if (pcm) {
-    uint_t idx = C->mix.idx;
-    uint_t stp = C->mix.xtp;
-    do {
-      ADDPCM();
-    } while(--n);
-    stp = C->mix.len;
-    if (idx >= stp) {
-      if (!C->mix.lpl)
-        C->mix.pcm = 0;
-      else
-        while ( (idx -= C->mix.lpl) >= stp );
-    }
-    C->mix.idx = idx;
-  }
-}
-
-static void mix_add1(play_t * const P, const int k, int16_t * b)
-{
-  mix_gen(P, k, b, MIXBLK);
-}
-
-static void mix_addN(play_t * const P, const int k, int16_t * b, const int n)
-{
-  mix_gen(P, k, b, n);
-}
-
-static int mix_all(play_t * const P)
-{
-  int16_t * restrict b;
-  int k, n;
-
-  /* Clear mix buffer */
-  memset(P->mix_buf, 0, P->pcm_per_tick<<1);
-
-  /* re-scale step to our sampling rate */
-  for (k=0; k<4; ++k) {
-    chan_t * const C = P->chan+k;
-    C->mix.xtp = C->mix.stp * P->song.khz * 10u / (P->spr/100u);
-  }
-
-  /* Mix per block of MIXBLK samples */
-  for (b=P->mix_buf, n=P->pcm_per_tick;
-       n >= MIXBLK;
-       b += MIXBLK, n -= MIXBLK)
-    for (k=0; k<4; ++k)
-      mix_add1(P, k, b);
-
-  if (n > 0)
-    for (k=0; k<4; ++k)
-      mix_addN(P, k, b, n);
-
-  return E_OK;
-}
-
-/* ----------------------------------------------------------------------
- * quartet player
  * ----------------------------------------------------------------------
  */
-
-static int zz_play(play_t * P)
-{
-  int k;
-  assert(P);
-
-  /* Setup player */
-  for (k=0; k<4; ++k) {
-    chan_t * const C = P->chan+k;
-    sequ_t * seq;
-    uint_t cmd;
-
-    C->id  = 'A'+k;
-    C->num = k;
-    C->seq = P->song.seq[k];
-    C->cur = P->chan[k].seq;
-    for ( seq=C->seq; (cmd=u16(seq->cmd)) != 'F' ; ++seq) {
-      switch(cmd) {
-      case 'P': case 'R': case 'S':
-        if (!C->sq0) C->sq0 = seq;
-        C->sqN = seq;
-      }
-    }
-    C->end = seq;
-    assert(C->sq0);
-    assert(C->sqN);
-    dmsg("%c: [%05u..%05u..%05u]\n",
-         'A'+k,
-         (uint_t)(C->sq0-C->seq),
-         (uint_t)(C->sqN-C->seq),
-         (uint_t)(C->end-C->seq));
-  }
-  P->has_loop = opt_mute;
-
-  for (;;) {
-    int triggered = 0;
-
-    ++P->tick;
-
-    for (k=0; k<4; ++k) {
-      chan_t * const C = P->chan+k;
-      sequ_t * seq = C->cur;
-
-      if ( opt_mute & (1<<k) )
-        continue;
-      C->trig = 0;
-
-      /* Portamento */
-      if (C->pta.stp) {
-        C->mix.stp += C->pta.stp;
-        if (C->pta.stp > 0) {
-          if (C->mix.stp >= C->pta.aim) {
-            C->mix.stp = C->pta.aim;
-            C->pta.stp = 0;
-          }
-        } else if (C->mix.stp <= C->pta.aim) {
-          C->mix.stp = C->pta.aim;
-          C->pta.stp = 0;
-        }
-      }
-
-      if (C->wait) --C->wait;
-      while (!C->wait) {
-        /* This could be an endless loop on empty track but it should
-         * have been checked earlier ! */
-        uint_t const cmd = u16(seq->cmd);
-        uint_t const len = u16(seq->len);
-        uint_t const stp = u32(seq->stp);
-        uint_t const par = u32(seq->par);
-        ++seq;
-
-#if 0 && defined(DEBUG)
-        dmsg("%c: %04u %c %04x %08x %04x-%04x\n",
-             'A'+k,
-             (uint_t)(seq-1-C->seq),
-             isgraph(cmd)?cmd:'?',
-             len,stp,par>>16,(par&0xFFFF));
-#endif
-        switch (cmd) {
-
-        case 'F':                       /* End-Voice */
-          seq = C->seq;
-          P->has_loop |= 1<<k;
-          C->has_loop++;
-          C->loop_level = 0;            /* Safety net */
-          dmsg("%c: [%c%c%c%c] end @%u +%u\n",
-               'A'+k,
-               ".A"[1&(P->has_loop>>0)],
-               ".B"[1&(P->has_loop>>1)],
-               ".C"[1&(P->has_loop>>2)],
-               ".D"[1&(P->has_loop>>3)],
-               P->tick,
-               C->has_loop);
-          break;
-
-        case 'V':                       /* Voice-Change */
-          C->curi = par >> 2;
-          break;
-
-        case 'P':                       /* Play-Note */
-          if (C->curi < 0 || C->curi >= P->vset.nbi) {
-            emsg("%c[%u]@%u: using invalid instrument number -- %d/%d\n",
-                 'A'+k, (uint_t)(seq-1-C->seq), P->tick,
-                 C->curi+1,P->vset.nbi);
-            return E_SNG;
-          }
-          if (!P->vset.inst[C->curi].len) {
-            emsg("%c[%u]@%u: using tainted instrument -- I#%02u\n",
-                 'A'+k, (uint_t)(seq-1-C->seq), P->tick,
-                 C->curi+1);
-            return E_SET;
-          }
-
-          C->trig = 1;
-
-          /* Copy current instrument to channel */
-          C->mix.idx = 0;
-          C->mix.pcm = P->vset.inst[C->curi].pcm;
-          C->mix.len = P->vset.inst[C->curi].len;
-          C->mix.lpl = P->vset.inst[C->curi].lpl;
-          C->mix.end = P->vset.inst[C->curi].end + C->mix.pcm;
-
-          if (P->mixer == mix_all) {
-            C->mix.len <<= 16;
-            C->mix.lpl <<= 16;
-          }
-
-          /* Set step and duration / reset slide */
-          C->mix.stp = C->pta.aim = stp;
-          C->pta.stp = 0;
-          C->wait = len;
-
-          triggered |= 1<<(k<<3);
-          break;
-
-        case 'R':                       /* Rest */
-          C->mix.pcm = 0;
-          C->wait = len;
-          triggered |= 2<<(k<<3);
-          break;
-
-        case 'S':                       /* Slide-to-note */
-          C->pta.aim = stp;
-          C->wait    = len;
-          C->pta.stp = (int32_t)par;
-          triggered |= 4<<(k<<3);
-          break;
-
-        case 'l':                       /* Set-Loop-Point */
-          if (C->loop_level < MAX_LOOP) {
-            const int l = C->loop_level++;
-            C->loop[l].seq = seq;
-            C->loop[l].cnt = 0;
-            dmsg("%c: set loop[%d] point @%u\n",
-                 'A'+k, l, (uint_t)(seq-C->seq));
-          } else {
-            emsg("%c off:%u tick:%u -- loop stack overflow\n",
-                 'A'+k, (uint_t)(seq-C->seq-1), P->tick);
-            return E_PLA;
-          }
-          break;
-
-        case 'L':                       /* Loop-To-Point */
-        {
-          int l = C->loop_level - 1;
-
-          if (l < 0) {
-            C->loop_level = 1;
-            l = 0;
-            C->loop[0].cnt = 0;
-            C->loop[0].seq = C->seq;
-          }
-
-          if (!C->loop[l].cnt) {
-            /* Start a new loop unless the loop point is the start of
-             * the sequence and the next row is the end.
-             *
-             * This (not so) effectively removes useless loops on the
-             * whole sequence that messed up the song duration.
-             */
-
-            /* if (seq >= C->sqN) */
-            /*   dmsg("'%c: seq:%05u loop:%05u sq:[%05u..%05u]\n", */
-            /*        'A'+k, */
-            /*        seq - C->seq, */
-            /*        C->loop[l].seq - C->seq, */
-            /*        C->sq0 - C->seq, */
-            /*        C->sqN - C->seq); */
-
-            if (C->loop[l].seq <= C->sq0 && seq > C->sqN) {
-              C->loop[l].cnt = 1;
-            } else {
-              C->loop[l].cnt = (par >> 16) + 1;
-            }
-            dmsg("%c: set loop[%d] @%u x%u\n",
-                 'A'+k, l, (uint_t)(C->loop[l].seq-C->seq),
-                 C->loop[l].cnt-1);
-          }
-
-          if (--C->loop[l].cnt) {
-            dmsg("%c: loop[%d] to @%u rem:%u\n",
-                 'A'+k, l, (uint_t)(C->loop[l].seq-C->seq),
-                 C->loop[l].cnt);
-            seq = C->loop[l].seq;
-          } else {
-            --C->loop_level;
-            assert(C->loop_level >= 0);
-            dmsg("%c: loop[%d] end\n",'A'+k,C->loop_level);
-          }
-
-
-        } break;
-
-        default:
-          emsg("invalid seq-%c command #%04X\n",'A'+k,cmd);
-          return E_PLA;
-        } /* switch */
-      } /* while !wait */
-      C->cur = seq;
-    } /* per chan */
-
-    /* End detection. */
-    if ( ( P->end_detect && P->has_loop == 15 ) ||
-         ( P->max_ticks && P->tick > P->max_ticks ) )
-      break;
-
-    /* audio output */
-    if (P->ao.dev || P->outfp) {
-      int n = P->pcm_per_tick << 1;
-#ifndef NO_AO
-      if (P->ao.info && P->ao.info->type == AO_TYPE_LIVE) {
-        static int olds = -1;
-        FILE * const out = stdout_or_stderr();
-        const uint_t s = P->tick / P->rate;
-        if (newline || s != olds) {
-          olds = s;
-          fprintf(out,"\r|> %02u:%02u", s / 60u, s % 60u);
-          newline = 0;
-        }
-        fflush(out);
-      }
-#endif
-      if (P->mixer(P))
-        return E_MIX;
-
-      if (P->ao.dev) {
-#ifndef NO_AO
-        if (!ao_play(P->ao.dev, (void*)P->mix_buf, n)) {
-          emsg("libao: failed to play buffer #%d \"%s\"\n",
-               P->ao.id, P->ao.info->short_name);
-          return E_OUT;
-        }
-#endif
-      } else if ( n != fwrite(P->mix_buf, 1, n, P->outfp) ) {
-        return sysmsg("<stdout>","write");
-      }
-    }
-
-    assert(!memcmp(&P->mix_buf[P->pcm_per_tick],"1337",4));
-    assert(!P->mix_flt || !memcmp(&P->mix_flt[P->pcm_per_tick],"1337",4));
-
-  } /* loop ! */
-
-  if (P->end_detect && P->has_loop != 15)
-    wmsg("unable to detect song end [%s%s%s%s]. Aborting.\n",
-         "A"+((P->has_loop>>0)&1),
-         "B"+((P->has_loop>>1)&1),
-         "C"+((P->has_loop>>2)&1),
-         "D"+((P->has_loop>>3)&1)
-      );
-
-  return E_OK;
-}
 
 static const char * tickstr(uint_t ticks, uint_t rate)
 {
@@ -1711,153 +149,6 @@ static const char * tickstr(uint_t ticks, uint_t rate)
   return s;
 }
 
-
-static int zing_zong(play_t * P)
-{
-  int ecode = E_OUT;
-
-  imsg("zing that zong at %uhz for %s%s\n"
-       "vset: \"%s\" (%ukHz, %u sound)\n"
-       "song: \"%s\" (%ukHz, %u, %u, %u:%u)\n",
-       P->spr,
-       P->end_detect ? "max " : "",
-       tickstr(P->max_ticks, P->rate),
-       basename(P->setpath), P->vset.khz, P->vset.nbi,
-       basename(P->sngpath), P->song.khz, P->song.barm,
-       P->song.tempo, P->song.sigm, P->song.sigd);
-#ifndef NO_AO
-  if (P->wavpath)
-    imsg("wave: \"%s\"\n", P->wavpath);
-#endif
-
-  if (opt_stdout) {
-    /* Setup for stdout:
-     *
-     * Currently for Windows platform only where we have to set the
-     * file mode to binary.
-     */
-    P->outfp = stdout;
-
-    dmsg("output to stdout!\n");
-#ifdef WIN32
-    if (1) {
-      int err, fd = fileno(P->outfp);
-      dmsg("stdout fd:%d\n", fd);
-      if (fd == -1) {
-        ecode = sysmsg("<stdout>","fileno");
-        goto error;
-      }
-
-      errno = 0;
-      err = _setmode(fd, _O_BINARY);
-      dmsg("setmode returns: %d\n", err);
-      if ( err == -1 || errno ) {
-        sysmsg("<stdout>","setmode");
-      } else {
-        dmsg("<stdout> should be in binary mode\n");
-      }
-    }
-#endif
-  }
-
-#ifndef NO_AO
-  else {
-    /* Setup libao */
-    ao_initialize();
-    P->ao.fmt.bits = 16;
-    P->ao.fmt.rate = P->spr;
-    P->ao.fmt.channels = 1;
-    P->ao.fmt.byte_format = AO_FMT_NATIVE;
-    P->ao.id = P->wavpath
-      ? ao_driver_id("wav")
-      : ao_default_driver_id()
-      ;
-    P->ao.info = ao_driver_info(P->ao.id);
-    if (!P->ao.info) {
-      emsg("libao: failed to get driver #%d info\n", P->ao.id);
-      goto error;
-    }
-    P->ao.dev = P->wavpath
-      ? ao_open_file(P->ao.id, P->wavpath, 1, &P->ao.fmt, 0)
-      : ao_open_live(P->ao.id, &P->ao.fmt, 0)
-      ;
-    if (!P->ao.dev) {
-      emsg("libao: failed to initialize audio driver #%d \"%s\"\n",
-           P->ao.id, P->ao.info->short_name);
-      goto error;
-    }
-    dmsg("ao %s device \"%s\" is open\n",
-         P->ao.info->type == AO_TYPE_LIVE ? "live" : "file",
-         P->ao.info->short_name);
-    P->spr = P->ao.fmt.rate;
-  }
-#endif
-
-  /* ----------------------------------------
-   *  Mix buffers
-   * ---------------------------------------- */
-
-  P->pcm_per_tick = (P->spr + (P->rate>>1)) / P->rate;
-  dmsg("pcm per tick: %u (%ux8+%u)\n",
-       P->pcm_per_tick, P->pcm_per_tick>>3, P->pcm_per_tick&7);
-
-  P->mix_buf = (int16_t *) my_malloc("mix-buf",2*P->pcm_per_tick+4);
-  if (!P->mix_buf) {
-    ecode = E_SYS; goto error;
-  }
-  memcpy(&P->mix_buf[P->pcm_per_tick],"1337",4);
-
-  if (P->splmode >= 0) {
-    P->mix_flt = (float *) my_malloc("mix-flt",4*P->pcm_per_tick+4);
-    if (!P->mix_flt) {
-      ecode = E_SYS; goto error;
-    }
-    memcpy(&P->mix_flt[P->pcm_per_tick],"1337",4);
-  }
-
-  /* ----------------------------------------
-   *  Run
-   * ---------------------------------------- */
-
-  ecode = zz_play(&play);
-  ensure_newline();
-
-  assert(!memcmp(&P->mix_buf[P->pcm_per_tick],"1337",4));
-  assert(!P->mix_flt || !memcmp(&P->mix_flt[P->pcm_per_tick],"1337",4));
-
-  /* ----------------------------------------
-   *  Clean up
-   * ---------------------------------------- */
-error:
-  /* Close and ignore closing error if error is already raised */
-  if (P->outfp) {
-    dmsg("Closing <stdout>\n");
-    if (( fflush(P->outfp) || fclose(P->outfp)) && ecode == E_OK)
-      ecode = sysmsg("<stdout>","flush/close");
-    P->outfp = 0;
-  }
-
-#ifndef NO_AO
-  if (!opt_stdout) {
-    if (P->ao.dev && !ao_close(P->ao.dev) && ecode == E_OK) {
-      sysmsg("audio","close");
-      ecode = E_OUT;
-    }
-    P->ao.dev = 0;
-    P->ao.info = 0;
-    ao_shutdown();
-  }
-#endif
-
-  my_free("mix-buf", &P->mix_buf);
-  my_free("mix-flt", &P->mix_flt);
-  bin_free(&P->vset.bin);
-  bin_free(&P->song.bin);
-  bin_free(&P->info.bin);
-
-  return ecode;
-}
-
 /* ----------------------------------------------------------------------
  * Usage and version
  * ----------------------------------------------------------------------
@@ -1875,7 +166,8 @@ error:
 
 static void print_usage(void)
 {
-  puts(
+  int i;
+  printf (
     "Usage: zingzong [OPTIONS] <inst.set> <song.4v>" OUTWAV "\n"
     "       zingzong [OPTIONS] <music.q4>" OUTWAV "\n"
     "\n"
@@ -1884,44 +176,21 @@ static void print_usage(void)
     "OPTIONS:\n"
     " -h --help --usage  Print this message and exit.\n"
     " -V --version       Print version and copyright and exit.\n"
-    " -t --tick=HZ       Set player tick rate (default is 200hz)."
-    );
-#ifdef NO_SRATE
-  printf(
-    " -r --rate=HZ       Set sampling rate (default is %ukHz).\n",
-    SPR_DEF/1000u);
-#else
-  printf(
+    " -t --tick=HZ       Set player tick rate (default is 200hz).\n"
     " -r --rate=[M,]HZ   Set re-sampling method and rate (%s,%uK).\n",
-    "Best",
-    SPR_DEF/1000u);
+    mixers[def_mixer_id]->name, SPR_DEF/1000u);
 
-  if (1) {
-    int i;
-    static const char *x[][2] = {
-#ifdef NO_QERP
-      { NERP,"No interp" },
-#else
-      { NERP, "Lagrange quadratic interp" },
-#endif
-      { "best", "Band limited sinc interp (145dB SNR, 96% BW)" },
-      { "medium", "Band limited sinc interp (121dB SNR, 90% BW)" },
-      { "fast", "Band limited sinc interp ( 97dB SNR, 80% BW)" },
-      { "zoh", "Zero order hold interp (very fast, poor quality)." },
-      { "linear", "Linear interp (very fast, poor quality)." },
-      { 0,0 }
-    };
-    for (i=0; x[i][0]; ++i)
-      printf("%6s `%s' %s %s\n",
-             i?"" : "M :=",
-             x[i][0], "........."+strlen(x[i][0]),x[i][1]);
+  for (i=0; mixers[i]; ++i) {
+    const  mixer_t * const m = mixers[i];
+    printf("%6s `%s' %s %s.\n",
+           i?"":" M :=", m->name, "........."+strlen(m->name), m->desc);
   }
-#endif
 
   puts(
     " -l --length=TIME   Set play time.\n"
     " -m --mute=ABCD     Mute selected channels (bit-field or string).\n"
     " -c --stdout        Output raw sample to stdout.\n"
+    " -n --null          Output to the void.\n"
 #ifndef NO_AO
     " -w --wav           Generated a .wav file (implicit if output is set).\n"
     " -f --force         Clobber output .wav file.\n"
@@ -1978,13 +247,17 @@ static char * fileext(char * base)
 /**
  * Create .wav filename from another filename
  */
-static int wav_filename(char ** pwavname, char * sngname)
+static int wav_filename(str_t ** pwavname, char * sngname)
 {
-  char *leaf=basename(sngname), *ext=fileext(leaf), *wavname;
+  char *leaf=basename(sngname), *ext=fileext(leaf);
+  str_t * str;
   int l = ext - leaf;
-  *pwavname = wavname = my_malloc("wav-path", l+5);
-  memcpy(wavname, leaf, l);
-  strcpy(wavname+l, ".wav");
+
+  *pwavname = str = zz_stralloc(l+5);
+  if (!str)
+    return E_SYS;
+  memcpy(str->s, leaf, l);
+  strcpy(str->s+l, ".wav");
   return E_OK;
 }
 
@@ -2108,42 +381,28 @@ static int uint_arg(char * arg, const char * name,
 /**
  * Parse -r,--rate=[M,Hz].
  */
-static int uint_spr(char * arg, const char * name, int * prate, int * pmode)
+static int uint_spr(char * arg, const char * name, int * prate, int * pmixer)
 {
   int rate=SPR_DEF, i;
-  static const struct {
-    int   mode;
-    char *name;
-  } modes[] = {
-    { -1, NERP },
-#ifndef NO_SRATE
-    { SRC_SINC_BEST_QUALITY,"best" },
-    { SRC_SINC_MEDIUM_QUALITY, "medium"},
-    { SRC_SINC_FASTEST, "fast" },
-    { SRC_ZERO_ORDER_HOLD, "zoh" },
-    { SRC_LINEAR, "linear" },
-#endif
-    { 666, 0 }
-  };
 
   if (isalpha(arg[0])) {
     /* Get re-sampling mode */
-    for (i=0; modes[i].name; ++i) {
+    for (i=0; mixers[i]; ++i) {
       int a, b, j;
       for (a=b=j=0 ; ; ++j) {
-        a = tolower(modes[i].name[j]);
+        a = tolower(mixers[i]->name[j]);
         b = tolower(arg[j]);
         if (!a || !b || a != b)
           break;
       }
       if (!b || b == ',') {
-        *pmode = modes[i].mode;
-        dmsg("smode=%s(%d) rem=[%s]\n", modes[i].name, modes[i].mode, arg);
+        *pmixer = i;
+        dmsg("smode=%s(%d) rem=[%s]\n", mixers[i]->name, i, arg);
         arg = !b ? 0 : arg+j+1;
         break;
       }
     }
-    if (!modes[i].name) {
+    if (!mixers[i]) {
       emsg("invalid sampling mode -- %s=%s\n", name, arg);
       return -1;
     }
@@ -2205,7 +464,7 @@ static int too_many_arguments(void)
 
 int main(int argc, char *argv[])
 {
-  static char sopts[] = "hV" WAVOPT "c" "r:t:l:m:";
+  static char sopts[] = "hV" WAVOPT "cn" "r:t:l:m:";
   static struct option lopts[] = {
     { "help",    0, 0, 'h' },
     { "usage",   0, 0, 'h' },
@@ -2216,6 +475,7 @@ int main(int argc, char *argv[])
     { "force",   0, 0, 'f' },
 #endif
     { "stdout",  0, 0, 'c' },
+    { "null",    0, 0, 'n' },
     { "tick=",   1, 0, 't' },
     { "rate=",   1, 0, 'r' },
     { "length=", 1, 0, 'l' },
@@ -2223,8 +483,9 @@ int main(int argc, char *argv[])
     { 0 }
   };
   int c, can_do_wav=0, ecode=E_ERR;
-  FILE * f=0;
-  uint8_t hd[222];
+  vfs_t inp = 0;
+  static uint8_t hd[222];
+  play_t * const P = &play;
 
   assert( sizeof(songhd_t) ==  16);
   assert( sizeof(sequ_t)   ==  12);
@@ -2238,10 +499,11 @@ int main(int argc, char *argv[])
     case 'w': opt_wav = 1; break;
     case 'f': opt_force = 1; break;
 #endif
+    case 'n': opt_null = 1; break;
     case 'c': opt_stdout = 1; break;
     case 'l': opt_length = optarg; break;
     case 'r':
-      if (-1 == uint_spr(optarg, "rate", &opt_splrate, &opt_splmode))
+      if (-1 == uint_spr(optarg, "rate", &opt_splrate, &opt_mixerid))
         RETURN (E_ARG);
       break;
     case 't':
@@ -2277,136 +539,164 @@ int main(int argc, char *argv[])
     RETURN (too_few_arguments());
 
 #ifndef NO_AO
-  if (opt_wav && opt_stdout) {
-    emsg("-w/--wav and -c/--stdout are exclusive\n");
+  if (opt_wav+opt_stdout+opt_null > 1) {
+    emsg("-w/--wav, -c/--stdout and -n/--null are exclusive options\n");
     RETURN (E_ARG);
   }
-  can_do_wav = !opt_stdout;
+  can_do_wav = !(opt_stdout+opt_null);
 #endif
 
-  memset(&play,0,sizeof(play));
-  play.mixer      = mix_all;
-  play.spr        = opt_splrate;
-  play.rate       = opt_tickrate;
-  play.max_ticks  = MAX_DETECT * play.rate;
-  play.end_detect = !opt_length;
-  if (!play.end_detect) {
-    ecode = time_parse(&play.max_ticks, opt_length);
+  memset(P,0,sizeof(*P));
+
+  if (opt_mixerid < 0)
+    opt_mixerid = def_mixer_id;
+
+  P->mixer      = mixers[opt_mixerid];
+  P->spr        = opt_splrate;
+  P->rate       = opt_tickrate;
+  P->max_ticks  = MAX_DETECT * P->rate;
+  P->end_detect = !opt_length;
+  if (!P->end_detect) {
+    ecode = time_parse(&P->max_ticks, opt_length);
     if (ecode)
       goto error_exit;
   }
 
   /* Get the header of the first file to check if its a .4q file */
-  play.setpath = play.sngpath = argv[optind++];
-  ecode = my_fopen(&f, play.setpath);
-  if (ecode)
+  P->vseturi = P->strings+0;
+  P->songuri = P->strings+1;
+  P->infouri = P->strings+2;
+  P->waveuri = 0;
+
+  zz_strset(P->vseturi, argv[optind++]);
+  zz_strset(P->songuri, P->vseturi->s);
+  zz_strset(P->infouri, P->vseturi->s);
+
+  ecode = E_SYS;
+  if (vfs_open_uri(&inp, P->vseturi->s))
     goto error_exit;
-  ecode = my_fread(f, play.setpath, hd, 20);
-  if (ecode)
+  ecode = E_INP;
+  if (vfs_read_exact(inp, hd, 20))
     goto error_exit;
 
   /* Check for .q4 "QUARTET" magic id */
   if (!memcmp(hd,"QUARTET",8)) {
-    uint_t sngsize = u32(hd+8), setsize = u32(hd+12), infsize = u32(hd+16);
+    q4_t q4;
+    memset(&q4,0,sizeof(q4));
+
+    q4.song = &P->song; q4.songsz = u32(hd+8);
+    q4.vset = &P->vset; q4.vsetsz = u32(hd+12);
+    q4.info = &P->info; q4.infosz = u32(hd+16);
     dmsg("QUARTET header [sng:%u set:%u inf:%u]\n",
-         sngsize, setsize, infsize);
+         q4.songsz, q4.vsetsz, q4.infosz);
     if (optind+can_do_wav < argc)
       RETURN (too_many_arguments());
-    ecode = q4_load(f, play.setpath, &play, sngsize, setsize, infsize);
-    my_fclose(&f,play.setpath);
+    ecode = q4_load(inp , &q4);
+    vfs_del(&inp);
   }
+
   else if (optind >= argc)
     RETURN(too_few_arguments());
   else if (optind+1+can_do_wav < argc)
     RETURN (too_many_arguments());
   else {
+    /* emsg("not for now\n"); */
+    /* RETURN (E_666); */
+
     /* Load voice set file */
-    ecode = my_fread(f, play.setpath,hd+20, 222-20);
-    if (ecode)
+    ecode = E_INP;
+    if (vfs_read_exact(inp, hd+20, 222-20))
       goto error_exit;
 
-    ecode = vset_parse(&play.vset, play.setpath, f, hd, 0);
+    ecode = vset_parse(&P->vset, inp, hd, 0);
     if (ecode)
       goto error_exit;
+    vfs_del(&inp);
 
-    my_fclose(&f,play.setpath);
-
-    play.sngpath = argv[optind++];
-    ecode = song_load(&play.song, play.sngpath);
+    zz_strset(P->songuri,argv[optind++]);
+    ecode = song_load(&P->song, P->songuri->s);
   }
   if (ecode)
     goto error_exit;
 
 #ifndef NO_AO
   if (optind < argc) {
-    play.wavpath = argv[optind++];
+    P->waveuri = P->strings+3;
+    zz_strset(P->waveuri,argv[optind++]);
     opt_wav = 1;
   }
 
-  if (opt_wav && !play.wavpath) {
-    ecode = wav_filename(&play.wavfree, play.sngpath);
+  if (opt_wav && !P->waveuri) {
+    ecode = wav_filename(&P->waveuri, P->songuri->s);
     if (ecode)
       goto error_exit;
-    play.wavpath = play.wavfree;
   }
 
-  if (!opt_force && play.wavpath) {
+  if (!opt_force && P->waveuri) {
     /* Unless opt_force is set, tries to load 4cc out of the output
      * .wav file. Non RIFF files are rejected unless they are empty.
      */
-    f = fopen(play.wavpath,"rb");
+    FILE * f = fopen(P->waveuri->s,"rb");
     if (f) {
       hd[3] = 0;     /* memcmp() will fail unless 4 bytes are read. */
       if (fread(hd,1,4,f) != 0 && memcmp(hd,"RIFF",4)) {
         ecode = E_OUT;
-        emsg("output file exists and is not a RIFF wav -- %s\n", play.wavpath);
+        emsg("output file exists and is not a RIFF wav -- %s\n",
+             P->waveuri->s);
         goto error_exit;
       }
-      my_fclose(&f,play.wavpath);
+      fclose(f);
     }
     errno = 0;
   }
 #endif
+  /* ----------------------------------------
+   *  Output
+   * ---------------------------------------- */
 
-
-  play.splmode = opt_splmode;
-#ifndef NO_SRATE
-  if (opt_splmode >= 0) {
-    int k, err;
-    i8tofl_init();
-
-    assert(play.spr);
-    assert(play.song.khz);
-    play.splratio = (65.536 * play.spr) / play.song.khz;
-
-    for ( k=0; k<4; ++k ) {
-      chan_t * C = play.chan+k;
-      SRC_STATE * st;
-#if RESAMPLE_MODE == 1
-      st = src_new(play.splmode, 1, &err);
-#else
-      st = src_callback_new(fill_cb, play.splmode, 1, &err, C);
+  if (opt_stdout)
+    P->out = out_raw_open(opt_splrate,"stdout:");
+#ifndef NO_AO
+  else if (!opt_null)
+    P->out = out_ao_open(opt_splrate, P->waveuri ? P->waveuri->s : 0);
 #endif
-      if (!st) {
-        emsg("%c: resample(converter=%d): %s\n",
-             'A'+k, play.splmode, src_strerror(err));
-        RETURN (E_ERR);
-      }
-      C->resample.st = st;
-      C->resample.sd.data_in = C->resample.inp;
-      C->resample.sd.data_out = C->resample.out;
-      C->resample.sd.src_ratio = 1.0;
-    }
-    play.mixer = mix_resample;
-  }
+  else
+    P->out = out_raw_open(opt_splrate,"null:");
+  if (!P->out)
+    RETURN (E_OUT);
+
+  dmsg("Output via %s to \"%s\"\n", P->out->name, P->out->uri);
+  P->spr = P->out->hz;
+  P->muted_voices = opt_mute;
+
+  imsg("Zing that zong\n"
+       " with the \"%s\" mixer at %uhz\n"
+       " for %s%s\n"
+       " via \"%s\"\n"
+       "vset: \"%s\" (%ukHz, %u sound)\n"
+       "song: \"%s\" (%ukHz, %u, %u, %u:%u)\n",
+       P->mixer->name,
+       P->spr,
+       P->end_detect ? "max " : "",
+       tickstr(P->max_ticks, P->rate), P->out->uri,
+       basename(P->vseturi->s), P->vset.khz, P->vset.nbi,
+       basename(P->songuri->s), P->song.khz, P->song.barm,
+       P->song.tempo, P->song.sigm, P->song.sigd);
+#ifndef NO_AO
+  if (P->waveuri)
+    imsg("wave: \"%s\"\n", P->waveuri->s);
 #endif
 
-  ecode = zing_zong(&play);
+  if (!ecode)
+    ecode = zz_init(P);
+  if (!ecode)
+    ecode = zz_play(P);
 
 error_exit:
   /* clean exit */
-  my_fclose(&f,play.setpath);
-  play_kill(&play);
+  vfs_del(&inp);
+  if (c = zz_kill(P), (c && !ecode))
+    ecode = c;
   ensure_newline();
   return ecode;
 }
