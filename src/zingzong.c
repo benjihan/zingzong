@@ -92,23 +92,14 @@ char me[] = PACKAGE_NAME;
 
 /* Options */
 static int opt_splrate=SPR_DEF, opt_mixerid=-1, opt_tickrate=200;
-static int opt_stdout, opt_null, opt_mute;
+static int opt_stdout, opt_null, opt_mute, opt_help;
 static char *opt_length;
 #ifndef NO_AO
 static int opt_wav, opt_force;
 #endif
 
 static play_t play;
-
-static mixer_t * const mixers[] = {
-  &mixer_none,
-  &mixer_qerp,
-#ifndef NO_SOXR
-  &mixer_soxr,
-#endif
-  0
-};
-static const int def_mixer_id = 1;
+static const int def_mixer_id = 1; /* zz:qerp */
 
 /* ----------------------------------------------------------------------
  *
@@ -164,7 +155,7 @@ static const char * tickstr(uint_t ticks, uint_t rate)
 # define OUTWAV ""
 #endif
 
-static void print_usage(void)
+static void print_usage(int level)
 {
   int i;
   printf (
@@ -177,14 +168,17 @@ static void print_usage(void)
     " -h --help --usage  Print this message and exit.\n"
     " -V --version       Print version and copyright and exit.\n"
     " -t --tick=HZ       Set player tick rate (default is 200hz).\n"
-    " -r --rate=[M,]HZ   Set re-sampling method and rate (%s,%uK).\n",
-    mixers[def_mixer_id]->name, SPR_DEF/1000u);
+    " -r --rate=[R,]HZ   Set re-sampling method and rate (%s,%uK).\n",
+    zz_mixers[def_mixer_id]->name, SPR_DEF/1000u);
 
-  for (i=0; mixers[i]; ++i) {
-    const  mixer_t * const m = mixers[i];
-    printf("%6s `%s' %s %s.\n",
-           i?"":" M :=", m->name, "........."+strlen(m->name), m->desc);
-  }
+  if (!level)
+    puts("                    Try `-hh' to print the list of [R]esampler.");
+  else
+    for (i=0; zz_mixers[i]; ++i) {
+      const  mixer_t * const m = zz_mixers[i];
+      printf("%6s `%s' %s %s.\n",
+             i?"":" R :=", m->name,"............."+strlen(m->name),m->desc);
+    }
 
   puts(
     " -l --length=TIME   Set play time.\n"
@@ -376,6 +370,64 @@ static int uint_arg(char * arg, const char * name,
   return v;
 }
 
+  /* if (!b || b == ',') { */
+  /*       *pmixer = i; */
+  /*       dmsg("smode=%s(%d) rem=[%s]\n", m->name, i, arg); */
+  /*       arg = !b ? 0 : arg+i+1; */
+  /*       break; */
+  /*     } */
+  /*   } */
+
+
+
+static char * xtrbrk(char * s, const char * tok)
+{
+  for ( ;*s && !strchr(tok,*s); ++s)
+    ;
+  return s;
+}
+
+/**
+ * @retval 0 no match
+ * @retval 1 perfect match
+ * @retval 2 partial match
+ */
+
+static int modecmp(const char * mix, char * arg,  char ** pend)
+{
+  const char *eng, *qua;
+  char *brk;
+  int len, elen, qlen, res = 0;
+
+  /* Split mix into "engine:quality" */
+  qua = strchr(eng = mix,':');
+  if (qua)
+    elen = qua++ - eng;
+  else {
+    elen = 0;
+    qua = mix;
+  }
+  qlen = strlen(qua);
+
+  brk = xtrbrk(arg,":,");
+  len = brk-arg;
+  if (*brk == ':') {
+    /* [arg:len] = engine */
+    if (len > elen || strncasecmp(eng,arg,len))
+      return 0;
+    res = 2 - (len == elen);   /* perfect if both have same len */
+    brk = xtrbrk(arg=brk+1,",");
+    len = brk-arg;
+  }
+  /* [arg:len] = quality */
+  if (len > qlen || strncasecmp(qua,arg,len))
+    return 0;
+  assert (*brk == 0 || *brk == ',');
+  *pend = brk + (*brk == ',');
+  res |= 2 - (len == qlen);
+  return res;
+}
+
 
 
 /**
@@ -383,32 +435,40 @@ static int uint_arg(char * arg, const char * name,
  */
 static int uint_spr(char * arg, const char * name, int * prate, int * pmixer)
 {
-  int rate=SPR_DEF, i;
+  int rate=SPR_DEF, i, f = -1;
+  char * end = 0;
 
   if (isalpha(arg[0])) {
+    const mixer_t * m;
     /* Get re-sampling mode */
-    for (i=0; mixers[i]; ++i) {
-      int a, b, j;
-      for (a=b=j=0 ; ; ++j) {
-        a = tolower(mixers[i]->name[j]);
-        b = tolower(arg[j]);
-        if (!a || !b || a != b)
-          break;
-      }
-      if (!b || b == ',') {
-        *pmixer = i;
-        dmsg("smode=%s(%d) rem=[%s]\n", mixers[i]->name, i, arg);
-        arg = !b ? 0 : arg+j+1;
+    for (i=0; !!(m = zz_mixers[i]); ++i) {
+      int res = modecmp(m->name, arg, &end);
+
+      if (res == 1) {
+        /* prefect match */
+        f = i; m = 0;
         break;
+      } else if (res) {
+        /* partial match */
+        if (f != -1)
+          break;
+        f = i;
       }
     }
-    if (!mixers[i]) {
-      emsg("invalid sampling mode -- %s=%s\n", name, arg);
+
+    if (f<0) {
+      emsg("invalid sampling method -- %s=%s\n", name, arg);
       return -1;
+    } else if (m) {
+      emsg("ambiguous sampling method -- %s=%s\n", name, arg);
+      return -1;
+    } else {
+      *pmixer = f;
     }
   }
-  if (arg)
-    rate = uint_arg(arg, name, SPR_MIN, SPR_MAX, 10);
+
+  if (end && *end)
+    rate = uint_arg(end, name, SPR_MIN, SPR_MAX, 10);
   if (rate != -1)
     *prate = rate;
   return rate;
@@ -493,7 +553,7 @@ int main(int argc, char *argv[])
   opterr = 0;
   while ((c = getopt_long (argc, argv, sopts, lopts, 0)) != -1) {
     switch (c) {
-    case 'h': print_usage(); return E_OK;
+    case 'h': opt_help++; break;
     case 'V': print_version(); return E_OK;
 #ifndef NO_AO
     case 'w': opt_wav = 1; break;
@@ -535,6 +595,11 @@ int main(int argc, char *argv[])
     }
   }
 
+  if (opt_help) {
+    print_usage(opt_help > 1);
+    return E_OK;
+  }
+
   if (optind >= argc)
     RETURN (too_few_arguments());
 
@@ -551,7 +616,7 @@ int main(int argc, char *argv[])
   if (opt_mixerid < 0)
     opt_mixerid = def_mixer_id;
 
-  P->mixer      = mixers[opt_mixerid];
+  P->mixer      = zz_mixers[opt_mixerid];
   P->spr        = opt_splrate;
   P->rate       = opt_tickrate;
   P->max_ticks  = MAX_DETECT * P->rate;
