@@ -23,9 +23,7 @@ Alternatively `zingzong` supports an convenient format that bundles both files i
     -V --version       Print version and copyright and exit.
     -t --tick=HZ       Set player tick rate (default is 200hz).
     -r --rate=[M,]HZ   Set re-sampling method and rate (Best,48K).
-     M := `none' ..... no interpolation (very fast/LQ).
-          `qerp' ..... lagrange quadratic interpolation (fast,MQ).
-          `soxr' ..... The SoX resampler (not so fast/HQ).
+                       Try `-hh' to print the list of [R]esampler.
     -l --length=TIME   Set play time.
     -m --mute=ABCD     Mute selected channels (bit-field or string).
     -c --stdout        Output raw sample to stdout.
@@ -65,22 +63,33 @@ For example to build a win64 standalone executable with a cross gcc
         CC=x86_64-w64-mingw32-gcc \
         PKGCONFIG="x86_64-w64-mingw32-pkg-config --static" \
         CFLAGS="-O3 -static -static-libgcc" \
-        SRATE_CFLAGS="-DNO_SRATE"
+        NO_SRATE=1
 
-### Defines that alter the built
+ | Make variable |                        Description                         |
+ |---------------|------------------------------------------------------------|
+ | `NO_AO`       | Set to 1 to disable libao support.                         |
+ | `NO_SOXR`     | Set to 1 to disable soxr support.                          |
+ | `NO_SRATE`    | Set to 1 to disable samplerate support.                    |
+ | `NO_SMARC`    | Set to 1 to disable smarc support.                         |
+ | `DEBUG`       | Set to defines below for default DEBUG CFLAGS.             |
+ | `PROFILE`     | Set to 1 for default PROFILING CFLAGS.                     |
+
+
+### Preprocessor defines that alter the built
 
  |     Define    |                        Description                         |
  |---------------|------------------------------------------------------------|
  |`HAVE_CONFIG_H`|To include config.h                                         |
- |   `DEBUG`     |Set to 1 for debug messages                                 |
- |   `NDEBUG`    |To removes assert; automatically set if DEBUG is not defined|
- |   `NO_QERP`   |To disable quadratic interpolation                          |
- |  `NO_LIBAO`   |To ignore libao support                                     |
- |  `NO_SRATE`   |To ignore samplerate library support                        |
+ | `DEBUG`       |Set to 1 for debug messages                                 |
+ | `NDEBUG`      |To remove assert; automatically set if DEBUG is not defined |
+ | `NO_AO`       |To ignore libao support                                     |
+ | `NO_SOXR`     |To ignore soxr support                                      |
+ | `NO_SRATE`    |To ignore samplerate support                                |
+ | `NO_SMARC`    |To ignore smarc support.                                    |
  | `MAX_DETECT`  |Set maximum time detection threshold (in seconds)           |
- |   `SPR_MIN`   |Set minimum sampling rate                                   |
- |   `SPR_MAX`   |Set maximum sampling rate                                   |
- |   `SPR_DEF`   |Set default sampling rate                                   |
+ | `SPR_MIN`     |Set minimum sampling rate                                   |
+ | `SPR_MAX`     |Set maximum sampling rate                                   |
+ | `SPR_DEF`     |Set default sampling rate                                   |
 
 ## License and copyright
 
