@@ -2,7 +2,7 @@
  * @file   mix_soxr.c
  * @author Benjamin Gerard AKA Ben/OVR
  * @date   2017-07-04
- * @brief  High quality mixer using libsoxr.
+ * @brief  High quality mixer using soxr.
  */
 
 #ifndef NO_SOXR
@@ -42,7 +42,7 @@ struct mix_data_s {
   soxr_quality_spec_t qspec;
   soxr_io_spec_t      ispec;
 
-  double   irate, orate, rate_min, rate_max;
+  double   rate, irate, orate, rate_min, rate_max;
   mix_chan_t chan[4];
 
   float flt_buf[1];                     /* /!\ always last /!\ */
@@ -96,66 +96,6 @@ size_t /*odone*/ soxr_output(/* Resample and output a block of data.*/
   size_t olen);                /* Amount of data to output; >= odone. */
 #endif
 
-/* ---------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------- */
-
-
-/* ----------------------------------------------------------------------
-
-   float <-> int conversion
-
-   ---------------------------------------------------------------------- */
-
-static float i8tofl_lut[256];
-
-/** Initialize int8_t to float PCM look up table. */
-static void i8tofl_init(void)
-{
-  if (i8tofl_lut[128] == 0.0) {
-    const float sc = 3.0 / (4.0*4.0*128.0);
-    int i;
-    for (i=-128; i<128; ++i)
-      i8tofl_lut[i&0xFF] = sc * (float)i;
-  }
-}
-
-/* Convert int8_t PCM buffer to float PCM */
-static void i8tofl(float * const d, const uint8_t * const s, const int n)
-{
-  int i;
-  for (i=0; i<n; ++i) {
-    d[i] = i8tofl_lut[s[i]];
-  }
-}
-
-/* Convert normalized float PCM buffer to in16_t PCM */
-static void fltoi16(int16_t * const d, const float * const s, const int n)
-{
-  const float sc = 32768.0; int i;
-
-  /* $$$ Slow conversion. Need some improvement once everything work */
-  for (i=0; i<n; ++i) {
-    const float f = s[i] * sc;
-    /* const */ int   v = (int) f;
-
-    if (v < -32768) {
-      /* dmsg("[%d] %.3f %d\n",i,f,v); */
-      v = -32768;
-    } else if (v >= 32768) {
-      /* dmsg("[%d] %.3f %d\n", i, f, v); */
-      v = 32767;
-    }
-
-    assert (v >= -32768 );
-    assert (v <   32768 );
-
-    d[i] = v;
-  }
-}
 
 /* ----------------------------------------------------------------------
 
@@ -250,9 +190,15 @@ restart_chan(mix_chan_t * const K)
 }
 
 static inline double
-iorate_of(const uint_t fp16, const double irate, const double orate)
+iorate(const uint_t fp16, const double irate, const double orate)
 {
-  return ldexp(fp16,-16) * irate / orate;
+  /* return ldexp(fp16,-16) * irate / orate; */
+  return (double)fp16 / 65536. * irate / orate;
+}
+
+static inline double
+rate_of_fp16(const uint_t fp16, const double rate) {
+  return (double)fp16 * rate;
 }
 
 /* ----------------------------------------------------------------------
@@ -294,7 +240,7 @@ push_cb(play_t * const P)
       slew -= -slew_val;               /* -X+X == 0 on note trigger */
 
     case TRIG_SLIDE:
-      K->rate = iorate_of(C->note.cur, M->irate, M->orate);
+      K->rate = rate_of_fp16(C->note.cur, M->rate);
       assert(K->rate >= M->rate_min);
       assert(K->rate <= M->rate_max);
       err = soxr_set_io_ratio(K->soxr, K->rate, slew+slew_val);
@@ -440,16 +386,18 @@ static int init_soxr(play_t * const P, const int quality)
   assert(!P->mixer_data);
   P->mixer_data = M = zz_calloc("soxr-data", size);
   if (M) {
-    M->qspec   = soxr_quality_spec(quality, SOXR_VR);
-    M->ispec   = soxr_io_spec(SOXR_FLOAT32_I,SOXR_FLOAT32_I);
-    M->irate   = (double) P->song.khz * 1000.0;
-    M->orate   = (double) P->spr;
-    M->rate_min = iorate_of(P->song.stepmin, M->irate, M->orate);
-    M->rate_max = iorate_of(P->song.stepmax, M->irate, M->orate);
+    M->qspec    = soxr_quality_spec(quality, SOXR_VR);
+    M->ispec    = soxr_io_spec(SOXR_FLOAT32_I,SOXR_FLOAT32_I);
+    M->irate    = (double) P->song.khz * 1000.0;
+    M->orate    = (double) P->spr;
+    M->rate     = iorate(0x10000, M->irate, M->orate);
+    M->rate_min = rate_of_fp16(P->song.stepmin, M->rate);
+    M->rate_max = rate_of_fp16(P->song.stepmax, M->rate);
 
     dmsg("iorates : %.3lf .. %.3lf\n", M->rate_min, M->rate_max);
     dmsg("irate   : %.3lf\n", M->irate);
     dmsg("orate   : %.3lf\n", M->orate);
+    dmsg("rate    : %.3lf\n", M->rate / 65536.0);
 
     for (k=0, ecode=E_OK; ecode == E_OK && k<4; ++k) {
       mix_chan_t * const K = M->chan+k;
@@ -481,7 +429,7 @@ static int init_soxr(play_t * const P, const int quality)
   if (ecode)
     free_cb(P);
   else
-    i8tofl_init();
+    i8tofl(0,0,0);                    /* trick to pre-init LUT */
 
   return ecode;
 }

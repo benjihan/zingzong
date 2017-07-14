@@ -285,6 +285,25 @@ static inline uint32_t u32(const uint8_t * const v) {
 /* ---------------------------------------------------------------------- */
 
 /**
+ * Floating point conversion.
+ * @{
+ */
+#ifndef NO_FLOAT_SUPPORT
+
+EXTERN_C
+void i8tofl(float * const d, const uint8_t * const s, const int n);
+
+EXTERN_C
+void fltoi16(int16_t * const d, const float * const s, const int n);
+
+#endif
+/**
+ * @}
+ */
+
+/* ---------------------------------------------------------------------- */
+
+/**
  * Memory and string functions.
  * @{
  */

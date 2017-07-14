@@ -421,7 +421,7 @@ static int modecmp(const char * mix, char * arg,  char ** pend)
 
 
 /**
- * Parse -r,--rate=[M,Hz].
+ * Parse -r,--rate=[M:Q,]Hz.
  */
 static int uint_spr(char * arg, const char * name, int * prate, int * pmixer)
 {
