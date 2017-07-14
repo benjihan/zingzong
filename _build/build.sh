@@ -8,58 +8,105 @@
 #
 # ----------------------------------------------------------------------
 
-## Print help message on -h --help or --usage
-#
-case "$1" in
-    -h | --help | --usage)
-	cat <<EOF
-Call this script from one of the host directory.
-
-  All command line arguments are propagated to make.
-
-  The following environment variables are used:
-
-  CC .......... compiler
-  CFLAGS ...... CFLAGS to use
-  PKGCONFIG ... pkg-config to call (unless AO_LIBS is set)
-  AO_LIBS ..... How to link libao
-  AO_CFLAGS ... How to compile with libao (required if AO_LIBS is set)
-  DEBUG ....... Set to use the default debug CFLAGS (unless CFLAGS is set)
-
-EOF
-	exit 0;;
-esac
-
 top="${PWD%/*}"		      # Where this script is located
 arch="${PWD##*/}"	      # basename of dirname is our host name
 
-## unless CC is defined fallback to {host}-gcc
-#
-if [ s${CC+et} != set ]; then
-    CC="${arch}"-gcc
-fi
+DEPLIBS="AO SRATE SOXR SMARC"
 
-## unless CFLAGS are set use optimized or debug settings for gcc
+## Print help message on -h --help or --usage
 #
-if [ s${CFLAGS+et} != set ]; then
-    if [ s${DEBUG+et} != set ]; then
-	CFLAGS='-O3 -Wall'
-    else
-	CFLAGS="-O0 -g -DDEBUG=${DEBUG:-1} -Wall"
+Usage() {
+    cat <<EOF
+Usage: build.sh -j
+       build.sh [--no-env] [VAR=VAL ...] [make-args ...]
+
+  This script MUST to be call from one of the host child directory
+
+  All command line arguments are propagated to make however VAR=VAL are
+  intercepted and mightbe modified.
+
+  The following environment variables are used unless --no-env is set:
+
+  CC .......... compiler
+  CPPFLAGS ..,. for the C preprocessor
+  CFLAGS ...... for the C compiler
+  LDFLAGS ..... for the linker
+  LDLIBS ...... library to link to binary
+  PKGCONFIG ... pkg-config to call when required
+
+  For each dependency library name {A0,SRATE,SOXR,SMARC} :
+
+  {bane}_CFLAGS ... How to compile (usually -I)
+  {name}_LIBS ..... How to link (usually -L and -l)
+
+EOF
+    exit 0
+}
+
+# ----------------------------------------------------------------------
+# Parse command line arguments
+#
+unset first
+for arg in "$@"; do
+    if [ s${first+et} != set ]; then
+	first=x; set --
+    fi
+    
+    case "$arg" in
+	-h | --help | --usage)
+	    Usage
+	    ;;
+	--no-env)
+	    unset CC LD PKGCONFIG DEBUG CPPFLAGS CFLAGS LDFLAGS LDLIBS
+	    for dep in $DEPLIBS; do
+		eval unset NO_${dep} ${dep}_CFLAGS ${dep}_LIBS
+	    done
+	    ;;
+	    
+	[A-Z]*=*)
+	    var="${arg%%=*}"
+	    val="${arg#*=}"
+	    eval $var='"$val"'
+	    ;;
+	*)
+	    set -- "$@" "$arg"
+	    ;;
+    esac
+done
+
+# ----------------------------------------------------------------------
+# Cross-Compile
+#
+crosscompile=no
+gccarch=`gcc -dumpmachine`
+test "${gccarch}" = "${arch}" || crosscompile=yes
+echo "cross-compiling: ${crosscompile}"
+
+if [ ${crosscompile} = yes ]; then
+    
+    # unless CC is not empty fallback to {host}-gcc 
+    #
+    if [ -z "${CC-}" ]; then
+	CC="${arch}"-gcc;
+	xcc=`which "$CC"`
+	echo "CC=\"$xcc\""
+    fi
+
+    ## Unless PKGCONFIG is set use {host}-pkg-config
+    #
+    if [ -z "${PKGCONFIG-}" ]; then
+	PKGCONFIG="${arch}"-pkg-config
+	xpkgconfig=`which "$PKGCONFIG"`
+	echo "PKGCONFIG=\"$xpkgconfig\""
     fi
 fi
 
-## Unless PKGCONFIG is set use {hosT}-pkg-config
-#
-if [ s${PKGCONFIG+et} != set ]; then
-    PKGCONFIG="${arch}"-pkg-config
-fi
-
-## How we build some known targets
+# ----------------------------------------------------------------------
+# Architecture specific
 #
 case "$arch" in
     *-w64-mingw32)
-	CFLAGS="${CFLAGS} -static -static-libgcc" ;;
+	CFLAGS="${CFLAGS:+ }${CFLAGS:-}-static -static-libgcc" ;;
     *-*-*)
 	true ;;
     *)
@@ -67,30 +114,56 @@ case "$arch" in
 	exit 1 ;;
 esac
 
-## AO_CFLAGS / AO_LIBS
-#
-if [ s${AO_CFLAGS+et} = set ]; then
-    set -- "$@" AO_LIBS="$AO_LIBS" AO_CFLAGS="$AO_CFLAGS"
-fi
 
-## SRATE_CFLAGS / SRATE_LIBS
+# ----------------------------------------------------------------------
+# Dependency libraries
 #
-if [ s${SRATE_CFLAGS+et} = set ]; then
-    set -- "$@" SRATE_LIBS="$SRATE_LIBS" SRATE_CFLAGS="$SRATE_CFLAGS"
-fi
-
-## Other variables of interest
-#
-for var in CC CFLAGS PKGCONFIG; do
-    if eval test s\${$var+et} = set; then
-	eval set -- '"$@"' \"x_$var=\${$var}\"
+for var in $DEPLIBS; do
+    if eval test s\${NO_${var}+et} = set; then
+	eval set -- '"$@"' NO_${var}=1
+    elif eval test s\${${var}_CFLAGS+et} = set; then
+	eval set -- '"$@"' ${var}_CFLAGS='"${'"${var}_CFLAGS"'}"'
+  	eval set -- '"$@"' ${var}_LIBS='"${'"${var}_LIBS"'-}"'
     fi
 done
 
-make \
+# ----------------------------------------------------------------------
+# Variables that CAN be empty 
+#
+for var in CPPFLAGS CFLAGS LDFLAGS LDLIBS; do
+    if eval test s\${$var+et} = set; then
+	eval set -- '"$@"' \"$var=\${$var}\"
+    fi
+done
+
+# ----------------------------------------------------------------------
+# Variables that CAN NOT be empty
+#
+for var in CC LD PKGCONFIG; do
+    if eval test -n \"\${$var-}\"; then
+	eval set -- '"$@"' \"$var=\${$var}\"
+    fi
+done
+
+# ----------------------------------------------------------------------
+# Let's do this
+#
+set --  \
     -B -f ${top}/../src/Makefile\
-    CC="$CC" CFLAGS="$CFLAGS" PKGCONFIG="$PKGCONFIG" \
     "$@"
 
+echo make
+for arg in "$@"; do
+    echo " \"$arg\""
+done
+echo
+make "$@"
 version=`$SHELL ${top}/../src/vcversion.sh`
-echo "zinzong ${version} for ${arch}"
+
+out="# zinzong ${version} for ${arch} #" 
+cat <<EOF
+
+ ${out//?/#}
+ ${out}
+ ${out//?/#}
+EOF
