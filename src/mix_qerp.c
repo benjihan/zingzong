@@ -10,7 +10,9 @@
 #define SETPCM() *b  = lagrange(pcm,idx); ++b; idx += stp
 #define ADDPCM() *b += lagrange(pcm,idx); ++b; idx += stp
 
-#define NAME qerp
+#define NAME "zz"
+#define METH "qerp"
+#define SYMB mixer_zz_qerp
 #define DESC "lagrange quadratic interpolation (fast,MQ)"
 
 /* Lagrange Polynomial Quadratic interpolation.

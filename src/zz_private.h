@@ -14,6 +14,10 @@
 # include "config.h"
 #endif
 
+#if (defined(__GNUC__) || defined(__clang__)) && !defined (_DEFAULT_SOURCE)
+# define _DEFAULT_SOURCE 1
+#endif
+
 #define ZZ_VFS_DRI
 #include "zingzong.h"
 
@@ -119,20 +123,20 @@ struct str_s {
 };
 
 struct out_s {
-  const char * name;
-  const char * uri;
-  uint_t       hz;
-  int (*close)(out_t *);
-  int (*write)(out_t *, void *, int);
+  const char * name;                    /**< friendly name.  */
+  const char * uri;                     /**< uri/path. */
+  uint_t       hz;                      /**< sampling rate. */
+  int (*close)(out_t *);                /**< close and free function. */
+  int (*write)(out_t *, void *, int);   /**< write PCM data function.  */
 };
 
 struct mixer_s {
-  const char * name;                   /**< mixer friendly name  */
-  const char * desc;                   /**< mixer brief description */
-  int   (*init)(play_t * const);       /*  */
-  void  (*free)(play_t * const);       /**< release mixer */
-  int   (*push)(play_t * const);       /**< push PCM  */
-  int   (*pull)(play_t * const, int);  /**>  */
+  const char * name;                   /**< friendly name and method. */
+  const char * desc;                   /**< mixer brief description.  */
+  int   (*init)(play_t * const);       /**< init mixer function.      */
+  void  (*free)(play_t * const);       /**< release mixer function.   */
+  int   (*push)(play_t * const);       /**< push PCM function.        */
+  int   (*pull)(play_t * const, int);  /**> pull PCM function.        */
 };
 
 struct bin_s {
@@ -258,10 +262,8 @@ struct songhd {
 
 /* ---------------------------------------------------------------------- */
 
-EXTERN_C mixer_t mixer_qerp, mixer_none;
-#ifndef NO_SOXR
-EXTERN_C mixer_t mixer_soxr;
-#endif
+EXTERN_C
+mixer_t * const zz_mixers[];
 
 /* ---------------------------------------------------------------------- */
 

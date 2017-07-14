@@ -26,7 +26,6 @@
 
 #define xtr(X) str(X)
 #define str(X) #X
-#define MIXER(X) NAME ## X
 
 #include <string.h>
 
@@ -139,6 +138,7 @@ push_cb(play_t * const P)
 
     switch (C->trig) {
     case TRIG_NOTE:
+
       assert(C->note.ins);
       K->idx = 0;
       K->pcm = (int8_t *) P->vset.inst[C->curi].pcm;
@@ -191,12 +191,7 @@ static void free_cb(play_t * const P)
 
 static int pull_cb(play_t * const P, int n) { return E_666; }
 
-#define XONXAT(A,B) A##B
-#define CONCAT(A,B) XONXAT(A,B)
-
-mixer_t CONCAT(mixer_,NAME) =
+mixer_t SYMB =
 {
-  xtr(NAME),
-  DESC,
-  init_cb, free_cb, push_cb, pull_cb
+  NAME ":" METH, DESC, init_cb, free_cb, push_cb, pull_cb
 };

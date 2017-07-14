@@ -63,7 +63,6 @@ SOXR_HQ   /* 'High quality'. */
 SOXR_VHQ  /* 'Very high quality'. */
 #endif
 
-#define MY_Q SOXR_HQ
 #define USER_SUPPLY 0
 
 #if 0
@@ -431,7 +430,7 @@ static void free_cb(play_t * const P)
 
 /* ---------------------------------------------------------------------- */
 
-static int init_cb(play_t * const P)
+static int init_soxr(play_t * const P, const int quality)
 {
   int k, ecode = E_SYS;
 
@@ -441,7 +440,7 @@ static int init_cb(play_t * const P)
   assert(!P->mixer_data);
   P->mixer_data = M = zz_calloc("soxr-data", size);
   if (M) {
-    M->qspec   = soxr_quality_spec(MY_Q, SOXR_VR);
+    M->qspec   = soxr_quality_spec(quality, SOXR_VR);
     M->ispec   = soxr_io_spec(SOXR_FLOAT32_I,SOXR_FLOAT32_I);
     M->irate   = (double) P->song.khz * 1000.0;
     M->orate   = (double) P->spr;
@@ -489,11 +488,17 @@ static int init_cb(play_t * const P)
 
 /* ---------------------------------------------------------------------- */
 
-mixer_t mixer_soxr =
-{
-  "soxr",
-  "The SoX resampler (not so fast/HQ)",
-  init_cb, free_cb, push_cb, pull_cb
-};
+#define XONXAT(A,B) A##B
+#define CONCAT(A,B) XONXAT(A,B)
+#define XTR(A) #A
+#define STR(A) XTR(A)
+
+#define DECL_SOXR_MIXER(Q,QQ, D) static int init_##Q(play_t * const P) { return init_soxr(P, SOXR_##QQ); } mixer_t mixer_soxr_##Q = { "soxr:" XTR(Q), D, init_##Q, free_cb, push_cb, pull_cb }
+
+DECL_SOXR_MIXER(qq,QQ,"soxr 'Quick' cubic interpolation");
+DECL_SOXR_MIXER(lq,LQ,"soxr 'Low' 16-bit with larger rolloff");
+DECL_SOXR_MIXER(mq,MQ,"soxr 'Medium' 16-bit with medium rolloff");
+DECL_SOXR_MIXER(hq,HQ,"soxr 'High quality'");
+DECL_SOXR_MIXER(vhq,VHQ,"soxr 'Very High quality'");
 
 #endif /* #ifndef NO_SOXR */
