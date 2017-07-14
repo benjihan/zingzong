@@ -370,16 +370,6 @@ static int uint_arg(char * arg, const char * name,
   return v;
 }
 
-  /* if (!b || b == ',') { */
-  /*       *pmixer = i; */
-  /*       dmsg("smode=%s(%d) rem=[%s]\n", m->name, i, arg); */
-  /*       arg = !b ? 0 : arg+i+1; */
-  /*       break; */
-  /*     } */
-  /*   } */
-
-
-
 static char * xtrbrk(char * s, const char * tok)
 {
   for ( ;*s && !strchr(tok,*s); ++s)
@@ -436,10 +426,11 @@ static int modecmp(const char * mix, char * arg,  char ** pend)
 static int uint_spr(char * arg, const char * name, int * prate, int * pmixer)
 {
   int rate=SPR_DEF, i, f = -1;
-  char * end = 0;
+  char * end = arg;
 
   if (isalpha(arg[0])) {
     const mixer_t * m;
+    end = 0;
     /* Get re-sampling mode */
     for (i=0; !!(m = zz_mixers[i]); ++i) {
       int res = modecmp(m->name, arg, &end);
