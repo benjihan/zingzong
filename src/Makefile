@@ -27,6 +27,9 @@ CFLAGS += -Og -g -DDEBUG=$(DEBUG)
 else
 CFLAGS += -Ofast -DNDEBUG=1
 endif
+ifdef PROFILE
+CFLAGS += -pg
+endif
 endif
 
 # ----------------------------------------------------------------------
