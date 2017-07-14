@@ -125,7 +125,7 @@ zingzong: override CPPFLAGS = $(zz_CPPFLAGS)
 zingzong: override CFLAGS   = $(zz_CFLAGS)
 zingzong: override LDLIBS   = $(zz_LDLIBS)
 
-mix := mix_none mix_qerp mix_soxr
+mix := mix_none mix_qerp mix_soxr mix_float
 out := out_ao out_raw
 vfs := vfs_file
 zz  := zz_bin zz_load zz_msg zz_play zz_str zz_vfs zz_mixers
