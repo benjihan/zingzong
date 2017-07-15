@@ -10,7 +10,8 @@
 #include "zz_private.h"
 #include <string.h>
 #include <soxr.h>
-#include <math.h>
+
+#define USER_SUPPLY 1                  /* 0:no user supply function */
 
 #define F32MAX (MIXBLK*8)
 #define FLIMAX (F32MAX)
@@ -28,7 +29,6 @@ struct mix_chan_s {
   uint8_t *ptl;
   uint8_t *pte;
   uint8_t *end;
-  double   stp;
 
   int      ilen;
   int      imax;
@@ -48,22 +48,6 @@ struct mix_data_s {
   float flt_buf[1];                     /* /!\ always last /!\ */
 };
 
-/* ---------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------- */
-
-#if 0
-SOXR_QQ   /* 'Quick' cubic interpolation. */
-SOXR_LQ   /* 'Low' 16-bit with larger rolloff. */
-SOXR_MQ   /* 'Medium' 16-bit with medium rolloff. */
-SOXR_HQ   /* 'High quality'. */
-SOXR_VHQ  /* 'Very high quality'. */
-#endif
-
-#define USER_SUPPLY 0
 
 #if 0
 soxr_error_t soxr_clear(soxr_t); /* Ready for fresh signal, same config. */
@@ -156,15 +140,13 @@ fill_cb(void * _K, soxr_in_t * data, size_t reqlen)
 
   assert(len <= K->imax);              /* Limited by set_input_fb() */
   assert(K->imax == FLIMAX);           /* For now keep it simple */
-  assert(K->ilen == 0);                /* For now keep it simple */
+  /* assert(K->ilen == 0);                /\* For now keep it simple *\/ */
 
   if (len > K->imax)
     len = K->imax;
   *data = K->iflt;
   K->ilen = len;
   chan_flread(K->iflt, K, len);
-
-  /* dmsg("fill(%c,%u) => %u\n",K->id,(uint_t)reqlen, len); */
 
   return len;
 }
@@ -180,8 +162,7 @@ restart_chan(mix_chan_t * const K)
   K->omax = FLOMAX;
   err = soxr_clear(K->soxr);
 
-#if 0
-  /* only with supplied data func */
+#if USER_SUPPLY
   if (!err)
     err = soxr_set_input_fn(K->soxr, fill_cb, K, K->imax);
 #endif
@@ -193,7 +174,7 @@ static inline double
 iorate(const uint_t fp16, const double irate, const double orate)
 {
   /* return ldexp(fp16,-16) * irate / orate; */
-  return (double)fp16 / 65536. * irate / orate;
+  return (double)fp16 * irate / (65536.0*orate);
 }
 
 static inline double
@@ -285,6 +266,22 @@ push_cb(play_t * const P)
       if (want > K->omax)
         want = K->omax;
 
+
+#if USER_SUPPLY
+
+      idone = 0;
+      odone =
+        soxr_output(
+          K->soxr,
+          K->oflt,
+          want);
+      err = soxr_error(K->soxr);
+      if (err || odone < 0)
+        return emsg_soxr(K,err);
+      done = odone;
+
+#else
+
       /* Fill input when it's empty */
       if (!K->ilen) {
         K->ilen = K->imax;
@@ -314,6 +311,7 @@ push_cb(play_t * const P)
       assert( K->ilen >= 0 && K->ilen <= K->imax );
       assert( done >= 0 && done <= K->omax );
 
+#endif
       if (idone+odone != 0) {
         zero = 0;
       } else {
@@ -328,6 +326,7 @@ push_cb(play_t * const P)
           return E_MIX;
         }
       }
+
 
       need -= done;
       if (k == 0)
@@ -390,14 +389,14 @@ static int init_soxr(play_t * const P, const int quality)
     M->ispec    = soxr_io_spec(SOXR_FLOAT32_I,SOXR_FLOAT32_I);
     M->irate    = (double) P->song.khz * 1000.0;
     M->orate    = (double) P->spr;
-    M->rate     = iorate(0x10000, M->irate, M->orate);
+    M->rate     = iorate(1, M->irate, M->orate);
     M->rate_min = rate_of_fp16(P->song.stepmin, M->rate);
     M->rate_max = rate_of_fp16(P->song.stepmax, M->rate);
 
     dmsg("iorates : %.3lf .. %.3lf\n", M->rate_min, M->rate_max);
     dmsg("irate   : %.3lf\n", M->irate);
     dmsg("orate   : %.3lf\n", M->orate);
-    dmsg("rate    : %.3lf\n", M->rate / 65536.0);
+    dmsg("rate    : %.3lf\n", M->rate * 65536.0);
 
     for (k=0, ecode=E_OK; ecode == E_OK && k<4; ++k) {
       mix_chan_t * const K = M->chan+k;
@@ -443,10 +442,10 @@ static int init_soxr(play_t * const P, const int quality)
 
 #define DECL_SOXR_MIXER(Q,QQ, D) static int init_##Q(play_t * const P) { return init_soxr(P, SOXR_##QQ); } mixer_t mixer_soxr_##Q = { "soxr:" XTR(Q), D, init_##Q, free_cb, push_cb, pull_cb }
 
-DECL_SOXR_MIXER(qq,QQ,"soxr 'Quick' cubic interpolation");
-DECL_SOXR_MIXER(lq,LQ,"soxr 'Low' 16-bit with larger rolloff");
-DECL_SOXR_MIXER(mq,MQ,"soxr 'Medium' 16-bit with medium rolloff");
-DECL_SOXR_MIXER(hq,HQ,"soxr 'High quality'");
-DECL_SOXR_MIXER(vhq,VHQ,"soxr 'Very High quality'");
+DECL_SOXR_MIXER(qq,QQ,  "quick cubic interpolation");
+DECL_SOXR_MIXER(lq,LQ,  "low 16-bit with larger rolloff");
+DECL_SOXR_MIXER(mq,MQ,  "medium 16-bit with medium rolloff");
+DECL_SOXR_MIXER(hq,HQ,  "high quality");
+DECL_SOXR_MIXER(vhq,VHQ,"very high quality");
 
 #endif /* #ifndef NO_SOXR */

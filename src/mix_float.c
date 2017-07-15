@@ -41,8 +41,6 @@ i8tofl(float * const d, const uint8_t * const s, const int n)
   }
 }
 
-
-
 /* Convert normalized float PCM buffer to in16_t PCM */
 void
 fltoi16(int16_t * const d, const float * const s, const int n)
@@ -59,20 +57,7 @@ fltoi16(int16_t * const d, const float * const s, const int n)
     else if  ( unlikely(s[i] <= -1.0) )
       v = -32768;
     else
-      /* v =  (int)ldexpf(s[i],-15); */
       v =  (int)( s[i] * sc );
-
-/* #if 0 */
-/*     assert (v >= -32768 ); */
-/*     assert (v <   32768 ); */
-/* #else */
-/*     if (unlikely( v < -32768 )) { */
-/*       v = -32768; */
-/*     } else if (unlikely (v >= 32768) ) { */
-/*       v = 32767; */
-/*     } */
-/* #endif */
-
     d[i] = v;
   }
 }

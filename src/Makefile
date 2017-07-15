@@ -53,24 +53,31 @@ endif
 AO_VERSION := $(shell $(PKGCONFIG) --modversion ao || echo n/a)
 endif
 
+override bin_CFLAGS += $(AO_CFLAGS)
+override bin_LDLIBS += $(AO_LIBS)
+
 # ----------------------------------------------------------------------
 #  samplerate (NO_SRATE=1 to disable)
 # ----------------------------------------------------------------------
 
-# ifeq ($(NO_SRATE),1)
-# override SRATE_CFLAGS=-DNO_SRATE=1
-# endif
+ifeq ($(NO_SRATE),1)
+override SRATE_CFLAGS=-DNO_SRATE=1
+override SRATE_LIBS=
+endif
 
-# ifndef SRATE_CFLAGS
-# SRATE_LIBS := $(shell $(PKGCONFIG) --libs samplerate || echo X)
-# ifeq ($(SRATE_LIBS),X)
-# $(error pkg-config failed -- samplerate --libs)
-# endif
-# SRATE_CLAGS := $(shell $(PKGCONFIG) --cflags samplerate || echo X)
-# ifeq ($(SRATE_CLAGS),X)
-# $(error pkg-config failed -- samplerate --cflags)
-# endif
-# endif
+ifndef SRATE_CFLAGS
+SRATE_LIBS := $(shell $(PKGCONFIG) --libs samplerate || echo X)
+ifeq ($(SRATE_LIBS),X)
+$(error pkg-config failed -- samplerate --libs)
+endif
+SRATE_CLAGS := $(shell $(PKGCONFIG) --cflags samplerate || echo X)
+ifeq ($(SRATE_CLAGS),X)
+$(error pkg-config failed -- samplerate --cflags)
+endif
+endif
+
+override bin_CFLAGS += $(SRATE_CLAGS)
+override bin_LDLIBS += $(SRATE_LIBS)
 
 # ----------------------------------------------------------------------
 #  soxr (NO_SOXR=1 to disable)
@@ -78,6 +85,7 @@ endif
 
 ifeq ($(NO_SOXR),1)
 override SOXR_CFLAGS=-DNO_SOXR=1
+override SOXR_LIBS=
 endif
 
 ifndef SOXR_CFLAGS
@@ -90,6 +98,9 @@ ifeq ($(SOXR_CLAGS),X)
 $(error pkg-config failed -- soxr --cflags)
 endif
 endif
+
+override bin_CFLAGS += $(SOXR_CLAGS)
+override bin_LDLIBS += $(SOXR_LIBS)
 
 # ----------------------------------------------------------------------
 
@@ -105,8 +116,8 @@ org_CFLAGS   := $(CFLAGS)
 org_LDLIBS   := $(LDLIBS)
 
 zz_CPPFLAGS  = $(org_CPPFLAGS) $(PACKAGE_CPPFLAGS)
-zz_CFLAGS    = $(org_CFLAGS) $(AO_CFLAGS) $(SOXR_CFLAGS)
-zz_LDLIBS    = $(org_LDLIBS) $(AO_LIBS) $(SOXR_LIBS)
+zz_CFLAGS    = $(org_CFLAGS) $(bin_CFLAGS)
+zz_LDLIBS    = $(org_LDLIBS) $(bin_LDLIBS)
 
 # ----------------------------------------------------------------------
 #  Build
@@ -125,7 +136,7 @@ zingzong: override CPPFLAGS = $(zz_CPPFLAGS)
 zingzong: override CFLAGS   = $(zz_CFLAGS)
 zingzong: override LDLIBS   = $(zz_LDLIBS)
 
-mix := mix_none mix_qerp mix_soxr mix_float
+mix := mix_none mix_qerp mix_soxr mix_srate mix_float
 out := out_ao out_raw
 vfs := vfs_file
 zz  := zz_bin zz_load zz_msg zz_play zz_str zz_vfs zz_mixers
