@@ -5,12 +5,11 @@
  * @brief  High quality mixer using samplerate.
  */
 
-#ifndef NO_SRATE
+#if WITH_SRATE == 1
 
 #include "zz_private.h"
 #include <string.h>
 #include <samplerate.h>
-
 
 #define USER_SUPPLY 1                  /* 0:no user supply function */
 #define RATIO(X) (1.0/(double)(X))
@@ -18,7 +17,6 @@
 #define F32MAX (MIXBLK*8)
 #define FLIMAX (F32MAX)
 #define FLOMAX (F32MAX)
-
 
 typedef struct mix_data_s mix_data_t;
 typedef struct mix_chan_s mix_chan_t;
@@ -44,7 +42,6 @@ struct mix_chan_s {
 
   int      omax;
   float    oflt[FLOMAX];
-
 };
 
 struct mix_data_s {
@@ -55,7 +52,6 @@ struct mix_data_s {
 
   float flt_buf[1];                     /* /!\ always last /!\ */
 };
-
 
 /* ----------------------------------------------------------------------
 
@@ -252,7 +248,6 @@ push_cb(play_t * const P)
 #endif
 }
 
-
 /* ---------------------------------------------------------------------- */
 
 static int pull_cb(play_t * const P, int n)
@@ -369,4 +364,4 @@ DECL_SRATE_MIXER(zero,ZERO_ORDER_HOLD,
 DECL_SRATE_MIXER(linear,LINEAR,
                  "linear (very fast, LQ)");
 
-#endif /* #ifndef NO_SRATE */
+#endif /* WITH_SRATE == 1 */

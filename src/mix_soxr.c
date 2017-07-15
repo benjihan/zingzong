@@ -5,7 +5,7 @@
  * @brief  High quality mixer using soxr.
  */
 
-#ifndef NO_SOXR
+#if WITH_SOXR == 1
 
 #include "zz_private.h"
 #include <string.h>
@@ -48,39 +48,6 @@ struct mix_data_s {
   float flt_buf[1];                     /* /!\ always last /!\ */
 };
 
-
-#if 0
-soxr_error_t soxr_clear(soxr_t); /* Ready for fresh signal, same config. */
-void         soxr_delete(soxr_t);  /* Free resources. */
-soxr_error_t soxr_set_io_ratio(soxr_t, double io_ratio, size_t slew_len);
-soxr_error_t soxr_set_input_fn(/* Set (or reset) an input function.*/
-  soxr_t resampler,            /* As returned by soxr_create. */
-  soxr_input_fn_t,             /* Function to supply data to be resampled.*/
-  void * input_fn_state,       /* If needed by the input function. */
-  size_t max_ilen);            /* Maximum value for input fn. requested_len.*/
-typedef size_t /* data_len */
-(* soxr_input_fn_t)(         /* Supply data to be resampled. */
-  void * input_fn_state,     /* As given to soxr_set_input_fn (below). */
-  soxr_in_t * data,          /* Returned data; see below. N.B. ptr to ptr(s)*/
-  size_t requested_len);     /* Samples per channel, >= returned data_len.
-
-  data_len  *data     Indicates    Meaning
-   ------- -------   ------------  -------------------------
-     !=0     !=0       Success     *data contains data to be
-                                   input to the resampler.
-      0    !=0 (or   End-of-input  No data is available nor
-           not set)                shall be available.
-      0       0        Failure     An error occurred whilst trying to
-                                   source data to be input to the resampler.  */
-
-/* then repeatedly call: */
-size_t /*odone*/ soxr_output(/* Resample and output a block of data.*/
-  soxr_t resampler,            /* As returned by soxr_create. */
-  soxr_out_t data,             /* App-supplied buffer(s) for resampled data.*/
-  size_t olen);                /* Amount of data to output; >= odone. */
-#endif
-
-
 /* ----------------------------------------------------------------------
 
    Read input PCM
@@ -97,7 +64,7 @@ static void chan_flread(float * const d, mix_chan_t * const K, const int n)
   /* dmsg("flread(%c,%i)\n", K->id, n); */
 
   if (!K->ptr)
-    memset(d, 0, n*sizeof(float));
+    memset(d, 0, n*sizeof(*d));
   else {
     assert(K->ptr < K->pte);
     i8tofl(d, K->ptr, n);
@@ -440,7 +407,15 @@ static int init_soxr(play_t * const P, const int quality)
 #define XTR(A) #A
 #define STR(A) XTR(A)
 
-#define DECL_SOXR_MIXER(Q,QQ, D) static int init_##Q(play_t * const P) { return init_soxr(P, SOXR_##QQ); } mixer_t mixer_soxr_##Q = { "soxr:" XTR(Q), D, init_##Q, free_cb, push_cb, pull_cb }
+#define DECL_SOXR_MIXER(Q,QQ, D) \
+  static int init_##Q(play_t * const P)\
+  {\
+    return init_soxr(P, SOXR_##QQ);\
+  }\
+  mixer_t mixer_soxr_##Q =\
+  {\
+    "soxr:" XTR(Q), D, init_##Q, free_cb, push_cb, pull_cb\
+  }
 
 DECL_SOXR_MIXER(qq,QQ,  "quick cubic interpolation");
 DECL_SOXR_MIXER(lq,LQ,  "low 16-bit with larger rolloff");
@@ -448,4 +423,4 @@ DECL_SOXR_MIXER(mq,MQ,  "medium 16-bit with medium rolloff");
 DECL_SOXR_MIXER(hq,HQ,  "high quality");
 DECL_SOXR_MIXER(vhq,VHQ,"very high quality");
 
-#endif /* #ifndef NO_SOXR */
+#endif /* WITH_SOXR == 1 */

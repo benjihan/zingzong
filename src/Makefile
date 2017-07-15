@@ -13,10 +13,11 @@ topdir	  := $(realpath $(srcdir)/..)
 VPATH	   = $(srcdir)
 PKGCONFIG  = pkg-config
 PACKAGE	  := zingzong
-VERSION	  := $(shell $(srcdir)/vcversion.sh || echo X)
-ifeq ($(VERSION),X)
+VERSION	  := $(shell $(srcdir)/vcversion.sh || echo ERROR)
+ifeq ($(VERSION),ERROR)
 $(error vcversion.sh failed)
 endif
+pkgconfig  = $(shell $(PKGCONFIG) $(1) || echo n/a)
 
 # ----------------------------------------------------------------------
 
@@ -39,68 +40,110 @@ endif
 ifeq ($(NO_AO),1)
 override AO_CFLAGS=-DNO_AO=1
 override AO_LIBS=
-endif
+override AO_VERSION=n/a
+else
 
 ifndef AO_CFLAGS
-AO_LIBS := $(shell $(PKGCONFIG) --libs ao || echo X)
-ifeq ($(AO_LIBS),X)
-$(error pkg-config failed -- ao --libs)
-endif
-AO_CFLAGS := $(shell $(PKGCONFIG) --cflags ao || echo X)
-ifeq ($(AO_CFLAGS),X)
+AO_CFLAGS := $(call pkgconfig,--cflags ao)
+ifeq ($(AO_CFLAGS),n/a)
 $(error pkg-config failed -- ao --cflags)
 endif
-AO_VERSION := $(shell $(PKGCONFIG) --modversion ao || echo n/a)
+endif
+
+ifndef AO_LIBS
+AO_LIBS := $(call pkgconfig,--libs ao)
+ifeq ($(AO_LIBS),n/a)
+$(error pkg-config failed -- ao --libs)
+endif
+endif
+
+AO_VERSION := $(call pkgconfig,--modversion ao)
 endif
 
 override bin_CFLAGS += $(AO_CFLAGS)
 override bin_LDLIBS += $(AO_LIBS)
 
 # ----------------------------------------------------------------------
-#  samplerate (NO_SRATE=1 to disable)
+#  samplerate (NO_SRATE=0 to enable)
 # ----------------------------------------------------------------------
 
-ifeq ($(NO_SRATE),1)
-override SRATE_CFLAGS=-DNO_SRATE=1
+ifneq ($(NO_SRATE),0)
+override SRATE_CFLAGS=
 override SRATE_LIBS=
+override SRATE_VERSION=n/a
+else
+
+ifndef SRATE_LIBS
+SRATE_LIBS := $(call pkgconfig,--libs samplerate)
+ifeq ($(SRATE_LIBS),n/a)
+$(error pkg-config failed -- samplerate --libs)
+endif
 endif
 
 ifndef SRATE_CFLAGS
-SRATE_LIBS := $(shell $(PKGCONFIG) --libs samplerate || echo X)
-ifeq ($(SRATE_LIBS),X)
-$(error pkg-config failed -- samplerate --libs)
-endif
-SRATE_CFLAGS := $(shell $(PKGCONFIG) --cflags samplerate || echo X)
-ifeq ($(SRATE_CFLAGS),X)
+SRATE_CFLAGS := $(call pkgconfig,--cflags samplerate)
+ifeq ($(SRATE_CFLAGS),n/a)
 $(error pkg-config failed -- samplerate --cflags)
 endif
+SRATE_CFLAGS += -DWITH_SRATE=1
+endif
+
+SRATE_VERSION := $(call pkgconfig,--modversion samplerate)
+
 endif
 
 override bin_CFLAGS += $(SRATE_CFLAGS)
 override bin_LDLIBS += $(SRATE_LIBS)
 
 # ----------------------------------------------------------------------
-#  soxr (NO_SOXR=1 to disable)
+#  soxr (NO_SOXR=0 to enable)
 # ----------------------------------------------------------------------
 
-ifeq ($(NO_SOXR),1)
+ifneq ($(NO_SOXR),0)
 override SOXR_CFLAGS=-DNO_SOXR=1
 override SOXR_LIBS=
-endif
+else
 
 ifndef SOXR_CFLAGS
-SOXR_LIBS := $(shell $(PKGCONFIG) --libs soxr || echo X)
-ifeq ($(SOXR_LIBS),X)
-$(error pkg-config failed -- soxr --libs)
-endif
-SOXR_CFLAGS := $(shell $(PKGCONFIG) --cflags soxr || echo X)
-ifeq ($(SOXR_CFLAGS),X)
+SOXR_CFLAGS := $(call pkgconfig,--cflags soxr)
+ifeq ($(SOXR_CFLAGS),n/a)
 $(error pkg-config failed -- soxr --cflags)
 endif
 endif
 
+ifndef SOXR_LIBS
+SOXR_LIBS := $(call pkgconfig,--libs soxr)
+ifeq ($(SOXR_LIBS),n/a)
+$(error pkg-config failed -- soxr --libs)
+endif
+SOXR_CFLAGS += -DWITH_SOXR=1
+endif
+
+SOXR_VERSION := $(call pkgconfig,--modversion samplerate)
+
+endif
+
 override bin_CFLAGS += $(SOXR_CFLAGS)
 override bin_LDLIBS += $(SOXR_LIBS)
+
+# ----------------------------------------------------------------------
+#  smarc (NO_SMARC=0 to enable)
+# ----------------------------------------------------------------------
+
+ifneq ($(NO_SMARC),0)
+override SMARC_CFLAGS=
+override SMARC_LIBS=
+override SMARC_VERSION=n/a
+else
+ifndef SMARC_LIBS
+SMARC_LIBS := -lsmarc
+SOXR_CFLAGS += -DWITH_SMARC=1
+endif
+SMARC_VERSION := n/a
+endif
+
+override bin_CFLAGS += $(SMARC_CFLAGS)
+override bin_LDLIBS += $(SMARC_LIBS)
 
 # ----------------------------------------------------------------------
 
@@ -108,7 +151,6 @@ PACKAGE_CPPFLAGS  = \
  -DPACKAGE_NAME='"$(NAME)"' \
  -DPACKAGE_VERSION='"$(VERSION)"'
 
-#override CPPFLAGS += -I$(srcdir)
 override CPPFLAGS += -I.
 
 org_CPPFLAGS := $(CPPFLAGS)
@@ -134,7 +176,7 @@ zingzong: override CFLAGS   = $(zz_CFLAGS)
 zingzong: override LDLIBS   = $(zz_LDLIBS)
 zingzong: override LDFLAGS  = $(zz_LDFLAGS)
 
-mix := mix_none mix_qerp mix_soxr mix_srate mix_float
+mix := mix_none mix_qerp mix_soxr mix_srate mix_smarc mix_float
 out := out_ao out_raw
 vfs := vfs_file
 zz  := zz_bin zz_load zz_msg zz_play zz_str zz_vfs zz_mixers

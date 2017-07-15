@@ -65,14 +65,16 @@ For example to build a win64 standalone executable with a cross gcc
         CFLAGS="-O3 -static -static-libgcc" \
         NO_SRATE=1
 
+### Make variables that alter the built
+
  | Make variable |                        Description                         |
  |---------------|------------------------------------------------------------|
- | `NO_AO`       | Set to 1 to disable libao support.                         |
- | `NO_SOXR`     | Set to 1 to disable soxr support.                          |
- | `NO_SRATE`    | Set to 1 to disable samplerate support.                    |
- | `NO_SMARC`    | Set to 1 to disable smarc support.                         |
- | `DEBUG`       | Set to defines below for default DEBUG CFLAGS.             |
- | `PROFILE`     | Set to 1 for default PROFILING CFLAGS.                     |
+ | `NO_AO`       | Set to 1 to disable libao support                          |
+ | `NO_SOXR`     | Set to 0 to enable soxr support                            |
+ | `NO_SRATE`    | Set to 0 to enable samplerate support                      |
+ | `NO_SMARC`    | Set to 0 to enable smarc support                           |
+ | `DEBUG`       | Set to defines below for default DEBUG CFLAGS              |
+ | `PROFILE`     | Set to 1 for default PROFILING CFLAGS                      |
 
 
 ### Preprocessor defines that alter the built
@@ -82,10 +84,10 @@ For example to build a win64 standalone executable with a cross gcc
  |`HAVE_CONFIG_H`|To include config.h                                         |
  | `DEBUG`       |Set to 1 for debug messages                                 |
  | `NDEBUG`      |To remove assert; automatically set if DEBUG is not defined |
- | `NO_AO`       |To ignore libao support                                     |
- | `NO_SOXR`     |To ignore soxr support                                      |
- | `NO_SRATE`    |To ignore samplerate support                                |
- | `NO_SMARC`    |To ignore smarc support.                                    |
+ | `NO_AO`       |Define to disable libao support                             |
+ | `WITH_SOXR`   |Set to 1 to enable soxr support                             |
+ | `WITH_SRATE`  |Set to 1 to enable samplerate support                       |
+ | `WITH_SMARC`  |Set to 1 to enable smarc support                            |
  | `MAX_DETECT`  |Set maximum time detection threshold (in seconds)           |
  | `SPR_MIN`     |Set minimum sampling rate                                   |
  | `SPR_MAX`     |Set maximum sampling rate                                   |
