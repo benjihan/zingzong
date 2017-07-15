@@ -145,7 +145,6 @@ restart_chan(mix_chan_t * const K)
 static int
 push_cb(play_t * const P)
 {
-  int err;
   mix_data_t * const M = (mix_data_t *) P->mixer_data;
   const int N = P->pcm_per_tick;
   int k;

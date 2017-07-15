@@ -13,6 +13,12 @@ arch="${PWD##*/}"	      # basename of dirname is our host name
 
 DEPLIBS="AO SRATE SOXR SMARC"
 
+vars1=( CC LD PKGCONFIG DEBUG )
+vars2=( CPPFLAGS CFLAGS LDFLAGS LDLIBS )
+for dep in $DEPLIBS; do
+    vars2+=( NO_${dep} ${dep}_CFLAGS ${dep}_LIBS )
+done
+
 ## Print help message on -h --help or --usage
 #
 Usage() {
@@ -28,6 +34,7 @@ Usage: build.sh -j
   The following environment variables are used unless --no-env is set:
 
   CC .......... compiler
+  LD .......... Linker
   CPPFLAGS ..,. for the C preprocessor
   CFLAGS ...... for the C compiler
   LDFLAGS ..... for the linker
@@ -36,7 +43,7 @@ Usage: build.sh -j
 
   For each dependency library name {A0,SRATE,SOXR,SMARC} :
 
-  {bane}_CFLAGS ... How to compile (usually -I)
+  {name}_CFLAGS ... How to compile (usually -I)
   {name}_LIBS ..... How to link (usually -L and -l)
 
 EOF
@@ -57,7 +64,7 @@ for arg in "$@"; do
 	    Usage
 	    ;;
 	--no-env)
-	    unset CC LD PKGCONFIG DEBUG CPPFLAGS CFLAGS LDFLAGS LDLIBS
+	    unset ${vars1[@]} ${vars2[@]}
 	    for dep in $DEPLIBS; do
 		eval unset NO_${dep} ${dep}_CFLAGS ${dep}_LIBS
 	    done
@@ -106,7 +113,8 @@ fi
 #
 case "$arch" in
     *-w64-mingw32)
-	CFLAGS="${CFLAGS:+ }${CFLAGS:-}-static -static-libgcc" ;;
+	CFLAGS+="${CFLAGS:+ }-static"
+	LDFLAGS+="${LDFLAGS:+ }-static -static-libgcc" ;;
     *-*-*)
 	true ;;
     *)
@@ -114,33 +122,31 @@ case "$arch" in
 	exit 1 ;;
 esac
 
-
 # ----------------------------------------------------------------------
 # Dependency libraries
 #
 for var in $DEPLIBS; do
-    if eval test s\${NO_${var}+et} = set; then
-	eval set -- '"$@"' NO_${var}=1
-    elif eval test s\${${var}_CFLAGS+et} = set; then
-	eval set -- '"$@"' ${var}_CFLAGS='"${'"${var}_CFLAGS"'}"'
-  	eval set -- '"$@"' ${var}_LIBS='"${'"${var}_LIBS"'-}"'
-    fi
-done
-
-# ----------------------------------------------------------------------
-# Variables that CAN be empty 
-#
-for var in CPPFLAGS CFLAGS LDFLAGS LDLIBS; do
-    if eval test s\${$var+et} = set; then
-	eval set -- '"$@"' \"$var=\${$var}\"
+    if eval test s\${NO_${var}+et} = set -a x\"\$NO_${var}\" != x0
+    then
+	eval unset ${var}_CFLAGS ${var}_LIBS
+	eval NO_${var}=1
     fi
 done
 
 # ----------------------------------------------------------------------
 # Variables that CAN NOT be empty
 #
-for var in CC LD PKGCONFIG; do
+for var in ${vars1[@]}; do
     if eval test -n \"\${$var-}\"; then
+	eval set -- '"$@"' \"$var=\${$var}\"
+    fi
+done
+
+# ----------------------------------------------------------------------
+# Variables that CAN be empty 
+#
+for var in ${vars2[@]}; do
+    if eval test s\${$var+et} = set; then
 	eval set -- '"$@"' \"$var=\${$var}\"
     fi
 done

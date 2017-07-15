@@ -46,8 +46,8 @@ AO_LIBS := $(shell $(PKGCONFIG) --libs ao || echo X)
 ifeq ($(AO_LIBS),X)
 $(error pkg-config failed -- ao --libs)
 endif
-AO_CLAGS := $(shell $(PKGCONFIG) --cflags ao || echo X)
-ifeq ($(AO_CLAGS),X)
+AO_CFLAGS := $(shell $(PKGCONFIG) --cflags ao || echo X)
+ifeq ($(AO_CFLAGS),X)
 $(error pkg-config failed -- ao --cflags)
 endif
 AO_VERSION := $(shell $(PKGCONFIG) --modversion ao || echo n/a)
@@ -70,13 +70,13 @@ SRATE_LIBS := $(shell $(PKGCONFIG) --libs samplerate || echo X)
 ifeq ($(SRATE_LIBS),X)
 $(error pkg-config failed -- samplerate --libs)
 endif
-SRATE_CLAGS := $(shell $(PKGCONFIG) --cflags samplerate || echo X)
-ifeq ($(SRATE_CLAGS),X)
+SRATE_CFLAGS := $(shell $(PKGCONFIG) --cflags samplerate || echo X)
+ifeq ($(SRATE_CFLAGS),X)
 $(error pkg-config failed -- samplerate --cflags)
 endif
 endif
 
-override bin_CFLAGS += $(SRATE_CLAGS)
+override bin_CFLAGS += $(SRATE_CFLAGS)
 override bin_LDLIBS += $(SRATE_LIBS)
 
 # ----------------------------------------------------------------------
@@ -93,13 +93,13 @@ SOXR_LIBS := $(shell $(PKGCONFIG) --libs soxr || echo X)
 ifeq ($(SOXR_LIBS),X)
 $(error pkg-config failed -- soxr --libs)
 endif
-SOXR_CLAGS := $(shell $(PKGCONFIG) --cflags soxr || echo X)
-ifeq ($(SOXR_CLAGS),X)
+SOXR_CFLAGS := $(shell $(PKGCONFIG) --cflags soxr || echo X)
+ifeq ($(SOXR_CFLAGS),X)
 $(error pkg-config failed -- soxr --cflags)
 endif
 endif
 
-override bin_CFLAGS += $(SOXR_CLAGS)
+override bin_CFLAGS += $(SOXR_CFLAGS)
 override bin_LDLIBS += $(SOXR_LIBS)
 
 # ----------------------------------------------------------------------
@@ -114,10 +114,12 @@ override CPPFLAGS += -I.
 org_CPPFLAGS := $(CPPFLAGS)
 org_CFLAGS   := $(CFLAGS)
 org_LDLIBS   := $(LDLIBS)
+org_LDFLAGS  := $(LDFLAGS)
 
-zz_CPPFLAGS  = $(org_CPPFLAGS) $(PACKAGE_CPPFLAGS)
-zz_CFLAGS    = $(org_CFLAGS) $(bin_CFLAGS)
-zz_LDLIBS    = $(org_LDLIBS) $(bin_LDLIBS)
+zz_CPPFLAGS  := $(org_CPPFLAGS) $(PACKAGE_CPPFLAGS) $(bin_CPPFLAGS)
+zz_CFLAGS    := $(org_CFLAGS) $(bin_CFLAGS)
+zz_LDLIBS    := $(org_LDLIBS) $(bin_LDLIBS)
+zz_LDFLAGS   := $(org_LDFLAGS) $(bin_LDFLAGS)
 
 # ----------------------------------------------------------------------
 #  Build
@@ -126,15 +128,11 @@ zz_LDLIBS    = $(org_LDLIBS) $(bin_LDLIBS)
 all: zingzong
 .PHONY: all
 
-clean:
-	-rm -f -- zingzong $(objects) $(depends)
-
-.PHONY: clean
-
 zingzong: override NAME	    = zingzong
 zingzong: override CPPFLAGS = $(zz_CPPFLAGS)
 zingzong: override CFLAGS   = $(zz_CFLAGS)
 zingzong: override LDLIBS   = $(zz_LDLIBS)
+zingzong: override LDFLAGS  = $(zz_LDFLAGS)
 
 mix := mix_none mix_qerp mix_soxr mix_srate mix_float
 out := out_ao out_raw
@@ -149,13 +147,31 @@ headers := zingzong.h zz_private.h mix_common.c
 zingzong: $(objects)
 
 # ----------------------------------------------------------------------
+#  Clean
+# ----------------------------------------------------------------------
+
+clean-dep:
+	@echo "[$@]"
+	@-rm -f -- $(depends)
+
+clean-obj:
+	@echo "[$@]"
+	@-rm -f -- $(objects)
+
+clean: clean-dep clean-obj
+	@echo "[$@]"
+	@-rm -f -- zingzong
+
+.PHONY: clean clean-obj clean-dep
+
+# ----------------------------------------------------------------------
 #  Dependencies
 # ----------------------------------------------------------------------
 
 depend:
 .PHONY: depend
 
-%.d: %.c ; $(CC) $(zz_CPPFLAGS) $(zz_CFLAGS) -MM -MMD -c $<
+%.d: %.c ;$(CC) $(zz_CPPFLAGS) $(zz_CFLAGS) -MM -MMD -c $<
 
 ifeq ($(words $(MAKECMDGOALS)),0)
 filtered = any word will do

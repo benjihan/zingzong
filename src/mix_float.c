@@ -50,7 +50,6 @@ fltoi16(int16_t * const d, const float * const s, const int n)
   /* $$$ Slow conversion. Need some improvement once everything work */
   for (i=0; i<n; ++i) {
     int v;
-    const float f = s[i] * sc;
 
     if ( unlikely(s[i] >= 1.0) )
       v = 32767;
