@@ -193,16 +193,14 @@ zingzong: $(objects)
 # ----------------------------------------------------------------------
 
 clean-dep:
-	@echo "[$@]"
 	@-rm -f -- $(depends)
 
 clean-obj:
-	@echo "[$@]"
 	@-rm -f -- $(objects)
 
 clean: clean-dep clean-obj
-	@echo "[$@]"
 	@-rm -f -- zingzong
+	@echo "zingzong has been cleaned up"
 
 .PHONY: clean clean-obj clean-dep
 
@@ -210,19 +208,18 @@ clean: clean-dep clean-obj
 #  Dependencies
 # ----------------------------------------------------------------------
 
-depend:
 .PHONY: depend
 
 %.d: %.c ;$(CC) $(zz_CPPFLAGS) $(zz_CFLAGS) -MM -MMD -c $<
 
 ifeq ($(words $(MAKECMDGOALS)),0)
-filtered = any word will do
+filtered = ST forever
 else
 filtered = $(filter-out clean% dist%,$(MAKECMDGOALS))
 endif
 
 ifneq ($(words $(filtered)),0)
-include $(depends)
+-include $(depends)
 endif
 
 # ----------------------------------------------------------------------
@@ -266,7 +263,7 @@ dist-extract: dist-arch
 
 dist-all: all distrib
 
-.IGNORE: dist-make	 # detect error on presence of _build-distbase
+.IGNORE: dist-make 	 # detect error on presence of _build-distbase
 dist-make: dist-extract
 	@mkdir -- _build-$(dist_base) && \
 	echo "compiling -- $(dist_base)" && \
