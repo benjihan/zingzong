@@ -350,7 +350,7 @@ static int init_srate(play_t * const P, const int quality)
   }\
   mixer_t mixer_srate_##Q = \
   {\
-    "src:" XTR(Q), D, init_##Q, free_cb, push_cb, pull_cb\
+    "sinc:" XTR(Q), D, init_##Q, free_cb, push_cb, pull_cb\
   }
 
 DECL_SRATE_MIXER(best,SINC_BEST_QUALITY,
@@ -359,9 +359,5 @@ DECL_SRATE_MIXER(medium,SINC_MEDIUM_QUALITY,
                  "band limited sinc (medium quality)");
 DECL_SRATE_MIXER(fast,SINC_FASTEST,
                  "band limited sinc (fastest quality)");
-DECL_SRATE_MIXER(zero,ZERO_ORDER_HOLD,
-                 "zero order hold (very fast, LQ)");
-DECL_SRATE_MIXER(linear,LINEAR,
-                 "linear (very fast, LQ)");
 
 #endif /* WITH_SRATE == 1 */

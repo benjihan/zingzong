@@ -404,13 +404,10 @@ static int init_soxr(play_t * const P, const int quality)
   }\
   mixer_t mixer_soxr_##Q =\
   {\
-    "soxr:" XTR(Q), D, init_##Q, free_cb, push_cb, pull_cb\
+    "soxr" , D, init_##Q, free_cb, push_cb, pull_cb\
   }
 
-DECL_SOXR_MIXER(qq,QQ,  "quick cubic interpolation");
-DECL_SOXR_MIXER(lq,LQ,  "low 16-bit with larger rolloff");
-DECL_SOXR_MIXER(mq,MQ,  "medium 16-bit with medium rolloff");
-DECL_SOXR_MIXER(hq,HQ,  "high quality");
-DECL_SOXR_MIXER(vhq,VHQ,"very high quality");
+/* GB: when using variable rate soxr ignore quality. */
+DECL_SOXR_MIXER(hq,HQ,"high quality variable rate");
 
 #endif /* WITH_SOXR == 1 */

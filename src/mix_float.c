@@ -13,32 +13,34 @@
 
 static float i8tofl_lut[256];
 
-/** Initialize int8_t to float PCM look up table. */
-static void
-i8tofl_init(void)
-{
-    const float sc = 3.0 / (4.0*4.0*128.0);
-    int i;
-    for (i=-128; i<128; ++i)
-      i8tofl_lut[i&0xFF] = sc * (float)i;
-}
-
 /* Convert int8_t PCM buffer to float PCM */
 void
 i8tofl(float * const d, const uint8_t * const s, const int n)
 {
+#if 1
   static int init = 0;
   if (unlikely(!init)) {
+    const float sc = 3.0 / (4.0*4.0*128.0);
+    int i;
     init = 1;
-    i8tofl_init();
+    for (i=-128; i<128; ++i)
+      i8tofl_lut[i&0xFF] = sc * (float)i;
   }
-
   if (n > 0) {
     int i = 0;
     do {
       d[i] = i8tofl_lut[s[i]];
     } while (++i<n);
   }
+#else
+  if (n > 0) {
+    const float sc = 3.0 / (4.0*4.0*128.0);
+    int i = 0;
+    do {
+      d[i] = sc * (int8_t)s[i];
+    } while (++i<n);
+  }
+#endif
 }
 
 /* Convert normalized float PCM buffer to in16_t PCM */
@@ -49,8 +51,8 @@ fltoi16(int16_t * const d, const float * const s, const int n)
 
   /* $$$ Slow conversion. Need some improvement once everything work */
   for (i=0; i<n; ++i) {
+#if 0
     int v;
-
     if ( unlikely(s[i] >= 1.0) )
       v = 32767;
     else if  ( unlikely(s[i] <= -1.0) )
@@ -58,6 +60,11 @@ fltoi16(int16_t * const d, const float * const s, const int n)
     else
       v =  (int)( s[i] * sc );
     d[i] = v;
+#else
+    d[i] = s[i] * sc;
+    assert(s[i] > -1.0);
+    assert(s[i] <  1.0);
+#endif
   }
 }
 

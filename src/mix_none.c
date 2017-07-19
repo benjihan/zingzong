@@ -10,9 +10,9 @@
 #define SETPCM() *b++  = (int8_t)(pcm[idx>>FP]) << 6; idx += stp
 #define ADDPCM() *b++ += (int8_t)(pcm[idx>>FP]) << 6; idx += stp
 
-#define NAME "zz"
+#define NAME "int"
 #define METH "none"
 #define SYMB mixer_zz_none
-#define DESC "no interpolation (very fast/LQ)"
+#define DESC "no interpolation (lightning fast/LQ)"
 
 #include "mix_common.c"

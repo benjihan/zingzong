@@ -11,11 +11,10 @@
 
 /* ---------------------------------------------------------------------- */
 
-EXTERN_C mixer_t mixer_zz_none, mixer_zz_qerp;
+EXTERN_C mixer_t mixer_zz_none, mixer_zz_lerp, mixer_zz_qerp;
 
 #if WITH_SOXR == 1
-EXTERN_C mixer_t mixer_soxr_qq, mixer_soxr_lq, mixer_soxr_mq;
-EXTERN_C mixer_t mixer_soxr_hq, mixer_soxr_vhq;
+EXTERN_C mixer_t mixer_soxr_hq;
 # ifndef ZZ_DEF_MIXER
 #  define ZZ_DEF_MIXER mixer_soxr_hq
 # endif
@@ -23,7 +22,6 @@ EXTERN_C mixer_t mixer_soxr_hq, mixer_soxr_vhq;
 
 #if WITH_SRATE == 1
 EXTERN_C mixer_t mixer_srate_best, mixer_srate_medium, mixer_srate_fast;
-EXTERN_C mixer_t mixer_srate_zero, mixer_srate_linear;
 # ifndef ZZ_DEF_MIXER
 #  define ZZ_DEF_MIXER mixer_srate_medium
 # endif
@@ -34,16 +32,14 @@ EXTERN_C mixer_t mixer_smarc;
 #endif
 
 mixer_t * const zz_mixers[] = {
-  &mixer_zz_qerp, &mixer_zz_none,
+  &mixer_zz_qerp, &mixer_zz_lerp, &mixer_zz_none,
 
 #if WITH_SOXR == 1
-  &mixer_soxr_qq, &mixer_soxr_lq, &mixer_soxr_mq,
-  &mixer_soxr_hq, &mixer_soxr_vhq,
+  &mixer_soxr_hq,
 #endif
 
 #if WITH_SRATE == 1
   &mixer_srate_best, &mixer_srate_medium, &mixer_srate_fast,
-  &mixer_srate_zero, &mixer_srate_linear,
 #endif
 
 #if WITH_SMARC == 1

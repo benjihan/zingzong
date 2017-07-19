@@ -176,7 +176,7 @@ zingzong: override CFLAGS   = $(zz_CFLAGS)
 zingzong: override LDLIBS   = $(zz_LDLIBS)
 zingzong: override LDFLAGS  = $(zz_LDFLAGS)
 
-mix := mix_none mix_qerp mix_soxr mix_srate mix_smarc mix_float
+mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_smarc mix_float
 out := out_ao out_raw
 vfs := vfs_file
 zz  := zz_bin zz_load zz_msg zz_play zz_str zz_vfs zz_mixers
