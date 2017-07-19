@@ -73,13 +73,6 @@ override SRATE_LIBS=
 override SRATE_VERSION=n/a
 else
 
-ifndef SRATE_LIBS
-SRATE_LIBS := $(call pkgconfig,--libs samplerate)
-ifeq ($(SRATE_LIBS),n/a)
-$(error pkg-config failed -- samplerate --libs)
-endif
-endif
-
 ifndef SRATE_CFLAGS
 SRATE_CFLAGS := $(call pkgconfig,--cflags samplerate)
 ifeq ($(SRATE_CFLAGS),n/a)
@@ -88,8 +81,14 @@ endif
 SRATE_CFLAGS += -DWITH_SRATE=1
 endif
 
-SRATE_VERSION := $(call pkgconfig,--modversion samplerate)
+ifndef SRATE_LIBS
+SRATE_LIBS := $(call pkgconfig,--libs samplerate)
+ifeq ($(SRATE_LIBS),n/a)
+$(error pkg-config failed -- samplerate --libs)
+endif
+endif
 
+SRATE_VERSION := $(call pkgconfig,--modversion samplerate)
 endif
 
 override bin_CFLAGS += $(SRATE_CFLAGS)
@@ -100,8 +99,9 @@ override bin_LDLIBS += $(SRATE_LIBS)
 # ----------------------------------------------------------------------
 
 ifneq ($(NO_SOXR),0)
-override SOXR_CFLAGS=-DNO_SOXR=1
+override SOXR_CFLAGS=
 override SOXR_LIBS=
+override SOXR_VERSION=n/a
 else
 
 ifndef SOXR_CFLAGS
@@ -120,7 +120,6 @@ SOXR_CFLAGS += -DWITH_SOXR=1
 endif
 
 SOXR_VERSION := $(call pkgconfig,--modversion samplerate)
-
 endif
 
 override bin_CFLAGS += $(SOXR_CFLAGS)
@@ -135,6 +134,7 @@ override SMARC_CFLAGS=
 override SMARC_LIBS=
 override SMARC_VERSION=n/a
 else
+
 ifndef SMARC_LIBS
 SMARC_LIBS := -lsmarc
 SOXR_CFLAGS += -DWITH_SMARC=1
@@ -158,10 +158,10 @@ org_CFLAGS   := $(CFLAGS)
 org_LDLIBS   := $(LDLIBS)
 org_LDFLAGS  := $(LDFLAGS)
 
-zz_CPPFLAGS  := $(org_CPPFLAGS) $(PACKAGE_CPPFLAGS) $(bin_CPPFLAGS)
-zz_CFLAGS    := $(org_CFLAGS) $(bin_CFLAGS)
-zz_LDLIBS    := $(org_LDLIBS) $(bin_LDLIBS)
-zz_LDFLAGS   := $(org_LDFLAGS) $(bin_LDFLAGS)
+zz_CPPFLAGS   = $(org_CPPFLAGS) $(bin_CPPFLAGS)
+zz_CFLAGS     = $(org_CFLAGS) $(bin_CFLAGS)
+zz_LDLIBS     = $(org_LDLIBS) $(bin_LDLIBS)
+zz_LDFLAGS    = $(org_LDFLAGS) $(bin_LDFLAGS)
 
 # ----------------------------------------------------------------------
 #  Build
@@ -171,7 +171,7 @@ all: zingzong
 .PHONY: all
 
 zingzong: override NAME	    = zingzong
-zingzong: override CPPFLAGS = $(zz_CPPFLAGS)
+zingzong: override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
 zingzong: override CFLAGS   = $(zz_CFLAGS)
 zingzong: override LDLIBS   = $(zz_LDLIBS)
 zingzong: override LDFLAGS  = $(zz_LDFLAGS)

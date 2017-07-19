@@ -22,7 +22,7 @@ Alternatively `zingzong` supports an convenient format that bundles both files i
     -h --help --usage  Print this message and exit.
     -V --version       Print version and copyright and exit.
     -t --tick=HZ       Set player tick rate (default is 200hz).
-    -r --rate=[M,]HZ   Set re-sampling method and rate (Best,48K).
+    -r --rate=[R,]HZ   Set re-sampling method and rate (querp,48K).
                        Try `-hh' to print the list of [R]esampler.
     -l --length=TIME   Set play time.
     -m --mute=ABCD     Mute selected channels (bit-field or string).

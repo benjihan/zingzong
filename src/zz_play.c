@@ -273,12 +273,14 @@ int zz_play(play_t * P)
       ecode = E_MIX;
       if (P->mixer->push(P))
         break;
+      assert(!memcmp(&P->mix_buf[P->pcm_per_tick],"MBUF",4));
       ecode = E_OUT;
       n = P->pcm_per_tick << 1;
       if (P->out->write(P->out, P->mix_buf, n) != n)
         break;
     }
   }
+
   return ecode;
 }
 
@@ -290,31 +292,22 @@ int zz_init(play_t * P)
    *  Mix buffers
    * ---------------------------------------- */
 
+  P->pcm_per_tick = (P->spr + (P->rate>>1)) / P->rate;
+  dmsg("pcm per tick: %u (%ux%u+%u)\n",
+       P->pcm_per_tick,
+       P->pcm_per_tick/MIXBLK,
+       MIXBLK, P->pcm_per_tick%MIXBLK);
   ecode = P->mixer->init(P);
   if (ecode)
     goto error;
-
-  P->pcm_per_tick = (P->spr + (P->rate>>1)) / P->rate;
-  dmsg("pcm per tick: %u (%ux%u+%u)\n",
-       P->pcm_per_tick, P->pcm_per_tick/MIXBLK, MIXBLK, P->pcm_per_tick%MIXBLK);
 
   P->mix_buf = (int16_t *) zz_malloc("mix-buf",2*P->pcm_per_tick+4);
   if (!P->mix_buf) {
     ecode = E_SYS; goto error;
   }
-  memcpy(&P->mix_buf[P->pcm_per_tick],"1337",4);
-
-  /* if (P->splmode >= 0) { */
-  /*   P->mix_flt = (float *) zz_malloc("mix-flt",4*P->pcm_per_tick+4); */
-  /*   if (!P->mix_flt) { */
-  /*     ecode = E_SYS; goto error; */
-  /*   } */
-  /*   memcpy(&P->mix_flt[P->pcm_per_tick],"1337",4); */
-  /* } */
-
+  memcpy(&P->mix_buf[P->pcm_per_tick],"MBUF",4);
 
 error:
-
   return ecode;
 }
 

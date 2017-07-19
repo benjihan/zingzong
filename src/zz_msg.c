@@ -98,6 +98,8 @@ emsg(const char * fmt, ...)
 {
   va_list list;
 
+  assert(me);
+  assert(*me);
   msg(msgfunc, stderr, "\n%s: "+newline, me);
   newline = 0;
 

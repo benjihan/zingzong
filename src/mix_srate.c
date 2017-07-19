@@ -11,7 +11,10 @@
 #include <string.h>
 #include <samplerate.h>
 
-#define USER_SUPPLY 1                  /* 0:no user supply function */
+#ifndef SRATE_USER_SUPPLY
+#define SRATE_USER_SUPPLY 1            /* 0:no user supply function */
+#endif
+
 #define RATIO(X) (1.0/(double)(X))
 
 #define F32MAX (MIXBLK*8)
@@ -25,7 +28,7 @@ struct mix_chan_s {
   int id;
 
   SRC_STATE * st;
-#if !USER_SUPPLY
+#if !SRATE_USER_SUPPLY
   SRC_DATA    sd;
 #endif
   double   rate;
@@ -34,7 +37,6 @@ struct mix_chan_s {
   uint8_t *ptl;
   uint8_t *pte;
   uint8_t *end;
-  /* double   stp; */
 
   int      ilen;
   int      imax;
@@ -45,12 +47,14 @@ struct mix_chan_s {
 };
 
 struct mix_data_s {
-  int quality;
-
-  double   rate, irate, orate, rate_min, rate_max;
+  int        quality;
+  double     rate, irate, orate, rate_min, rate_max;
   mix_chan_t chan[4];
 
-  float flt_buf[1];                     /* /!\ always last /!\ */
+  /***********************
+   * !!! ALWAYS LAST !!! *
+   ***********************/
+  float      flt_buf[1];
 };
 
 /* ----------------------------------------------------------------------
@@ -84,8 +88,6 @@ static void chan_flread(float * const d, mix_chan_t * const K, const int n)
   assert(n > 0);
   assert(n < VSET_UNROLL);
 
-  /* dmsg("flread(%c,%i)\n", K->id, n); */
-
   if (!K->ptr)
     memset(d, 0, n*sizeof(float));
   else {
@@ -106,7 +108,7 @@ static void chan_flread(float * const d, mix_chan_t * const K, const int n)
   }
 }
 
-#if USER_SUPPLY
+#if SRATE_USER_SUPPLY
 static long
 fill_cb(void *_K, float **data)
 {
@@ -152,8 +154,6 @@ push_cb(play_t * const P)
   for (k=0; k<4; ++k) {
     mix_chan_t * const K = M->chan+k;
     chan_t     * const C = P->chan+k;
-    int slew = 0;
-    const int slew_val = 0;   /* GB: Nothing but 0 seems to work ! */
 
     switch (C->trig) {
 
@@ -167,17 +167,14 @@ push_cb(play_t * const P)
       C->note.ins = 0;
       if (restart_chan(K))
         return E_MIX;
-      slew -= -slew_val;               /* -X+X == 0 on note trigger */
 
     case TRIG_SLIDE:
       K->rate = rate_of_fp16(C->note.cur, M->rate);
       assert(K->rate >= M->rate_min);
       assert(K->rate <= M->rate_max);
-#if !USER_SUPPLY
+#if !SRATE_USER_SUPPLY
       K->sd.src_ratio = RATIO(K->rate);
 #endif
-      dmsg("%c: trig=%d stp=%08X %.3lf\n",
-           C->id, C->trig, C->note.cur, K->rate);
       break;
     case TRIG_STOP: K->ptr = 0;
     case TRIG_NOP:  break;
@@ -204,39 +201,56 @@ push_cb(play_t * const P)
     }
 
     while (need > 0) {
-      int i, done, want = need;
+      int i, idone, odone, want;
 
       assert( K->omax == FLOMAX );
       assert( K->imax == FLIMAX );
 
-      if (want > K->omax)
+      if ( (want=need) > K->omax)
         want = K->omax;
 
-#if !USER_SUPPLY
-      emsg("srate: only user supply supported ATM\n");
-      return E_MIX;
+#if !SRATE_USER_SUPPLY
+
+      /* Refill if input is empty. */
+      if (!K->ilen) {
+        chan_flread(K->iflt, K, K->imax);
+        K->sd.input_frames = K->ilen = K->imax;
+        K->sd.data_in = K->iflt;
+      }
+
+      K->sd.data_out = K->oflt;
+      K->sd.output_frames = want;
+      if (src_process (K->st, &K->sd))
+        return emsg_srate(K,src_error(K->st));
+      idone = K->sd.input_frames_used;
+      odone = K->sd.output_frames_gen;
+      K->sd.data_in += idone;
+      K->sd.input_frames -= idone;
 
 #else
-      done = src_callback_read(K->st, RATIO(K->rate), want, K->oflt);
-      if (done < 0)
+      idone = 0;
+      odone = src_callback_read(K->st, RATIO(K->rate), want, K->oflt);
+      if (odone < 0)
         return emsg_srate(K,src_error(K->st));
+#endif
 
-      if (done > 0) {
+      if ( (idone+odone) > 0) {
         zero = 0;
       } else {
-        if (++zero > 31) {
+        if (++zero > 7) {
           emsg("%c: too many loop without data -- %u\n",K->id, zero);
           return E_MIX;
         }
       }
 
-      need -= done;
+      need -= odone;
       if (k == 0)
-        for (i=0; i<done; ++i)
+        for (i=0; i<odone; ++i)
           *flt++ = K->oflt[i];
       else
-        for (i=0; i<done; ++i)
+        for (i=0; i<odone; ++i)
           *flt++ += K->oflt[i];
+
     }
     assert( need == 0 );
     assert( flt-N == M->flt_buf );
@@ -245,7 +259,6 @@ push_cb(play_t * const P)
   fltoi16(P->mix_buf, M->flt_buf, N);
 
   return E_OK;
-#endif
 }
 
 /* ---------------------------------------------------------------------- */
@@ -260,7 +273,6 @@ static int pull_cb(play_t * const P, int n)
 static void free_cb(play_t * const P)
 {
   mix_data_t * const M = (mix_data_t *) P->mixer_data;
-  dmsg("free_mixer_data %p\n",M);
   if (M) {
     int k;
     assert(M == P->mixer_data);
@@ -280,16 +292,14 @@ static int init_srate(play_t * const P, const int quality)
 {
   int k, ecode = E_SYS;
   mix_data_t * M;
-  const uint_t size = sizeof(mix_data_t) + sizeof(float)*P->pcm_per_tick;
+  const int N = P->pcm_per_tick;
+  const uint_t size = sizeof(mix_data_t) + sizeof(float)*N;
   assert(!P->mixer_data);
+  assert(N>0);
+  assert(sizeof(float) == 4);
   P->mixer_data = M = zz_calloc("srate-data", size);
   if (M) {
     M->quality = quality;
-
-    dmsg("init %s: %s\n",
-         src_get_name (quality),
-         src_get_description(quality));
-
     M->irate    = (double) P->song.khz * 1000.0;
     M->orate    = (double) P->spr;
     M->rate     = iorate(1, M->irate, M->orate);
@@ -304,24 +314,14 @@ static int init_srate(play_t * const P, const int quality)
     for (k=0, ecode=E_OK; ecode == E_OK && k<4; ++k) {
       mix_chan_t * const K = M->chan+k;
       int err = 0;
-
       K->id = 'A'+k;
 
-#if USER_SUPPLY
+#if SRATE_USER_SUPPLY
       K->st = src_callback_new(fill_cb, quality, 1, &err, K);
 #else
-      K->sd.data_in   = K->iflt;
-      K->sd.data_out  = K->oflt;
-
-      K->rate = rate_of_fp16((P->song.stepmin+P->song.stepmax)>>1, M->rate);
-      K->sd.src_ratio = RATIO(K->rate);
-
-      K->st = src_new (quality, 1, &err);
+      K->st = src_new(quality, 1, &err);
 #endif
-      if (!K->st)
-        return emsg_srate(K,err);
-
-      ecode = err
+      ecode = (!K->st || err)
         ? emsg_srate(K,err)
         : restart_chan(K)
         ;
@@ -360,7 +360,7 @@ DECL_SRATE_MIXER(medium,SINC_MEDIUM_QUALITY,
 DECL_SRATE_MIXER(fast,SINC_FASTEST,
                  "band limited sinc (fastest quality)");
 DECL_SRATE_MIXER(zero,ZERO_ORDER_HOLD,
-                 "zero order hold (very fast, LQ");
+                 "zero order hold (very fast, LQ)");
 DECL_SRATE_MIXER(linear,LINEAR,
                  "linear (very fast, LQ)");
 

@@ -11,7 +11,9 @@
 #include <string.h>
 #include <soxr.h>
 
-#define USER_SUPPLY 1                  /* 0:no user supply function */
+#ifndef SOXR_USER_SUPPLY
+#define SOXR_USER_SUPPLY 1             /* 0:no user supply function */
+#endif
 
 #define F32MAX (MIXBLK*8)
 #define FLIMAX (F32MAX)
@@ -30,6 +32,7 @@ struct mix_chan_s {
   uint8_t *pte;
   uint8_t *end;
 
+  float   *icur;
   int      ilen;
   int      imax;
   float    iflt[FLIMAX];
@@ -45,7 +48,10 @@ struct mix_data_s {
   double   rate, irate, orate, rate_min, rate_max;
   mix_chan_t chan[4];
 
-  float flt_buf[1];                     /* /!\ always last /!\ */
+  /***********************
+   * !!! ALWAYS LAST !!! *
+   ***********************/
+  float flt_buf[1];
 };
 
 /* ----------------------------------------------------------------------
@@ -54,14 +60,12 @@ struct mix_data_s {
 
    ---------------------------------------------------------------------- */
 
-
-static void chan_flread(float * const d, mix_chan_t * const K, const int n)
+static void
+chan_flread(float * const d, mix_chan_t * const K, const int n)
 {
   if (!n) return;
   assert(n > 0);
   assert(n < VSET_UNROLL);
-
-  /* dmsg("flread(%c,%i)\n", K->id, n); */
 
   if (!K->ptr)
     memset(d, 0, n*sizeof(*d));
@@ -89,7 +93,6 @@ static void chan_flread(float * const d, mix_chan_t * const K, const int n)
 
    ---------------------------------------------------------------------- */
 
-
 static int
 emsg_soxr(const mix_chan_t * const K, soxr_error_t err)
 {
@@ -97,7 +100,7 @@ emsg_soxr(const mix_chan_t * const K, soxr_error_t err)
   return E_MIX;
 }
 
-#if USER_SUPPLY
+#if SOXR_USER_SUPPLY
 /* Supply data to be resampled. */
 static size_t
 fill_cb(void * _K, soxr_in_t * data, size_t reqlen)
@@ -107,8 +110,6 @@ fill_cb(void * _K, soxr_in_t * data, size_t reqlen)
 
   assert(len <= K->imax);              /* Limited by set_input_fb() */
   assert(K->imax == FLIMAX);           /* For now keep it simple */
-  /* assert(K->ilen == 0);                /\* For now keep it simple *\/ */
-
   if (len > K->imax)
     len = K->imax;
   *data = K->iflt;
@@ -124,12 +125,13 @@ restart_chan(mix_chan_t * const K)
 {
   soxr_error_t err = 0;
 
+  K->icur = 0;
   K->ilen = 0;
   K->imax = FLIMAX;
   K->omax = FLOMAX;
   err = soxr_clear(K->soxr);
 
-#if USER_SUPPLY
+#if SOXR_USER_SUPPLY
   if (!err)
     err = soxr_set_input_fn(K->soxr, fill_cb, K, K->imax);
 #endif
@@ -171,7 +173,7 @@ push_cb(play_t * const P)
     mix_chan_t * const K = M->chan+k;
     chan_t     * const C = P->chan+k;
     int slew = 0;
-    const int slew_val = 0;   /* GB: Nothing but 0 seems to work ! */
+    const int slew_val = N>>1;
 
     switch (C->trig) {
 
@@ -185,7 +187,7 @@ push_cb(play_t * const P)
       C->note.ins = 0;
       if (restart_chan(K))
         return E_MIX;
-      slew -= -slew_val;               /* -X+X == 0 on note trigger */
+      slew = -slew_val;                /* -X+X == 0 on note trigger */
 
     case TRIG_SLIDE:
       K->rate = rate_of_fp16(C->note.cur, M->rate);
@@ -193,8 +195,8 @@ push_cb(play_t * const P)
       assert(K->rate <= M->rate_max);
       err = soxr_set_io_ratio(K->soxr, K->rate, slew+slew_val);
 
-      dmsg("%c: trig=%d stp=%08X %.3lf\n",
-           C->id, C->trig, C->note.cur, K->rate);
+      /* dmsg("%c: trig=%d stp=%08X %.3lf\n", */
+      /*      C->id, C->trig, C->note.cur, K->rate); */
 
       if (err)
         return emsg_soxr(K,err);
@@ -218,13 +220,13 @@ push_cb(play_t * const P)
       /* Sound stopped. If it's channel A cleat the buffer else simply
        * skip.
        */
-      if (k==0)
+      if (!k)
         memset(flt,0,sizeof(float)*N);
       continue;
     }
 
     while (need > 0) {
-      int i, done;
+      int i;
       size_t want = need, idone, odone;
 
       assert( K->omax == FLOMAX );
@@ -234,8 +236,7 @@ push_cb(play_t * const P)
         want = K->omax;
 
 
-#if USER_SUPPLY
-
+#if SOXR_USER_SUPPLY
       idone = 0;
       odone =
         soxr_output(
@@ -245,40 +246,28 @@ push_cb(play_t * const P)
       err = soxr_error(K->soxr);
       if (err || odone < 0)
         return emsg_soxr(K,err);
-      done = odone;
-
 #else
-
       /* Fill input when it's empty */
-      if (!K->ilen) {
-        K->ilen = K->imax;
-        chan_flread(K->iflt, K, K->ilen);
-      }
-
+      if (!K->ilen)
+        chan_flread(K->icur = K->iflt, K, K->ilen = K->imax);
+      assert( K->ilen > 0 );
+      assert( K->ilen <= K->omax );
+      assert( &K->iflt[K->omax] == &K->icur[K->ilen] );
       err = soxr_process(
         K->soxr,
-        K->iflt + K->imax - K->ilen,
-        K->ilen,
-        &idone,
-
-        K->oflt,
-        want,
-        &odone);
-
-      /* dmsg("mix(%c need:%u i:%u/%u o:%u/%u) -> %s\n", */
-      /*      K->id, (uint_t) need, (uint_t) idone, (uint_t) K->ilen, */
-      /*      (uint_t) odone, (uint_t) want, soxr_strerror(err)); */
+        K->icur, K->ilen, &idone,
+        K->oflt, want, &odone);
 
       if (err)
         return emsg_soxr(K,err);
 
-      done = odone;
       K->ilen -= idone;
+      K->icur += idone;
 
       assert( K->ilen >= 0 && K->ilen <= K->imax );
-      assert( done >= 0 && done <= K->omax );
-
+      assert( odone >= 0 && odone <= want && odone <= K->omax );
 #endif
+
       if (idone+odone != 0) {
         zero = 0;
       } else {
@@ -288,24 +277,24 @@ push_cb(play_t * const P)
              (uint_t) idone, (uint_t) K->ilen, (uint_t) K->imax,
              (uint_t) odone, (uint_t) want, (uint_t) K->omax,
              soxr_strerror(err));
-        if (++zero > 31) {
+        if (++zero > 7) {
           emsg("%c: too many loop without data -- %u\n",K->id, zero);
           return E_MIX;
         }
       }
 
-
-      need -= done;
+      need -= odone;
       if (k == 0)
-        for (i=0; i<done; ++i)
+        for (i=0; i<odone; ++i)
           *flt++ = K->oflt[i];
       else
-        for (i=0; i<done; ++i)
+        for (i=0; i<odone; ++i)
           *flt++ += K->oflt[i];
     }
     assert( need == 0 );
     assert( flt-N == M->flt_buf );
   }
+
   /* Convert back to s16 */
   fltoi16(P->mix_buf, M->flt_buf, N);
 
@@ -324,7 +313,6 @@ static int pull_cb(play_t * const P, int n)
 static void free_cb(play_t * const P)
 {
   mix_data_t * const M = (mix_data_t *) P->mixer_data;
-  dmsg("free_mixer_data %p\n",M);
   if (M) {
     int k;
     assert(M == P->mixer_data);
@@ -345,11 +333,13 @@ static void free_cb(play_t * const P)
 static int init_soxr(play_t * const P, const int quality)
 {
   int k, ecode = E_SYS;
-
+  const int N = P->pcm_per_tick;
   soxr_error_t err;
   mix_data_t * M;
-  const uint_t size = sizeof(mix_data_t) + sizeof(float)*P->pcm_per_tick;
+  const uint_t size = sizeof(mix_data_t) + sizeof(float)*N;
   assert(!P->mixer_data);
+  assert(N > 0);
+  assert(sizeof(float) == 4);
   P->mixer_data = M = zz_calloc("soxr-data", size);
   if (M) {
     M->qspec    = soxr_quality_spec(quality, SOXR_VR);

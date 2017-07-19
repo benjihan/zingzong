@@ -13,7 +13,7 @@ arch="${PWD##*/}"	      # basename of dirname is our host name
 
 DEPLIBS="AO SRATE SOXR SMARC"
 
-vars1=( CC LD PKGCONFIG DEBUG )
+vars1=( CC LD PKGCONFIG DEBUG PROFILE )
 vars2=( CPPFLAGS CFLAGS LDFLAGS LDLIBS )
 for dep in $DEPLIBS; do
     vars2+=( NO_${dep} ${dep}_CFLAGS ${dep}_LIBS )
@@ -43,6 +43,7 @@ Usage: build.sh -j
 
   For each dependency library name {A0,SRATE,SOXR,SMARC} :
 
+  NO_{name} ....... Disable(0)/Enable(1)
   {name}_CFLAGS ... How to compile (usually -I)
   {name}_LIBS ..... How to link (usually -L and -l)
 
@@ -95,16 +96,16 @@ if [ ${crosscompile} = yes ]; then
     #
     if [ -z "${CC-}" ]; then
 	CC="${arch}"-gcc;
-	xcc=`which "$CC"`
-	echo "CC=\"$xcc\""
+	xx=`which "$CC"`
+	echo "CC=\"$xx\""
     fi
 
     ## Unless PKGCONFIG is set use {host}-pkg-config
     #
     if [ -z "${PKGCONFIG-}" ]; then
 	PKGCONFIG="${arch}"-pkg-config
-	xpkgconfig=`which "$PKGCONFIG"`
-	echo "PKGCONFIG=\"$xpkgconfig\""
+	xxxconfig=`which "$PKGCONFIG"`
+	echo "PKGCONFIG=\"$xxxconfig\""
     fi
 fi
 

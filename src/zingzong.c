@@ -40,7 +40,6 @@ static const char bugreport[] = \
 
 #include "zz_private.h"
 
-
 /* ----------------------------------------------------------------------
  * Includes
  * ---------------------------------------------------------------------- */
@@ -83,7 +82,6 @@ static const char bugreport[] = \
 #define PACKAGE_STRING PACKAGE_NAME " " PACKAGE_VERSION
 #endif
 
-
 /* ----------------------------------------------------------------------
  * Globals
  * ---------------------------------------------------------------------- */
@@ -97,56 +95,11 @@ static char *opt_length;
 #ifndef NO_AO
 static int opt_wav, opt_force;
 #endif
-
 static play_t play;
-static const int def_mixer_id = 1; /* zz:qerp */
-
-/* ----------------------------------------------------------------------
- *
- * ----------------------------------------------------------------------
- */
-
-static const char * tickstr(uint_t ticks, uint_t rate)
-{
-  static char s[80];
-  const int max = sizeof(s)-1;
-  int i=0, l=1;
-  uint_t ms;
-
-  if (!ticks)
-    return "infinity";
-  ms = ticks * 1000u / rate;
-  if (ms >= 3600000u) {
-    i += snprintf(s+i,max-i,"%uh", ms/3600000u);
-    ms %= 3600000u;
-    l = 2;
-  }
-  if (i > 0 || ms >= 60000) {
-    i += snprintf(s+i,max-i,"%0*u'",l,ms/60000u);
-    ms %= 60000u;
-    l = 2;
-  }
-  if (!i || ms) {
-    uint_t sec = ms / 1000u;
-    ms %= 1000u;
-    if (ms)
-      while (ms < 100) ms *= 10u;
-    i += snprintf(s+i,max-i,"%0*u,%03u\"", l, sec, ms);
-
-  }
-
-  i += snprintf(s+i,max-i," (+%u ticks@%uhz)", ticks, rate);
-  s[i] = 0;
-  return s;
-}
 
 /* ----------------------------------------------------------------------
  * Usage and version
  * ----------------------------------------------------------------------
- */
-
-/**
- * Print usage message.
  */
 
 #ifndef NO_AO
@@ -155,6 +108,9 @@ static const char * tickstr(uint_t ticks, uint_t rate)
 # define OUTWAV ""
 #endif
 
+/**
+ * Print usage message.
+ */
 static void print_usage(int level)
 {
   int i;
@@ -169,7 +125,7 @@ static void print_usage(int level)
     " -V --version       Print version and copyright and exit.\n"
     " -t --tick=HZ       Set player tick rate (default is 200hz).\n"
     " -r --rate=[R,]HZ   Set re-sampling method and rate (%s,%uK).\n",
-    zz_mixers[def_mixer_id]->name, SPR_DEF/1000u);
+    zz_default_mixer->name, SPR_DEF/1000u);
 
   if (!level)
     puts("                    Try `-hh' to print the list of [R]esampler.");
@@ -227,6 +183,45 @@ static void print_version(void)
   puts(license);
 }
 
+
+/* ----------------------------------------------------------------------
+ * Argument parsing functions
+ * ----------------------------------------------------------------------
+ */
+
+static const char * tickstr(uint_t ticks, uint_t rate)
+{
+  static char s[80];
+  const int max = sizeof(s)-1;
+  int i=0, l=1;
+  uint_t ms;
+
+  if (!ticks)
+    return "infinity";
+  ms = ticks * 1000u / rate;
+  if (ms >= 3600000u) {
+    i += snprintf(s+i,max-i,"%uh", ms/3600000u);
+    ms %= 3600000u;
+    l = 2;
+  }
+  if (i > 0 || ms >= 60000) {
+    i += snprintf(s+i,max-i,"%0*u'",l,ms/60000u);
+    ms %= 60000u;
+    l = 2;
+  }
+  if (!i || ms) {
+    uint_t sec = ms / 1000u;
+    ms %= 1000u;
+    if (ms)
+      while (ms < 100) ms *= 10u;
+    i += snprintf(s+i,max-i,"%0*u,%03u\"", l, sec, ms);
+
+  }
+
+  i += snprintf(s+i,max-i," (+%u ticks@%uhz)", ticks, rate);
+  s[i] = 0;
+  return s;
+}
 #ifndef NO_AO
 
 static char * fileext(char * base)
@@ -386,8 +381,11 @@ static char * xtrbrk(char * s, const char * tok)
 static int modecmp(const char * mix, char * arg,  char ** pend)
 {
   const char *eng, *qua;
-  char *brk;
+  char *brk, *end;
   int len, elen, qlen, res = 0;
+
+  if (!pend)
+    pend = &end;
 
   /* Split mix into "engine:quality" */
   qua = strchr(eng = mix,':');
@@ -419,42 +417,60 @@ static int modecmp(const char * mix, char * arg,  char ** pend)
 }
 
 
+/**
+ * @return mixer id
+ * @retval 0   not found
+ * @retval >0  mixer_id+1
+ * @retval <0  -(mixer_id+1)
+ */
+static int find_mixer(char * arg, char ** pend)
+{
+  int i,f;
+  const mixer_t * m;
+  /* Get re-sampling mode */
+  for (i=0, f=-1; !!(m = zz_mixers[i]); ++i) {
+    int res = modecmp(m->name, arg, pend);
+
+    if (res == 1) {
+      /* prefect match */
+      f = i; m = 0;
+      break;
+    } else if (res) {
+      /* partial match */
+      if (f != -1)
+        break;
+      f = i;
+    }
+  }
+
+  if (f < 0)
+    f = 0;                              /* not found */
+  else if (m)
+    f = -(f+1);                         /* ambiguous */
+  else
+    f = f+1;                            /* found */
+
+  dmsg("Find mixer -- %d -- [%s]\n",f, pend ? *pend : "(nil)");
+
+  return f;
+}
+
 
 /**
  * Parse -r,--rate=[M:Q,]Hz.
  */
 static int uint_spr(char * arg, const char * name, int * prate, int * pmixer)
 {
-  int rate=SPR_DEF, i, f = -1;
+  int rate=SPR_DEF;
   char * end = arg;
 
   if (isalpha(arg[0])) {
-    const mixer_t * m;
-    end = 0;
-    /* Get re-sampling mode */
-    for (i=0; !!(m = zz_mixers[i]); ++i) {
-      int res = modecmp(m->name, arg, &end);
-
-      if (res == 1) {
-        /* prefect match */
-        f = i; m = 0;
-        break;
-      } else if (res) {
-        /* partial match */
-        if (f != -1)
-          break;
-        f = i;
-      }
-    }
-
-    if (f<0) {
-      emsg("invalid sampling method -- %s=%s\n", name, arg);
-      return -1;
-    } else if (m) {
-      emsg("ambiguous sampling method -- %s=%s\n", name, arg);
-      return -1;
+    int f;
+    if (f = find_mixer(arg, &end), f <= 0) {
+      emsg("%s sampling method -- %s=%s\n",
+           !f?"invalid":"ambiguous", name, arg);
     } else {
-      *pmixer = f;
+      *pmixer = f-1;
     }
   }
 
@@ -605,7 +621,9 @@ int main(int argc, char *argv[])
   memset(P,0,sizeof(*P));
 
   if (opt_mixerid < 0)
-    opt_mixerid = def_mixer_id;
+    opt_mixerid = find_mixer((char *)zz_default_mixer->name,0) - 1;
+  if (opt_mixerid < 0)
+    opt_mixerid = 0;
 
   P->mixer      = zz_mixers[opt_mixerid];
   P->spr        = opt_splrate;
