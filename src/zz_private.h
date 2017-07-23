@@ -55,7 +55,7 @@
 #endif
 
 #ifndef MAX_DETECT
-# define MAX_DETECT 3600    /* maximum seconds for length detection */
+# define MAX_DETECT 1800    /* maximum seconds for length detection */
 #endif
 
 #ifndef SPR_MIN

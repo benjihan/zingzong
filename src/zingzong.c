@@ -139,7 +139,7 @@ static void print_usage(int level)
   puts(
     " -l --length=TIME   Set play time.\n"
     " -m --mute=ABCD     Mute selected channels (bit-field or string).\n"
-    " -c --stdout        Output raw sample to stdout.\n"
+    " -c --stdout        Output raw sample to stdout (mono native 16-bit).\n"
     " -n --null          Output to the void.\n"
 #ifndef NO_AO
     " -w --wav           Generated a .wav file (implicit if output is set).\n"
@@ -163,10 +163,10 @@ static void print_usage(int level)
     "  * pure integer number to represent a number of ticks\n"
     "  * comma `,' to separate seconds and milliseconds\n"
     "  * `h' to suffix hours; `m' to suffix minutes\n"
-    " If time is not set the player tries to auto detect the music duration.\n"
-    " However a number of musics are going into unnecessary loops which makes\n"
-    " it hard to properly detect. Detection threshold is set to 1 hour.\n"
-    " If time is set to `0` or `inf` the player will run for ever.");
+    " If time is not set the player tries to auto-detect the music duration.\n"
+    " However a number of musics are going into unnecessary loops which make\n"
+    " it harder to properly detect. Detection threshold is set to 30 minutes'.\n"
+    " If time is set to `0` or `inf` the player will run forever.");
   puts("");
   puts(copyright);
   puts(license);

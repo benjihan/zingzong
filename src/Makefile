@@ -40,24 +40,20 @@ endif
 ifeq ($(NO_AO),1)
 override AO_CFLAGS=-DNO_AO=1
 override AO_LIBS=
-override AO_VERSION=n/a
 else
+ifeq ($(origin AO_CFLAGS)/$(origin AO_LIBS),undefined/undefined)
 
-ifndef AO_CFLAGS
 AO_CFLAGS := $(call pkgconfig,--cflags ao)
 ifeq ($(AO_CFLAGS),n/a)
 $(error pkg-config failed -- ao --cflags)
 endif
-endif
 
-ifndef AO_LIBS
 AO_LIBS := $(call pkgconfig,--libs ao)
 ifeq ($(AO_LIBS),n/a)
 $(error pkg-config failed -- ao --libs)
 endif
-endif
 
-AO_VERSION := $(call pkgconfig,--modversion ao)
+endif
 endif
 
 override bin_CFLAGS += $(AO_CFLAGS)
@@ -70,25 +66,21 @@ override bin_LDLIBS += $(AO_LIBS)
 ifneq ($(NO_SRATE),0)
 override SRATE_CFLAGS=
 override SRATE_LIBS=
-override SRATE_VERSION=n/a
 else
+ifeq ($(origin SRATE_CFLAGS)/$(origin SRATE_LIBS),undefined/undefined)
 
-ifndef SRATE_CFLAGS
 SRATE_CFLAGS := $(call pkgconfig,--cflags samplerate)
 ifeq ($(SRATE_CFLAGS),n/a)
 $(error pkg-config failed -- samplerate --cflags)
 endif
 SRATE_CFLAGS += -DWITH_SRATE=1
-endif
 
-ifndef SRATE_LIBS
 SRATE_LIBS := $(call pkgconfig,--libs samplerate)
 ifeq ($(SRATE_LIBS),n/a)
 $(error pkg-config failed -- samplerate --libs)
 endif
-endif
 
-SRATE_VERSION := $(call pkgconfig,--modversion samplerate)
+endif
 endif
 
 override bin_CFLAGS += $(SRATE_CFLAGS)
@@ -101,49 +93,25 @@ override bin_LDLIBS += $(SRATE_LIBS)
 ifneq ($(NO_SOXR),0)
 override SOXR_CFLAGS=
 override SOXR_LIBS=
-override SOXR_VERSION=n/a
 else
+ifeq ($(origin SOXR_CFLAGS)/$(origin SOXR_LIBS),undefined/undefined)
 
-ifndef SOXR_CFLAGS
 SOXR_CFLAGS := $(call pkgconfig,--cflags soxr)
 ifeq ($(SOXR_CFLAGS),n/a)
 $(error pkg-config failed -- soxr --cflags)
 endif
-endif
 
-ifndef SOXR_LIBS
 SOXR_LIBS := $(call pkgconfig,--libs soxr)
 ifeq ($(SOXR_LIBS),n/a)
 $(error pkg-config failed -- soxr --libs)
 endif
 SOXR_CFLAGS += -DWITH_SOXR=1
-endif
 
-SOXR_VERSION := $(call pkgconfig,--modversion samplerate)
+endif
 endif
 
 override bin_CFLAGS += $(SOXR_CFLAGS)
 override bin_LDLIBS += $(SOXR_LIBS)
-
-# ----------------------------------------------------------------------
-#  smarc (NO_SMARC=0 to enable)
-# ----------------------------------------------------------------------
-
-ifneq ($(NO_SMARC),0)
-override SMARC_CFLAGS=
-override SMARC_LIBS=
-override SMARC_VERSION=n/a
-else
-
-ifndef SMARC_LIBS
-SMARC_LIBS := -lsmarc
-SOXR_CFLAGS += -DWITH_SMARC=1
-endif
-SMARC_VERSION := n/a
-endif
-
-override bin_CFLAGS += $(SMARC_CFLAGS)
-override bin_LDLIBS += $(SMARC_LIBS)
 
 # ----------------------------------------------------------------------
 
@@ -176,7 +144,7 @@ zingzong: override CFLAGS   = $(zz_CFLAGS)
 zingzong: override LDLIBS   = $(zz_LDLIBS)
 zingzong: override LDFLAGS  = $(zz_LDFLAGS)
 
-mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_smarc mix_float
+mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
 out := out_ao out_raw
 vfs := vfs_file
 zz  := zz_bin zz_load zz_msg zz_play zz_str zz_vfs zz_mixers
@@ -218,6 +186,10 @@ else
 filtered = $(filter-out clean% dist%,$(MAKECMDGOALS))
 endif
 
+ifeq ($(NODEPS),1)
+filtered =
+endif
+
 ifneq ($(words $(filtered)),0)
 -include $(depends)
 endif
@@ -255,8 +227,8 @@ dist-arch: dist-base
 	@echo "distrib file -- \"$(dist_arch)\" -- is ready"
 
 dist-extract: dist-arch
-	@test ! -e $(dist_base) || { echo $(dist_base) already exist; false; }
-	@test ! -e _build-$(dist_base) || rm -rf -- _build-$(dist_base)
+	@[ ! -e $(dist_base) ] || { echo $(dist_base) already exist; false; }
+	@[ ! -e _build-$(dist_base) ] || rm -rf -- _build-$(dist_base)
 	@tar xf $(dist_arch)
 	@chmod -R ug-w $(dist_base)/
 	@echo "extracted -- \"$(dist_arch)\""
@@ -267,6 +239,8 @@ dist-all: all distrib
 dist-make: dist-extract
 	@mkdir -- _build-$(dist_base) && \
 	echo "compiling -- $(dist_base)" && \
+	{ test "x$(MAKERULES)" = x || \
+	cp -- "$(MAKERULES)" _build-$(dist_base)/; } && \
 	$(MAKE) -sC _build-$(dist_base) \
 		-f ../$(dist_base)/src/Makefile dist-all && \
 	rm -rf -- _build-$(dist_base)
@@ -288,28 +262,52 @@ dist-check: dist-make dist-sweep
 #  Install / Uninstall
 # ----------------------------------------------------------------------
 
-INSTALL_EXEC   = $(error install not supported yet)
-INSTALL_DATA   = $(error install not supported yet)
-UNINSTALL_EXEC = $(error uninstall not supported yet)
-UNINSTALL_DATA = $(error uninstall not supported yet)
+ifndef prefix
+PREFIX = $(error prefix must be set to install)
+else
+PREFIX = $(prefix)
+endif
 
-install: install-exec install-data
+bindir  = $(call PREFIX)/bin
+INSTALL = install $(STRIP)
+
+INSTALL_EXEC   = $(INSTALL) -t $(DESTDIR)$(bindir) $(1)
+INSTALL_DATA   =
+UNINSTALL_EXEC = \
+[ ! -e "$(DESTDIR)$(bindir)/$(notdir $(1))" ] \
+|| rm -- "$(DESTDIR)$(bindir)/$(notdir $(1))"
+UNINSTALL_DATA =
+
+install-strip: STRIP=-s
+install-strip: install
+install: install-exec install-data 
 
 install-exec: zingzong
-	$(call INSTALL_EXEC $^)
-
-uninstall-exec: zingzong
-	$(call UNINSTALL_EXEC $^)
+	@$(call INSTALL_EXEC,$^)
+	@echo $^ installed in $(DESTDIR)$(bindir)
 
 install-data:
-	$(call INSTALL_DATA $^)
+	@$(call INSTALL_DATA)
 
-.PHONY: install install-exec install-data
+.PHONY: install-strip install install-exec install-data
 
+uninstall-exec:
+	@$(call UNINSTALL_EXEC,zingzong)
+	@echo zingzong removed from $(DESTDIR)$(bindir)
+
+
+uninstall-data:
+	@$(call UNINSTALL_DATA)
 
 uninstall: uninstall-exec uninstall-data
-	$(call INSTALL_EXEC $^)
-
-uninstall-exec uninstall-data:
 
 .PHONY: uninstall uninstall-exec uninstall-data
+
+
+# ----------------------------------------------------------------------
+# Just in case redefining default rules is needed
+# ----------------------------------------------------------------------
+
+ifdef MAKERULES
+include $(MAKERULES)
+endif

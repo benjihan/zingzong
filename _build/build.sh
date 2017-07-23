@@ -7,45 +7,48 @@
 # by Benjamin Gerard
 #
 # ----------------------------------------------------------------------
+#
+# ----------------------------------------------------------------------
 
-top="${PWD%/*}"		      # Where this script is located
-arch="${PWD##*/}"	      # basename of dirname is our host name
 
-DEPLIBS="AO SRATE SOXR SMARC"
+top=$(realpath $(dirname "$0")) # Where this script is located.
+arch="${PWD##*/}"		# Current directory name.
 
-vars1=( CC LD PKGCONFIG DEBUG PROFILE )
+DEPLIBS="AO SRATE SOXR"
+vars1=( CC LD PKGCONFIG DEBUG PROFILE MAKERULES )
 vars2=( CPPFLAGS CFLAGS LDFLAGS LDLIBS )
 for dep in $DEPLIBS; do
     vars2+=( NO_${dep} ${dep}_CFLAGS ${dep}_LIBS )
 done
 
-## Print help message on -h --help or --usage
+# ----------------------------------------------------------------------
+# Print help message on -h --help or --usage
 #
 Usage() {
     cat <<EOF
-Usage: build.sh -j
-       build.sh [--no-env] [VAR=VAL ...] [make-args ...]
+ Usage: build.sh -j
+        build.sh [--no-env] [VAR=VAL ...] [make-args ...]
 
-  This script MUST to be call from one of the host child directory
+   This script MUST to be call from one of the host child directory
 
-  All command line arguments are propagated to make however VAR=VAL are
-  intercepted and mightbe modified.
+   All command line arguments are propagated to make however VAR=VAL are
+   intercepted and mightbe modified.
 
-  The following environment variables are used unless --no-env is set:
+   The following environment variables are used unless --no-env is set:
 
-  CC .......... compiler
-  LD .......... Linker
-  CPPFLAGS ..,. for the C preprocessor
-  CFLAGS ...... for the C compiler
-  LDFLAGS ..... for the linker
-  LDLIBS ...... library to link to binary
-  PKGCONFIG ... pkg-config to call when required
+   CC .......... compiler
+   LD .......... Linker
+   CPPFLAGS ..,. for the C preprocessor
+   CFLAGS ...... for the C compiler
+   LDFLAGS ..... for the linker
+   LDLIBS ...... library to link binary
+   PKGCONFIG ... pkg-config to call when required
 
-  For each dependency library name {A0,SRATE,SOXR,SMARC} :
+   For each dependency library name {${DEPLIBS// /,}}:
 
-  NO_{name} ....... Disable(0)/Enable(1)
-  {name}_CFLAGS ... How to compile (usually -I)
-  {name}_LIBS ..... How to link (usually -L and -l)
+   NO_{name} ....... Disable(0)/Enable(1)
+   {name}_CFLAGS ... How to compile (usually -I)
+   {name}_LIBS ..... How to link (usually -L and -l)
 
 EOF
     exit 0
@@ -81,6 +84,17 @@ for arg in "$@"; do
 	    ;;
     esac
 done
+
+if [ s${MAKERULES+et} != set -a -r makerules ]; then
+    MAKERULES=makerules
+fi
+
+
+case "$arch" in
+    *-*-*) ;;
+    *) echo "build.sh: build directory is not a valid host-triplet." >&2
+       exit 1 ;;
+esac
 
 # ----------------------------------------------------------------------
 # Cross-Compile
@@ -144,7 +158,7 @@ for var in ${vars1[@]}; do
 done
 
 # ----------------------------------------------------------------------
-# Variables that CAN be empty 
+# Variables that CAN be empty
 #
 for var in ${vars2[@]}; do
     if eval test s\${$var+et} = set; then
@@ -155,13 +169,13 @@ done
 # ----------------------------------------------------------------------
 # Let's do this
 #
-set --  \
+set --\
     -B -f ${top}/../src/Makefile\
     "$@"
 
-echo make
+echo "> make"
 for arg in "$@"; do
-    echo " \"$arg\""
+    echo "+ \"$arg\""
 done
 echo
 make "$@"
