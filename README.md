@@ -130,13 +130,11 @@ variables this Makefile uses.
  | `PROFILE`     | Set to 1 for default PROFILING CFLAGS                      |
  | `PKGCONFIG`   | `pkg-config` program to use                                |
 
-For example to build a win64 standalone executable with a cross gcc
-
       make \
         CC=x86_64-w64-mingw32-gcc \
         PKGCONFIG="x86_64-w64-mingw32-pkg-config --static" \
         CFLAGS="-O3 -static -static-libgcc" \
-        NO_SRATE=1
+        NO_SRATE=0
 
 
 ### Preprocessor defines that alter the built

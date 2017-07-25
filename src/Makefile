@@ -100,12 +100,12 @@ SOXR_CFLAGS := $(call pkgconfig,--cflags soxr)
 ifeq ($(SOXR_CFLAGS),n/a)
 $(error pkg-config failed -- soxr --cflags)
 endif
+SOXR_CFLAGS += -DWITH_SOXR=1
 
 SOXR_LIBS := $(call pkgconfig,--libs soxr)
 ifeq ($(SOXR_LIBS),n/a)
 $(error pkg-config failed -- soxr --libs)
 endif
-SOXR_CFLAGS += -DWITH_SOXR=1
 
 endif
 endif
@@ -263,7 +263,7 @@ dist-check: dist-make dist-sweep
 # ----------------------------------------------------------------------
 
 ifndef prefix
-PREFIX = $(error prefix must be set to install)
+PREFIX = $(error 'prefix' must be set to install)
 else
 PREFIX = $(prefix)
 endif
