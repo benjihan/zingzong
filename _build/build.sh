@@ -16,7 +16,7 @@ arch="${PWD##*/}"		# Current directory name.
 
 DEPLIBS="AO SRATE SOXR"
 vars1=( CC LD PKGCONFIG DEBUG PROFILE MAKERULES )
-vars2=( CPPFLAGS CFLAGS LDFLAGS LDLIBS )
+vars2=( CPPFLAGS CFLAGS LDFLAGS LDLIBS gb_CFLAGS gb_LDLIBS gb_LDFLAGS )
 for dep in $DEPLIBS; do
     vars2+=( NO_${dep} ${dep}_CFLAGS ${dep}_LIBS )
 done
@@ -36,13 +36,16 @@ Usage() {
 
    The following environment variables are used unless --no-env is set:
 
-   CC .......... compiler
-   LD .......... Linker
-   CPPFLAGS ..,. for the C preprocessor
-   CFLAGS ...... for the C compiler
-   LDFLAGS ..... for the linker
-   LDLIBS ...... library to link binary
-   PKGCONFIG ... pkg-config to call when required
+   CC .............. Compiler
+   LD .............. Linker
+   CPPFLAGS ..,..... For the C preprocessor
+   CFLAGS .......... For the C compiler
+   LDLIBS .......... Library to link binary
+   LDFLAGS ......... For the linker
+   gb_CFLAGS ....... For the C compiler (use this to keep default CFLAGS)
+   gb_LDLIBS ....... Library to link (use this to keep default LDLIBS)
+   gb_LDFLAGS ...... For the linker (use this to keep default LDFLAGS)
+   PKGCONFIG ....... pkg-config to call when required
 
    For each dependency library name {${DEPLIBS// /,}}:
 
@@ -128,8 +131,8 @@ fi
 #
 case "$arch" in
     *-w64-mingw32)
-	CFLAGS+="${CFLAGS:+ }-static"
-	LDFLAGS+="${LDFLAGS:+ }-static -static-libgcc" ;;
+	gb_CFLAGS+="${gb_CFLAGS:+ }-static"
+	gb_LDFLAGS+="${gb_LDFLAGS:+ }-static -static-libgcc" ;;
     *-*-*)
 	true ;;
     *)

@@ -56,8 +56,8 @@ endif
 endif
 endif
 
-override bin_CFLAGS += $(AO_CFLAGS)
-override bin_LDLIBS += $(AO_LIBS)
+override gb_CFLAGS += $(AO_CFLAGS)
+override gb_LDLIBS += $(AO_LIBS)
 
 # ----------------------------------------------------------------------
 #  samplerate (NO_SRATE=0 to enable)
@@ -83,8 +83,8 @@ endif
 endif
 endif
 
-override bin_CFLAGS += $(SRATE_CFLAGS)
-override bin_LDLIBS += $(SRATE_LIBS)
+override gb_CFLAGS += $(SRATE_CFLAGS)
+override gb_LDLIBS += $(SRATE_LIBS)
 
 # ----------------------------------------------------------------------
 #  soxr (NO_SOXR=0 to enable)
@@ -110,8 +110,8 @@ endif
 endif
 endif
 
-override bin_CFLAGS += $(SOXR_CFLAGS)
-override bin_LDLIBS += $(SOXR_LIBS)
+override gb_CFLAGS += $(SOXR_CFLAGS)
+override gb_LDLIBS += $(SOXR_LIBS)
 
 # ----------------------------------------------------------------------
 
@@ -127,9 +127,9 @@ org_LDLIBS   := $(LDLIBS)
 org_LDFLAGS  := $(LDFLAGS)
 
 zz_CPPFLAGS   = $(org_CPPFLAGS) $(bin_CPPFLAGS)
-zz_CFLAGS     = $(org_CFLAGS) $(bin_CFLAGS)
-zz_LDLIBS     = $(org_LDLIBS) $(bin_LDLIBS)
-zz_LDFLAGS    = $(org_LDFLAGS) $(bin_LDFLAGS)
+zz_CFLAGS     = $(org_CFLAGS) $(gb_CFLAGS)
+zz_LDLIBS     = $(org_LDLIBS) $(gb_LDLIBS)
+zz_LDFLAGS    = $(org_LDFLAGS) $(gb_LDFLAGS)
 
 # ----------------------------------------------------------------------
 #  Build

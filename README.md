@@ -26,7 +26,7 @@ both files into a`.4q` file alongside a small info text.
     -V --version       Print version and copyright and exit.
     -t --tick=HZ       Set player tick rate (default is 200hz).
     -r --rate=[R,]HZ   Set re-sampling method and rate (qerp,48K).
-                       Try `-hh' to print the list of [R]esampler.
+		       Try `-hh' to print the list of [R]esampler.
     -l --length=TIME   Set play time.
     -m --mute=ABCD     Mute selected channels (bit-field or string).
     -c --stdout        Output raw sample to stdout (mono native 16-bit).
@@ -121,6 +121,9 @@ variables this Makefile uses.
 
  | Make variable |                        Description                         |
  |---------------|------------------------------------------------------------|
+ | `gb_CFLAGS`   | Append to CFLAGS                                           |
+ | `gb_LDLIBS`   | Append to LDLIBS                                           |
+ | `gb_LDFLAGS`  | Append to LDFLAGS                                          |
  | `MAKERULES`   | Included if defined (to customize rules or whatever)       |
  | `NODEPS`      | Disable source dependency generation.                      |
  | `NO_AO`       | Set to 1 to disable libao support                          |
@@ -131,10 +134,11 @@ variables this Makefile uses.
  | `PKGCONFIG`   | `pkg-config` program to use                                |
 
       make \
-        CC=x86_64-w64-mingw32-gcc \
-        PKGCONFIG="x86_64-w64-mingw32-pkg-config --static" \
-        CFLAGS="-O3 -static -static-libgcc" \
-        NO_SRATE=0
+	CC=x86_64-w64-mingw32-gcc \
+	PKGCONFIG="x86_64-w64-mingw32-pkg-config --static" \
+	gb_CFLAGS="-static" \
+	gb_LDFLAGS="-static -static-libgcc" \
+	NO_SRATE=0
 
 
 ### Preprocessor defines that alter the built
