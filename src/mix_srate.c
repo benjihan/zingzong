@@ -351,6 +351,6 @@ DECL_SRATE_MIXER(best,SINC_BEST_QUALITY,
 DECL_SRATE_MIXER(medium,SINC_MEDIUM_QUALITY,
                  "band limited sinc (medium quality)");
 DECL_SRATE_MIXER(fast,SINC_FASTEST,
-                 "band limited sinc (fastest quality)");
+                 "band limited sinc (fastest)");
 
 #endif /* WITH_SRATE == 1 */

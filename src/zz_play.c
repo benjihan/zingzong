@@ -252,18 +252,21 @@ int zz_play(play_t * P)
 
 /* ---------------------------------------------------------------------- */
 
-int zz_pull(play_t * P, int16_t * b, int n)
+int16_t * zz_pull(play_t * P, int * ptr_n)
 {
-  int ecode = E_OK;
+  int16_t * ptr = 0;
+  int n = *ptr_n;
+  int ecode;
 
   if (!P->mix_ptr) {
     ecode = zz_play_init(P);
-    if (ecode != E_OK)
+    if (ecode)
       goto error;
-    assert(P->mix_ptr);
   }
 
-  while (n > 0) {
+  ecode = E_OK;
+  assert(P->mix_ptr);
+  if (n > 0) {
     int have = P->mix_buf + P->pcm_per_tick - P->mix_ptr;
 
     if (!have) {
@@ -278,17 +281,15 @@ int zz_pull(play_t * P, int16_t * b, int n)
       have = P->pcm_per_tick;
     }
 
-    if (have > n)
-      have = n;
-    zz_memcpy(b, P->mix_ptr, have << 1);
-    b += have;
-    P->mix_ptr += have;
-    n -= have;
+    ptr = P->mix_ptr;
+    if (n > have)
+      n = have;
+    P->mix_ptr += n;
   }
 
-  ecode = E_OK;
 error:
-  return ecode;
+  *ptr_n = ptr ? n : ecode;
+  return ptr;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -297,16 +298,30 @@ int zz_init(play_t * P)
 {
   int ecode = E_OK;
 
+  if (!P->rate)
+    P->rate = 200;
+  if (!P->spr)
+    P->spr = P->song.khz * 1000u;
+
   /* ----------------------------------------
    *  Mix buffers
    * ---------------------------------------- */
 
   P->pcm_per_tick = (P->spr + (P->rate>>1)) / P->rate;
-  dmsg("pcm per tick: %u (%ux%u+%u)\n",
+  dmsg("pcm per tick: %u (%ux%u+%u) %u:%u\n",
        P->pcm_per_tick,
        P->pcm_per_tick/MIXBLK,
-       MIXBLK, P->pcm_per_tick%MIXBLK);
-  ecode = P->mixer->init(P);
+       MIXBLK, P->pcm_per_tick%MIXBLK,
+       P->spr, P->rate);
+
+  ecode = E_PLA;
+  if (P->pcm_per_tick < MIXBLK)
+    emsg("not enough pcm per tick -- %d\n", P->pcm_per_tick);
+  else if (!P->mixer)
+    emsg("no mixer\n");
+  else
+    ecode = P->mixer->init(P);
+
   if (ecode)
     goto error;
 
@@ -339,6 +354,7 @@ int zz_kill(play_t * P)
 
   zz_free("pcm-buffer",&P->mix_buf);
   P->mix_ptr = 0;
+
   zz_strfree(&P->vseturi);
   zz_strfree(&P->songuri);
   zz_strfree(&P->infouri);

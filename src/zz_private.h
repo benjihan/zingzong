@@ -519,7 +519,7 @@ int zz_init(play_t * P);
 EXTERN_C
 int zz_play(play_t * P);
 EXTERN_C
-int zz_pull(play_t * P, int16_t * b, int n);
+int16_t * zz_pull(play_t * P, int * ptr_n);
 EXTERN_C
 int zz_kill(play_t * P);
 /**
