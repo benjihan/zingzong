@@ -4,7 +4,7 @@
 #
 # Makefile for zinzong (for GNU/make)
 #
-# by Benjamin Gerard
+# by Benjamin Gerard AKA Ben/OVR
 #
 
 SHELL	   = /bin/sh
@@ -18,6 +18,7 @@ ifeq ($(VERSION),ERROR)
 $(error vcversion.sh failed)
 endif
 pkgconfig  = $(shell $(PKGCONFIG) $(1) || echo n/a)
+STRIP      = strip
 
 # ----------------------------------------------------------------------
 
@@ -269,16 +270,16 @@ PREFIX = $(prefix)
 endif
 
 bindir  = $(call PREFIX)/bin
-INSTALL = install $(STRIP)
+INSTALL = install $(INSTALL_OPT)
 
-INSTALL_EXEC   = $(INSTALL) -t $(DESTDIR)$(bindir) $(1)
+INSTALL_EXEC   = $(INSTALL) -t "$(DESTDIR)$(bindir)" "$(1)"
 INSTALL_DATA   =
 UNINSTALL_EXEC = \
 [ ! -e "$(DESTDIR)$(bindir)/$(notdir $(1))" ] \
 || rm -- "$(DESTDIR)$(bindir)/$(notdir $(1))"
 UNINSTALL_DATA =
 
-install-strip: STRIP=-s
+install-strip: INSTALL_OPT = --strip-program=$(STRIP) -s
 install-strip: install
 install: install-exec install-data 
 
@@ -305,7 +306,7 @@ uninstall: uninstall-exec uninstall-data
 
 
 # ----------------------------------------------------------------------
-# Just in case redefining default rules is needed
+#  Just in case redefining default rules is needed
 # ----------------------------------------------------------------------
 
 ifdef MAKERULES
