@@ -68,7 +68,7 @@ chan_flread(float * const d, mix_chan_t * const K, const int n)
   assert(n < VSET_UNROLL);
 
   if (!K->ptr)
-    memset(d, 0, n*sizeof(*d));
+    zz_memclr(d,n*sizeof(*d));
   else {
     assert(K->ptr < K->pte);
     i8tofl(d, K->ptr, n);
@@ -221,7 +221,7 @@ push_cb(play_t * const P)
        * skip.
        */
       if (!k)
-        memset(flt,0,sizeof(float)*N);
+        zz_memclr(flt,sizeof(float)*N);
       continue;
     }
 
@@ -299,13 +299,6 @@ push_cb(play_t * const P)
   fltoi16(P->mix_buf, M->flt_buf, N);
 
   return E_OK;
-}
-
-/* ---------------------------------------------------------------------- */
-
-static int pull_cb(play_t * const P, int n)
-{
-  return E_666;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -404,7 +397,7 @@ static int init_soxr(play_t * const P, const int quality)
   }\
   mixer_t mixer_soxr_##Q =\
   {\
-    "soxr" , D, init_##Q, free_cb, push_cb, pull_cb\
+    "soxr" , D, init_##Q, free_cb, push_cb \
   }
 
 /* GB: when using variable rate soxr ignore quality. */

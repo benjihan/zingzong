@@ -10,27 +10,26 @@
 void
 bin_free(bin_t ** pbin)
 {
-  zz_free("bin-free", (void**)pbin);
+  zz_strfree(pbin);
 }
 
 int
 bin_alloc(bin_t ** pbin, const char * path,
           uint_t len, uint_t xlen)
 {
-  bin_t * bin = 0;
+  bin_t * bin;
   assert(pbin); assert(path);
-  *pbin = bin = zz_malloc(path,(intptr_t)(bin->data+len+xlen));
+  *pbin = bin = zz_stralloc(len + xlen);
   if (!bin)
     return E_SYS;
-  bin->size = len;
-  bin->xtra = xlen;
+  bin->_l = len;
   return E_OK;
 }
 
 int
 bin_read(bin_t * bin, vfs_t vfs, uint_t off, uint_t len)
 {
-  return vfs_read_exact(vfs, bin->data+off, len)
+  return vfs_read_exact(vfs, ZZOFF(bin,off), len)
     ? E_INP
     : E_OK
     ;

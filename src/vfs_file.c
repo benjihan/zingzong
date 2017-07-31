@@ -61,7 +61,7 @@ x_new(const char * uri, va_list list)
   if (fs) {
     fs->dri  = &vfs_file_dri;
     fs->fp   = 0;
-    memcpy(fs->uri, uri, len+1);
+    zz_memcpy(fs->uri, uri, len+1);
   }
   return (vfs_t) fs;
 }

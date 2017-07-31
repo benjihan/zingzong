@@ -102,7 +102,7 @@ enum {
 typedef unsigned int   uint_t;    /**< unsigned int. */
 typedef unsigned short ushort_t;  /**< unsigned short. */
 typedef struct str_s   str_t;     /**< strings (static or dynamic) */
-typedef struct bin_s   bin_t;     /**< binary data container. */
+typedef struct str_s   bin_t;     /**< binary data container. */
 typedef struct q4_s    q4_t;      /**< 4q header */
 typedef struct info_s  info_t;    /**< song info. */
 typedef struct vset_s  vset_t;    /**< voice set (.set file). */
@@ -116,10 +116,10 @@ typedef struct mixer_s mixer_t;   /**< channel mixer. */
 typedef struct out_s   out_t;     /**< output. */
 
 struct str_s {
-  char   *s;                  /**< string pointer. */
-  uint_t  l;                  /**< length including ending zero */
-  uint_t  n;                  /**< maximum allocated string */
-  char    b[1];               /**< string buffer for dynamic string */
+  void   *_s;                 /**< string pointer. */
+  uint_t  _l;                 /**< length including ending zero */
+  uint_t  _n;                 /**< maximum allocated string */
+  int8_t  _b[1];              /**< string buffer for dynamic string */
 };
 
 struct out_s {
@@ -136,13 +136,6 @@ struct mixer_s {
   int   (*init)(play_t * const);       /**< init mixer function.      */
   void  (*free)(play_t * const);       /**< release mixer function.   */
   int   (*push)(play_t * const);       /**< push PCM function.        */
-  int   (*pull)(play_t * const, int);  /**> pull PCM function.        */
-};
-
-struct bin_s {
-  uint_t   size;                        /**< data size */
-  uint_t   xtra;                        /**< xtra allocated bytes */
-  uint8_t  data[sizeof(int)];           /**< data array */
 };
 
 struct inst_s {
@@ -177,7 +170,7 @@ struct song_s {
 
 struct info_s {
   bin_t *bin;
-  char * comment;
+  char  *comment;
 };
 
 struct note_s {
@@ -231,13 +224,13 @@ struct play_s {
   song_t song;
   info_t info;
 
-  uint_t tick;
-  uint_t max_ticks;
-
-  int16_t * mix_buf;
+  uint_t tick;                          /* current tick */
+  uint_t max_ticks;                     /* maximum tick to play ( */
 
   uint_t pcm_per_tick;
-  uint_t spr;
+  int16_t * mix_buf;                    /* mix buffer [pcm_per_tick] */
+  int16_t * mix_ptr;                    /* current pull pointer */
+  uint_t spr;                           /* sampling rate (hz) */
 
   uint16_t rate;               /* player rate (usually 200hz) */
   uint8_t  muted_voices;       /* channels mask */
@@ -305,9 +298,65 @@ void fltoi16(int16_t * const d, const float * const s, const int n);
 /* ---------------------------------------------------------------------- */
 
 /**
- * Memory and string functions.
+ * Memory, string and binary container functions.
  * @{
  */
+#define ZZBUF(X)   ((uint8_t *)((X)->_s))
+#define ZZOFF(X,Y) (ZZBUF(X)+(Y))
+#define ZZSTR(X)   ((char *)((X)->_s))
+#define ZZLEN(X)   (X)->_l
+#define ZZMAX(X)   (X)->_n
+
+#ifdef NO_LIBC
+
+# ifndef zz_memcmp
+#  define zz_memcmp(D,S,N) memcmp(D,S,N)
+# endif
+
+# ifndef zz_memcpy
+#  define zz_memcpy(D,S,N) memcpy(D,S,N)
+# endif
+
+# ifndef zz_memmove
+#  define zz_memmove(D,S,N) *(const char *)(D) = (char)(N)
+# endif
+
+# ifndef zz_memset
+#  define zz_memset(D,S,N) memset(D,S,N)
+# endif
+
+#else
+
+static inline void * zz_memcpy(void * restrict _d, const void * _s, int n)
+{
+  uint8_t * d = _d; const uint8_t * s = _s;
+  if (n) do { *d++ = *s++; } while (--n);
+  return _d;
+}
+
+static inline void * zz_memset(void * restrict _d, int v, int n)
+{
+  uint8_t * d = _d;
+  if (n) do { *d++ = v; } while (--n);
+  return _d;
+}
+
+static inline int zz_memcmp(const void *_a, const void *_b, int n)
+{
+  int c = 0;
+  const uint8_t *a = _a, *b = _b;
+  if (n) do {
+      c = *a++ - *b++;
+    } while (!c && --n);
+  return c;
+}
+
+#endif
+
+#ifndef zz_memclr
+# define zz_memclr(D,N) zz_memset(D,0,N)
+#endif
+
 EXTERN_C
 void zz_free(const char * obj, void * pptr);
 EXTERN_C
@@ -324,6 +373,16 @@ EXTERN_C
 str_t * zz_strdup(const char * org);
 EXTERN_C
 void zz_strfree(str_t ** pstr);
+EXTERN_C
+int zz_strlen(str_t * str);
+EXTERN_C
+void bin_free(bin_t ** pbin);
+EXTERN_C
+int bin_alloc(bin_t ** pbin, const char * uri, uint_t len, uint_t xlen);
+EXTERN_C
+int bin_read(bin_t * bin, vfs_t vfs, uint_t off, uint_t len);
+EXTERN_C
+int bin_load(bin_t ** pbin, vfs_t vfs, uint_t len, uint_t xlen, uint_t max);
 /**
  * @}
  */
@@ -385,14 +444,6 @@ void dummy_msg(const char *fmt, ...);
  * Binary container functions.
  * @{
  */
-EXTERN_C
-void bin_free(bin_t ** pbin);
-EXTERN_C
-int bin_alloc(bin_t ** pbin, const char * uri, uint_t len, uint_t xlen);
-EXTERN_C
-int bin_read(bin_t * bin, vfs_t vfs, uint_t off, uint_t len);
-EXTERN_C
-int bin_load(bin_t ** pbin, vfs_t vfs, uint_t len, uint_t xlen, uint_t max);
 /**
  * @}
  */
@@ -403,8 +454,6 @@ int bin_load(bin_t ** pbin, vfs_t vfs, uint_t len, uint_t xlen, uint_t max);
  * VFS functions.
  * @{
  */
-EXTERN_C
-int vfs_mode(const char * mode);
 EXTERN_C
 int vfs_add(vfs_dri_t * dri);
 EXTERN_C
@@ -469,6 +518,8 @@ EXTERN_C
 int zz_init(play_t * P);
 EXTERN_C
 int zz_play(play_t * P);
+EXTERN_C
+int zz_pull(play_t * P, int16_t * b, int n);
 EXTERN_C
 int zz_kill(play_t * P);
 /**

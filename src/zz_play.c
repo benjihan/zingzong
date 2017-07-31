@@ -6,8 +6,6 @@
  */
 
 #include "zz_private.h"
-#include <string.h>                     /* memset */
-#include <ctype.h>                      /* debug message */
 
 /* ---------------------------------------------------------------------- */
 
@@ -18,7 +16,7 @@ void zz_chan_init(play_t * P, int k)
   int cmd;
 
   assert(k >= 0 && k < 4);
-  memset(C,0,sizeof(*C));
+  zz_memclr(C,sizeof(*C));
   C->id  = 'A'+k;
   C->num = k;
   C->cur = C->seq = P->song.seq[k];
@@ -33,13 +31,6 @@ void zz_chan_init(play_t * P, int k)
   C->end = seq;
   assert(C->sq0);
   assert(C->sqN);
-#if 0
-  dmsg("%c: [%05u..%05u..%05u]\n",
-       'A'+k,
-       (uint_t)(C->sq0-C->seq),
-       (uint_t)(C->sqN-C->seq),
-       (uint_t)(C->end-C->seq));
-#endif
 }
 
 /* ---------------------------------------------------------------------- */
@@ -52,6 +43,7 @@ int zz_play_init(play_t * const P)
     zz_chan_init(P, k);
   P->has_loop = P->muted_voices;
   P->done = 0;
+  P->mix_ptr = P->mix_buf;
 
   return 0;
 }
@@ -94,14 +86,6 @@ int zz_play_chan(play_t * const P, const int k)
     uint_t const par = u32(seq->par);
     ++seq;
 
-#if 0
-    dmsg("%c: %04u %c %04x %08x %04x-%04x\n",
-         C->id,
-         (uint_t)(seq-1-C->seq),
-         isgraph(cmd)?cmd:'?',
-         len,stp,par>>16,(par&0xFFFF));
-#endif
-
     switch (cmd) {
 
     case 'F':                       /* End-Voice */
@@ -109,14 +93,6 @@ int zz_play_chan(play_t * const P, const int k)
       P->has_loop |= 1<<k;
       C->has_loop++;
       C->loop_level = 0;            /* Safety net */
-      dmsg("%c: [%c%c%c%c] end @%u +%u\n",
-           'A'+k,
-           ".A"[1&(P->has_loop>>0)],
-           ".B"[1&(P->has_loop>>1)],
-           ".C"[1&(P->has_loop>>2)],
-           ".D"[1&(P->has_loop>>3)],
-           P->tick,
-           C->has_loop);
       break;
 
     case 'V':                       /* Voice-Change */
@@ -169,8 +145,6 @@ int zz_play_chan(play_t * const P, const int k)
         const int l = C->loop_level++;
         C->loop[l].seq = seq;
         C->loop[l].cnt = 0;
-        /* dmsg("%c: set loop[%d] point @%u\n", */
-        /*      'A'+k, l, (uint_t)(seq-C->seq)); */
       } else {
         emsg("%c off:%u tick:%u -- loop stack overflow\n",
              'A'+k, (uint_t)(seq-C->seq-1), P->tick);
@@ -210,20 +184,13 @@ int zz_play_chan(play_t * const P, const int k)
         } else {
           C->loop[l].cnt = (par >> 16) + 1;
         }
-        /* dmsg("%c: set loop[%d] @%u x%u\n", */
-        /*      'A'+k, l, (uint_t)(C->loop[l].seq-C->seq), */
-        /*      C->loop[l].cnt-1); */
       }
 
       if (--C->loop[l].cnt) {
-        /* dmsg("%c: loop[%d] to @%u rem:%u\n", */
-        /*      'A'+k, l, (uint_t)(C->loop[l].seq-C->seq), */
-        /*      C->loop[l].cnt); */
         seq = C->loop[l].seq;
       } else {
         --C->loop_level;
         assert(C->loop_level >= 0);
-        /* dmsg("%c: loop[%d] end\n",'A'+k,C->loop_level); */
       }
 
 
@@ -273,7 +240,6 @@ int zz_play(play_t * P)
       ecode = E_MIX;
       if (P->mixer->push(P))
         break;
-      assert(!memcmp(&P->mix_buf[P->pcm_per_tick],"MBUF",4));
       ecode = E_OUT;
       n = P->pcm_per_tick << 1;
       if (P->out->write(P->out, P->mix_buf, n) != n)
@@ -283,6 +249,49 @@ int zz_play(play_t * P)
 
   return ecode;
 }
+
+/* ---------------------------------------------------------------------- */
+
+int zz_pull(play_t * P, int16_t * b, int n)
+{
+  int ecode = E_OK;
+
+  if (!P->mix_ptr) {
+    ecode = zz_play_init(P);
+    if (ecode != E_OK)
+      goto error;
+    assert(P->mix_ptr);
+  }
+
+  while (n > 0) {
+    int have = P->mix_buf + P->pcm_per_tick - P->mix_ptr;
+
+    if (!have) {
+      /* refill mix_buf[] */
+      ecode = zz_play_tick(P);
+      if (ecode != E_OK)
+        goto error;
+      ecode = E_MIX;
+      if (P->mixer->push(P))
+        goto error;
+      P->mix_ptr = P->mix_buf;
+      have = P->pcm_per_tick;
+    }
+
+    if (have > n)
+      have = n;
+    zz_memcpy(b, P->mix_ptr, have << 1);
+    b += have;
+    P->mix_ptr += have;
+    n -= have;
+  }
+
+  ecode = E_OK;
+error:
+  return ecode;
+}
+
+/* ---------------------------------------------------------------------- */
 
 int zz_init(play_t * P)
 {
@@ -301,15 +310,17 @@ int zz_init(play_t * P)
   if (ecode)
     goto error;
 
-  P->mix_buf = (int16_t *) zz_malloc("mix-buf",2*P->pcm_per_tick+4);
+  P->mix_ptr = 0;
+  P->mix_buf = (int16_t *) zz_malloc("mix-buf",2*P->pcm_per_tick);
   if (!P->mix_buf) {
     ecode = E_SYS; goto error;
   }
-  memcpy(&P->mix_buf[P->pcm_per_tick],"MBUF",4);
 
 error:
   return ecode;
 }
+
+/* ---------------------------------------------------------------------- */
 
 int zz_kill(play_t * P)
 {
@@ -327,12 +338,11 @@ int zz_kill(play_t * P)
   }
 
   zz_free("pcm-buffer",&P->mix_buf);
-
-  /* zz_free("flt-buffer",&P->flt_buf); */
+  P->mix_ptr = 0;
   zz_strfree(&P->vseturi);
   zz_strfree(&P->songuri);
-  zz_strfree(&P->waveuri);
   zz_strfree(&P->infouri);
+  zz_strfree(&P->waveuri);
 
   bin_free(&P->vset.bin);
   bin_free(&P->song.bin);

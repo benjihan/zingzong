@@ -1,15 +1,12 @@
-#! /bin/bash -e
+#! /bin/bash -fe
 #
 # ----------------------------------------------------------------------
 #
 # Simple bash script to build zingzong for various platforms
 #
-# by Benjamin Gerard
+# by Benjamin Gerard AKA Ben/OVR
 #
 # ----------------------------------------------------------------------
-#
-# ----------------------------------------------------------------------
-
 
 top=$(realpath $(dirname "$0")) # Where this script is located.
 arch="${PWD##*/}"		# Current directory name.

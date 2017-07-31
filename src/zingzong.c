@@ -143,9 +143,9 @@ static void print_usage(int level)
     " -n --null          Output to the void.\n"
 #ifndef NO_AO
     " -w --wav           Generated a .wav file (implicit if output is set).\n"
-    " -f --force         Clobber output .wav file.\n"
-    "\n"
+    " -f --force         Clobber output .wav file.\n");
 
+  puts( !level ? "Try `-hh' for more details on OUTPUT and TIME." :
     "OUTPUT:\n"
     " If output is set it creates a .wav file of this name (implies `-w').\n"
     " Else with `-w' alone the .wav file is the song file stripped of its\n"
@@ -245,8 +245,8 @@ static int wav_filename(str_t ** pwavname, char * sngname)
   *pwavname = str = zz_stralloc(l+5);
   if (!str)
     return E_SYS;
-  memcpy(str->s, leaf, l);
-  strcpy(str->s+l, ".wav");
+  zz_memcpy(ZZSTR(str),leaf,l);
+  zz_memcpy(ZZSTR(str)+l,".wav",5);
   return E_OK;
 }
 
@@ -553,6 +553,7 @@ int main(int argc, char *argv[])
   vfs_t inp = 0;
   static uint8_t hd[222];
   play_t * const P = &play;
+  str_t  * waveuri = 0;
 
   assert( sizeof(songhd_t) ==  16);
   assert( sizeof(sequ_t)   ==  12);
@@ -618,7 +619,7 @@ int main(int argc, char *argv[])
   can_do_wav = !(opt_stdout+opt_null);
 #endif
 
-  memset(P,0,sizeof(*P));
+  zz_memclr(P,sizeof(*P));
 
   if (opt_mixerid < 0)
     opt_mixerid = find_mixer((char *)zz_default_mixer->name,0) - 1;
@@ -640,23 +641,23 @@ int main(int argc, char *argv[])
   P->vseturi = P->strings+0;
   P->songuri = P->strings+1;
   P->infouri = P->strings+2;
-  P->waveuri = 0;
+  waveuri    = 0;
 
   zz_strset(P->vseturi, argv[optind++]);
-  zz_strset(P->songuri, P->vseturi->s);
-  zz_strset(P->infouri, P->vseturi->s);
+  zz_strset(P->songuri, ZZSTR(P->vseturi));
+  zz_strset(P->infouri, ZZSTR(P->vseturi));
 
   ecode = E_SYS;
-  if (vfs_open_uri(&inp, P->vseturi->s))
+  if (vfs_open_uri(&inp, ZZSTR(P->vseturi)))
     goto error_exit;
   ecode = E_INP;
   if (vfs_read_exact(inp, hd, 20))
     goto error_exit;
 
   /* Check for .q4 "QUARTET" magic id */
-  if (!memcmp(hd,"QUARTET",8)) {
+  if (!zz_memcmp(hd,"QUARTET",8)) {
     q4_t q4;
-    memset(&q4,0,sizeof(q4));
+    zz_memclr(&q4,sizeof(q4));
 
     q4.song = &P->song; q4.songsz = u32(hd+8);
     q4.vset = &P->vset; q4.vsetsz = u32(hd+12);
@@ -688,20 +689,20 @@ int main(int argc, char *argv[])
     vfs_del(&inp);
 
     zz_strset(P->songuri,argv[optind++]);
-    ecode = song_load(&P->song, P->songuri->s);
+    ecode = song_load(&P->song, ZZSTR(P->songuri));
   }
   if (ecode)
     goto error_exit;
 
 #ifndef NO_AO
   if (optind < argc) {
-    P->waveuri = P->strings+3;
+    waveuri = P->strings+3;
     zz_strset(P->waveuri,argv[optind++]);
     opt_wav = 1;
   }
 
   if (opt_wav && !P->waveuri) {
-    ecode = wav_filename(&P->waveuri, P->songuri->s);
+    ecode = wav_filename(&P->waveuri, ZZSTR(P->songuri));
     if (ecode)
       goto error_exit;
   }
@@ -710,13 +711,13 @@ int main(int argc, char *argv[])
     /* Unless opt_force is set, tries to load 4cc out of the output
      * .wav file. Non RIFF files are rejected unless they are empty.
      */
-    FILE * f = fopen(P->waveuri->s,"rb");
+    FILE * f = fopen(ZZSTR(P->waveuri),"rb");
     if (f) {
-      hd[3] = 0;     /* memcmp() will fail unless 4 bytes are read. */
-      if (fread(hd,1,4,f) != 0 && memcmp(hd,"RIFF",4)) {
+      hd[3] = 0;     /* zz_memcmp() will fail unless 4 bytes are read. */
+      if (fread(hd,1,4,f) != 0 && zz_memcmp(hd,"RIFF",4)) {
         ecode = E_OUT;
         emsg("output file exists and is not a RIFF wav -- %s\n",
-             P->waveuri->s);
+             ZZSTR(P->waveuri));
         goto error_exit;
       }
       fclose(f);
@@ -732,7 +733,7 @@ int main(int argc, char *argv[])
     P->out = out_raw_open(opt_splrate,"stdout:");
 #ifndef NO_AO
   else if (!opt_null)
-    P->out = out_ao_open(opt_splrate, P->waveuri ? P->waveuri->s : 0);
+    P->out = out_ao_open(opt_splrate, P->waveuri ? ZZSTR(P->waveuri) : 0);
 #endif
   else
     P->out = out_raw_open(opt_splrate,"null:");
@@ -753,12 +754,12 @@ int main(int argc, char *argv[])
        P->spr,
        P->end_detect ? "max " : "",
        tickstr(P->max_ticks, P->rate), P->out->uri,
-       basename(P->vseturi->s), P->vset.khz, P->vset.nbi,
-       basename(P->songuri->s), P->song.khz, P->song.barm,
+       basename(ZZSTR(P->vseturi)), P->vset.khz, P->vset.nbi,
+       basename(ZZSTR(P->songuri)), P->song.khz, P->song.barm,
        P->song.tempo, P->song.sigm, P->song.sigd);
 #ifndef NO_AO
   if (P->waveuri)
-    imsg("wave: \"%s\"\n", P->waveuri->s);
+    imsg("wave: \"%s\"\n", ZZSTR(P->waveuri));
 #endif
 
   if (!ecode)
@@ -768,6 +769,7 @@ int main(int argc, char *argv[])
 
 error_exit:
   /* clean exit */
+  zz_strfree(&waveuri);
   vfs_del(&inp);
   if (c = zz_kill(P), (c && !ecode))
     ecode = c;

@@ -129,7 +129,7 @@ push_cb(play_t * const P)
   assert(M);
 
   /* Clear mix buffer */
-  memset(P->mix_buf, 0, P->pcm_per_tick<<1);
+  zz_memclr(P->mix_buf,P->pcm_per_tick<<1);
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -189,9 +189,7 @@ static void free_cb(play_t * const P)
   zz_free("mixer-data",&P->mixer_data);
 }
 
-static int pull_cb(play_t * const P, int n) { return E_666; }
-
 mixer_t SYMB =
 {
-  NAME ":" METH, DESC, init_cb, free_cb, push_cb, pull_cb
+  NAME ":" METH, DESC, init_cb, free_cb, push_cb
 };

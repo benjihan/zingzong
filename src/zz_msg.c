@@ -75,7 +75,6 @@ void ensure_newline(void)
   }
 }
 
-
 static int
 vmsg(msg_f fct, FILE *f, const char * fmt, va_list list)
 {

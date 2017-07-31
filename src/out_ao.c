@@ -12,11 +12,11 @@
 
 typedef struct aoout_s aoout_t;
 struct aoout_s {
-  out_t out;
-  int              id;
-  ao_device       *dev;
-  ao_info         *info;
-  ao_sample_format fmt;
+  out_t             out;
+  int               id;
+  ao_device        *dev;
+  ao_info          *info;
+  ao_sample_format  fmt;
 };
 
 static int close(out_t *);
@@ -31,7 +31,8 @@ close(out_t * out)
 {
   int ret = 0;
   assert(out == &aoo.out);
-  if (out == &aoo.out && aoo.dev) {
+
+  if (aoo.dev) {
     ret = -!ao_close(aoo.dev);
     aoo.dev = 0;
     ao_shutdown();

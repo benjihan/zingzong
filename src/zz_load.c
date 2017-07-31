@@ -42,14 +42,14 @@ static int song_parse(song_t *song, vfs_t vfs, uint8_t *hd, uint_t size)
   if (ecode)
     goto error;
   ecode = E_SNG;
-  size = (song->bin->size / 12u) * 12u;
+  size = (ZZLEN(song->bin) / 12u) * 12u;
 
   /* Basic parsing of the sequences to find the end. It replaces
    * empty sequences by something that won't loop endlessly and won't
    * disrupt the end of music detection.
    */
   for (k=off=0; k<4 && off<size; off+=12) {
-    sequ_t * const seq = (sequ_t *)(song->bin->data+off);
+    sequ_t * const seq = (sequ_t *)(ZZBUF(song->bin)+off);
     uint_t   const cmd = u16(seq->cmd);
     uint_t   const stp = u32(seq->stp);
 
@@ -110,15 +110,15 @@ static int song_parse(song_t *song, vfs_t vfs, uint8_t *hd, uint_t size)
     }
   }
 
-  if (off != song->bin->size) {
+  if (off != ZZLEN(song->bin)) {
     wmsg("garbage data after voice sequences -- %u bytes\n",
-         song->bin->size - off);
+         ZZLEN(song->bin) - off);
   }
 
   for ( ;k<4; ++k) {
     if (has_note) {
       /* Add 'F'inish mark */
-      sequ_t * const seq = (sequ_t *)(song->bin->data+off);
+      sequ_t * const seq = (sequ_t *) ZZOFF(song->bin,off);
       seq->cmd[0] = 0; seq->cmd[1] = 'F';
       off += 12;
       has_note = 0;
@@ -176,8 +176,8 @@ static int cmpadr(const void * a, const void * b)
 static void prepare_vset(vset_t *vset, const char *path)
 {
   const int n = vset->nbi;
-  uint8_t * const beg = vset->bin->data;
-  uint8_t * const end = vset->bin->data+vset->bin->size+vset->bin->xtra;
+  uint8_t * const beg = ZZBUF(vset->bin);
+  uint8_t * const end = beg+ZZMAX(vset->bin);
   uint8_t * e;
   int i,j,tot,unroll;
   inst_t *pinst[20];
@@ -284,7 +284,7 @@ int vset_parse(vset_t *vset, vfs_t vfs, uint8_t *hd, uint_t size)
     uint_t len, lpl;
     uint8_t * pcm;
 
-    pcm = bin->data+o;
+    pcm = ZZOFF(bin,o);
     len = u32(pcm-4);
     lpl = u32(pcm-8);
     if (lpl == 0xFFFFFFFF)
@@ -317,9 +317,9 @@ int vset_parse(vset_t *vset, vfs_t vfs, uint8_t *hd, uint_t size)
     }
 
     /* Is the sample inside out memory range ? */
-    if ( o < 8 || o >= bin->size || (o+len > bin->size) ) {
+    if ( o < 8 || o >= ZZLEN(bin) || (o+len > ZZLEN(bin)) ) {
       wmsg("I#%02u data out of range [%05x..%05x] not in [%05x..%05x] +%u\n",
-           i+1, o,o+len, 8,bin->size, o+len-bin->size);
+           i+1, o,o+len, 8, ZZLEN(bin), o+len-ZZLEN(bin));
       ++invalid;
     }
 
@@ -395,8 +395,8 @@ q4_load(vfs_t vfs, q4_t *q4)
 #if 0
   /* info (ignoring errors) */
   if (!bin_load(q4->info.bin, vfs, q4->infosz, INFO_MAX_SIZE)
-      && play.info.bin->size > 1) {
-    play.info.comment = (char *) play.info.bin->data;
+      && ZZLEN(play.info.bin) > 1) {
+    play.info.comment = ZZSTR(play.info.bin);
     dmsg("Comments:\n%s\n", play.info.comment);
   }
 #endif

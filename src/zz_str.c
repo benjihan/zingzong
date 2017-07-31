@@ -48,24 +48,24 @@ str_t *
 zz_strset(str_t * str, const char * set)
 {
   const uint_t len = strlen(set)+1;
-  str->s = (char *)set;
-  str->l = len;
-  str->n = len;
+  str->_s = (char *)set;
+  str->_l = len;
+  str->_n = len;
   return str;
 }
 
 str_t *
 zz_stralloc(unsigned int size)
 {
-  str_t * str = 0;
-  const uint_t nalloc = size + (intptr_t)str->b;
+  str_t * str;
+  const uint_t nalloc = size + (intptr_t)(((str_t*)0)->_b);
 
   str = zz_alloc("string", nalloc, 0);
   if (str) {
-    str->s = str->b;
-    str->n = size;
-    str->l = 0;                       /* 0: undef */
-    str->b[0] = 0;
+    str->_s = str->_b;
+    str->_n = size;
+    str->_l = 0;                        /* 0: undef */
+    *str->_b = 0;
   }
   return str;
 }
@@ -78,8 +78,8 @@ zz_strdup(const char * org)
 
   str = zz_stralloc(len);
   if (str) {
-    memcpy(str->b,org,len);
-    str->l = len;
+    zz_memcpy(str->_b,org,len);
+    str->_l = len;
   }
   return str;
 }
@@ -90,8 +90,16 @@ zz_strfree(str_t ** pstr)
   assert(pstr);
   if (pstr) {
     str_t * const str = *pstr;
-    if (str && str->s == str->b)
+    if (str && str->_s == str->_b)
       free(str);
     *pstr = 0;
   }
+}
+
+int
+zz_strlen(str_t * str)
+{
+  if (!str->_l)
+    str->_l = strnlen(str->_s, str->_n)+1;
+  return str->_l-1;
 }
