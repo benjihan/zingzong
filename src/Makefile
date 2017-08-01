@@ -7,18 +7,25 @@
 # by Benjamin Gerard AKA Ben/OVR
 #
 
-SHELL	   = /bin/sh
-srcdir	  := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
-topdir	  := $(realpath $(srcdir)/..)
-VPATH	   = $(srcdir)
+SHELL      = /bin/sh
+srcdir    := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
+topdir    := $(realpath $(srcdir)/..)
 PKGCONFIG  = pkg-config
-PACKAGE	  := zingzong
-VERSION	  := $(shell $(srcdir)/vcversion.sh || echo ERROR)
+PACKAGE   := zingzong
+VERSION   := $(shell $(srcdir)/vcversion.sh || echo ERROR)
 ifeq ($(VERSION),ERROR)
 $(error vcversion.sh failed)
 endif
 pkgconfig  = $(shell $(PKGCONFIG) $(1) || echo n/a)
 STRIP      = strip
+
+# ----------------------------------------------------------------------
+
+target     = zingzong
+
+# ----------------------------------------------------------------------
+
+vpath %.c $(srcdir)
 
 # ----------------------------------------------------------------------
 
@@ -127,7 +134,7 @@ org_CFLAGS   := $(CFLAGS)
 org_LDLIBS   := $(LDLIBS)
 org_LDFLAGS  := $(LDFLAGS)
 
-zz_CPPFLAGS   = $(org_CPPFLAGS) $(bin_CPPFLAGS)
+zz_CPPFLAGS   = $(org_CPPFLAGS) $(gb_CPPFLAGS)
 zz_CFLAGS     = $(org_CFLAGS) $(gb_CFLAGS)
 zz_LDLIBS     = $(org_LDLIBS) $(gb_LDLIBS)
 zz_LDFLAGS    = $(org_LDFLAGS) $(gb_LDFLAGS)
@@ -136,16 +143,16 @@ zz_LDFLAGS    = $(org_LDFLAGS) $(gb_LDFLAGS)
 #  Build
 # ----------------------------------------------------------------------
 
-all: zingzong
+all: $(target)
 .PHONY: all
 
-zingzong: override NAME	    = zingzong
-zingzong: override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
-zingzong: override CFLAGS   = $(zz_CFLAGS)
-zingzong: override LDLIBS   = $(zz_LDLIBS)
-zingzong: override LDFLAGS  = $(zz_LDFLAGS)
+$(target): override NAME     = zingzong
+$(target): override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
+$(target): override CFLAGS   = $(zz_CFLAGS)
+$(target): override LDLIBS   = $(zz_LDLIBS)
+$(target): override LDFLAGS  = $(zz_LDFLAGS)
 
-mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
+mix := mix_void mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
 out := out_ao out_raw
 vfs := vfs_file
 zz  := zz_bin zz_load zz_msg zz_play zz_str zz_vfs zz_mixers
@@ -155,7 +162,7 @@ objects := $(sources:.c=.o)
 depends := $(sources:.c=.d)
 headers := zingzong.h zz_private.h mix_common.c
 
-zingzong: $(objects)
+$(target): $(objects)
 
 # ----------------------------------------------------------------------
 #  Clean
@@ -168,8 +175,8 @@ clean-obj:
 	@-rm -f -- $(objects)
 
 clean: clean-dep clean-obj
-	@-rm -f -- zingzong
-	@echo "zingzong has been cleaned up"
+	@-rm -f -- $(target)
+	@echo "$(target) has been cleaned up"
 
 .PHONY: clean clean-obj clean-dep
 
@@ -283,9 +290,9 @@ install-strip: INSTALL_OPT = --strip-program=$(STRIP) -s
 install-strip: install
 install: install-exec install-data 
 
-install-exec: zingzong
+install-exec: $(target)
 	@$(call INSTALL_EXEC,$^)
-	@echo $^ installed in $(DESTDIR)$(bindir)
+	@echo "$^ installed in $(DESTDIR)$(bindir)"
 
 install-data:
 	@$(call INSTALL_DATA)
@@ -293,9 +300,8 @@ install-data:
 .PHONY: install-strip install install-exec install-data
 
 uninstall-exec:
-	@$(call UNINSTALL_EXEC,zingzong)
-	@echo zingzong removed from $(DESTDIR)$(bindir)
-
+	@$(call UNINSTALL_EXEC,$(target))
+	@echo "zingzong removed from $(DESTDIR)$(bindir)"
 
 uninstall-data:
 	@$(call UNINSTALL_DATA)
@@ -303,7 +309,6 @@ uninstall-data:
 uninstall: uninstall-exec uninstall-data
 
 .PHONY: uninstall uninstall-exec uninstall-data
-
 
 # ----------------------------------------------------------------------
 #  Just in case redefining default rules is needed

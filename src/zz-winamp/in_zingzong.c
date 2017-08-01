@@ -59,7 +59,7 @@
  * Plugin private data.
  ****************************************************************************/
 
-const char me[] = "zingzong";
+const char me[] = "in_zingzong";
 
 #ifdef USE_LOCK
 static HANDLE g_lock;                   /* mutex handle           */
@@ -201,7 +201,7 @@ void about(HWND hwnd)
 {
   char temp[512];
   snprintf(temp,sizeof(temp),
-           "zingzong for winamp\n"
+           "ZingZong for Winamp\n"
            "\na Quartet music player\n"
            "\nVersion " PACKAGE_VERSION "\n"
            "\n(c) 2017 Benjamin Gerard AKA Ben/OVR");
@@ -261,9 +261,16 @@ static
 int getlength()
 {
   int ms = 0;                           /* 0 or -1 ? */
+  if (atomic_get(&g_playing)) {
+    play_t * const P = play_lock();
+    if (P) {
+      if (P->end_detect)
+        ms = P->max_ticks * (1000u / P->rate);
+      play_unlock(P);
+    }
+  }
   return ms;
 }
-
 
 static
 /*****************************************************************************
@@ -343,7 +350,7 @@ void stop()
   }
 }
 
-static int load(play_t * const P, const char * uri)
+static int load(play_t * const P, const char * uri, int measure)
 {
   int ecode = E_INP;
   vfs_t inp = 0;
@@ -363,6 +370,10 @@ static int load(play_t * const P, const char * uri)
     q4.vset = &P->vset; q4.vsetsz = u32(hd+12);
     q4.info = &P->info; q4.infosz = u32(hd+16);
     ecode = q4_load(inp , &q4);
+
+    dmsg("zz-winamp: loaded song:%ukhz vset:%ukhz\n",
+         P->song.khz, P->vset.khz);
+
   } else {
     /* $$$ TODO */
   }
@@ -372,7 +383,19 @@ static int load(play_t * const P, const char * uri)
     P->spr        = g_spr;
     P->end_detect = 1;
     P->max_ticks  = 10u * 60u * 200u; /* 10' */
-    ecode = zz_init(&g_play);
+    ecode = zz_init(P);
+    dmsg("zz-winamp: inited song:%ukhz vset:%ukhz\n",
+         P->song.khz, P->vset.khz);
+  }
+
+  if (!ecode && measure) {
+    dmsg("zz-winamp: measuring for max %u ticks ...\n", P->max_ticks);
+    ecode = zz_measure(P);
+    if (!ecode && P->tick) {
+      P->max_ticks = P->tick;
+      P->end_detect = 0;
+      dmsg("zz-winamp: measured %u ticks\n", P->max_ticks);
+    }
   }
 
 error_exit:
@@ -411,7 +434,7 @@ int play(const char * uri)
   g_paused     = 0;
 
   err = -1;
-  if (load(&g_play,uri))
+  if (load(&g_play,uri,1))
     goto exit;
 
   /* Init output module */
@@ -541,12 +564,15 @@ DWORD WINAPI playloop(LPVOID cookie)
   return 0;
 }
 
-#ifndef DEBUG
 static int nomsg(FILE *f, const char *fmt, va_list list)
 {
+#if DEBUG == 1
   return 0;
-}
 #endif
+  /* ignore f and write to stdout as winamp seems to redirect
+   * stderr */
+  vprintf(fmt,list);
+}
 
 static
 /*****************************************************************************
@@ -554,11 +580,8 @@ static
  ****************************************************************************/
 void init()
 {
-  dmsg("zz-winamp: init\n");
-
-#ifndef DEBUG
   msgfunc = nomsg;
-#endif
+  dmsg("zz-winamp: init\n");
   /* clear and init private */
 #ifdef USE_LOCK
   g_lock = CreateMutex(NULL, FALSE, NULL);
@@ -576,6 +599,123 @@ void quit()
   g_lock = 0;
 #endif
   dmsg("zz-winamp: quit\n");
+}
+
+
+/*****************************************************************************
+ * TRANSCODER
+ ****************************************************************************/
+
+struct transcon {
+  play_t play;                       /* zingzong play instance      */
+  uint_t duration;                   /* run duration                */
+  size_t pcm;                        /* pcm counter                 */
+  int    done;                       /* 0:not done, 1:done -1:error */
+};
+
+EXPORT
+/**
+ * Open zingzong transcoder.
+ *
+ * @param   uri  URI to transcode.
+ * @param   siz  pointer to expected raw output size (progress bar)
+ * @param   bps  pointer to output bit-per-sample
+ * @param   nch  pointer to output number of channel
+ * @param   spr  pointer to output sampling rate
+ * @return  Transcoding context struct (sc68_t right now)
+ * @retval  0 on errror
+ */
+intptr_t winampGetExtendedRead_open(
+  const char *uri,int *siz, int *bps, int *nch, int *spr)
+{
+  struct transcon * trc;
+
+  dmsg("zz-winamp: transcode -- '%s'\n", uri);
+  trc = zz_calloc("trancoder",sizeof(struct transcon));
+  if (!trc)
+    goto error_no_free;
+  if (load(&trc->play,uri,1))
+    goto error;
+  trc->duration = trc->play.end_detect ? trc->play.max_ticks : 0;
+
+  *nch = 1;
+  *spr = trc->play.spr;
+  *bps = 16;
+  *siz = trc->duration * trc->play.pcm_per_tick * 2;
+
+  dmsg("zz-winamp: transcode -- %u ticks, %u bytes\n", trc->duration, *siz);
+
+  return (intptr_t)trc;
+
+error:
+  zz_free("transcoder",&trc);
+error_no_free:
+  return 0;
+}
+
+EXPORT
+/**
+ * Run transcoder.
+ *
+ * @param   hdl  Pointer to transcoder context
+ * @patam   dst  PCM buffer to fill
+ * @param   len  dst size in byte
+ * @param   end  pointer to a variable set by winamp to query the transcoder
+ *               to kindly exit (abort)
+ * @return  The number of byte actually filled in dst
+ * @retval  0 to notify the end
+ */
+intptr_t winampGetExtendedRead_getData(
+  intptr_t hdl, char *dst, int len, int *_end)
+{
+  struct transcon * trc = (struct transcon *) hdl;
+  volatile int * end = _end;
+  int cnt;
+
+  assert(end);
+
+  for (cnt = 0; len >= 2; ) {
+    int16_t * pcm;
+    int n;
+
+    if (*end || trc->done) {
+      dmsg("zz-winamp: transcoder -- notify end\n");
+      cnt = 0; break;
+    }
+    if (trc->play.done) {
+      dmsg("zz-winamp: transcoder -- play done\n");
+      trc->done = 1; break;
+    }
+
+    n = trc->play.pcm_per_tick;
+    if (n > (len>>1) ) n = len>>1;
+    pcm = zz_pull(&trc->play, &n);
+    if (!pcm) {
+      dmsg("zz-winamp: transcoder -- notify failure :(\n");
+      trc->done = -1; break;
+    }
+    n <<= 1;                            /* in bytes */
+    zz_memcpy(dst+cnt,pcm,n);
+    cnt += n;
+    len -= n;
+  }
+  return cnt;
+}
+
+EXPORT
+/**
+ * Close sc68 transcoder.
+ *
+ * @param   hdl  Pointer to transcoder context
+ */
+void winampGetExtendedRead_close(intptr_t hdl)
+{
+  struct transcon * trc = (struct transcon *) hdl;
+
+  if (trc) {
+    zz_kill(&trc->play);
+    zz_free("transcoder", &trc);
+  }
 }
 
 

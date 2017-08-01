@@ -7,23 +7,31 @@
 # by Benjamin Gerard
 #
 
-SHELL	   = /bin/sh
-srcdir	  := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
-topdir	  := $(realpath $(srcdir)/../..)
-VPATH	   = $(srcdir) $(srcdir)/..
+SHELL      = /bin/sh
+srcdir    := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
+topdir    := $(realpath $(srcdir)/../..)
 PKGCONFIG  = pkg-config
-PACKAGE	  := zingzong-winamp
-VERSION	  := $(shell $(srcdir)/../vcversion.sh || echo ERROR)
+PACKAGE   := zingzong-winamp
+VERSION   := $(shell $(srcdir)/../vcversion.sh || echo ERROR)
 ifeq ($(VERSION),ERROR)
 $(error vcversion.sh failed)
 endif
 pkgconfig  = $(shell $(PKGCONFIG) $(1) || echo n/a)
 
+# ----------------------------------------------------------------------
+
+vpath %.c $(srcdir) $(srcdir)/..
 
 # ----------------------------------------------------------------------
 
-CC	= i686-w64-mingw32-gcc
+target     = in_zingzong.dll
+
+# ----------------------------------------------------------------------
+
+CC      = i686-w64-mingw32-gcc
 STRIP	= $(CC:-gcc=-strip)
+
+override NO_AO = 1
 
 ifndef CFLAGS
 CFLAGS	:= -Wall # -std=c99
@@ -36,12 +44,8 @@ ifdef PROFILE
 CFLAGS	+= -pg
 endif
 endif
+dll_CFLAGS = -m32 -mwin32 -mdll
 
-# ----------------------------------------------------------------------
-#  Windows / x86 platform flags (gcc only)
-# ----------------------------------------------------------------------
-
-override gb_CFLAGS =  $(gb_CFLAGS)
 
 # ----------------------------------------------------------------------
 #  Winamp SDK
@@ -70,7 +74,7 @@ ifneq ($(NO_SRATE),0)
 override SRATE_CFLAGS=
 override SRATE_LIBS=
 else
- ifeq ($(origin SRATE_CFLAGS)/$(origin SRATE_LIBS),undefined/undefined)
+ifeq ($(origin SRATE_CFLAGS)/$(origin SRATE_LIBS),undefined/undefined)
 
 SRATE_CFLAGS := $(call pkgconfig,--cflags samplerate)
 ifeq ($(SRATE_CFLAGS),n/a)
@@ -86,8 +90,8 @@ endif
 endif
 endif
 
-override bin_CFLAGS += $(SRATE_CFLAGS)
-override bin_LDLIBS += $(SRATE_LIBS)
+override gb_CFLAGS += $(SRATE_CFLAGS)
+override gb_LDLIBS += $(SRATE_LIBS)
 
 # ----------------------------------------------------------------------
 #  soxr (NO_SOXR=0 to enable)
@@ -113,8 +117,8 @@ endif
 endif
 endif
 
-override bin_CFLAGS += $(SOXR_CFLAGS)
-override bin_LDLIBS += $(SOXR_LIBS)
+override gb_CFLAGS += $(SOXR_CFLAGS)
+override gb_LDLIBS += $(SOXR_LIBS)
 
 # ----------------------------------------------------------------------
 
@@ -129,27 +133,27 @@ org_CFLAGS   := $(CFLAGS)
 org_LDLIBS   := $(LDLIBS)
 org_LDFLAGS  := $(LDFLAGS)
 
-zz_CPPFLAGS   = $(org_CPPFLAGS) $(bin_CPPFLAGS) -DNO_AO=1
-zz_CFLAGS     = $(org_CFLAGS) $(bin_CFLAGS)
-zz_LDLIBS     = $(org_LDLIBS) $(bin_LDLIBS)
-zz_LDFLAGS    = $(org_LDFLAGS) $(bin_LDFLAGS)
+zz_CPPFLAGS   = $(org_CPPFLAGS) $(gb_CPPFLAGS) -DNO_AO=1
+zz_CFLAGS     = $(org_CFLAGS) $(gb_CFLAGS)
+zz_LDLIBS     = $(org_LDLIBS) $(gb_LDLIBS)
+zz_LDFLAGS    = $(org_LDFLAGS) $(gb_LDFLAGS)
 
 # ----------------------------------------------------------------------
 #  Build
 # ----------------------------------------------------------------------
 
-all: in_zingzong.dll
+all: $(target)
 .PHONY: all
 
-in_zingzong.dll: override NAME	   = zingzong (winamp)
-in_zingzong.dll: override CPPFLAGS = $(zz_CPPFLAGS)
-in_zingzong.dll: override CFLAGS   = -m32 -mwin32 -mdll $(zz_CFLAGS)
-in_zingzong.dll: override LDLIBS   = $(zz_LDLIBS)
-in_zingzong.dll: override LDFLAGS  = $(zz_LDFLAGS)
+$(target): override NAME	   = zingzong (winamp)
+$(target): override CPPFLAGS = $(zz_CPPFLAGS)
+$(target): override CFLAGS   = $(dll_CFLAGS) $(zz_CFLAGS)
+$(target): override LDLIBS   = $(zz_LDLIBS)
+$(target): override LDFLAGS  = $(zz_LDFLAGS)
 
 in_zingzong.o: override CPPFLAGS = $(WAINC) $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
 
-mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
+mix := mix_void mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
 out := 
 vfs := vfs_file
 zz  := zz_bin zz_load zz_msg zz_play zz_str zz_vfs zz_mixers
@@ -166,8 +170,8 @@ zingzong: $(objects)
 #  Link plugin dll
 # ----------------------------------------------------------------------
 
-in_zingzong.dll: $(objects)
-	$(CC) -mdll -o $@ $^ -static-libgcc -static $(LDFLAGS)
+$(target): $(objects)
+	$(CC) -mdll -o $@ $^ -static-libgcc -static $(LDFLAGS) $(LDLIBS)
 
 # ----------------------------------------------------------------------
 #  Clean
@@ -180,8 +184,8 @@ clean-obj:
 	@-rm -f -- $(objects)
 
 clean: clean-dep clean-obj
-	@-rm -f -- in_zingzong.dll
-	@echo "zingzong-winamp has been cleaned up"
+	@-rm -f -- $(target)
+	@echo "$(target) has been cleaned up"
 
 .PHONY: clean clean-obj clean-dep
 
@@ -227,12 +231,12 @@ UNINSTALL_PLUG = \
 
 install-strip: INSTALL_OPT = --strip-program=$(STRIP) -s
 install-strip: install
-install: in_zingzong.dll
+install: $(target)
 	@$(call INSTALL_PLUG,$^)
 	@echo $^ installed in "$(DESTDIR)$(WADLL)"
 
 uninstall:
-	@$(call UNINSTALL_PLUG,in_zingzong.dll)
+	@$(call UNINSTALL_PLUG,$(target))
 	@echo zingzong removed from "$(DESTDIR)$(WADLL)"
 
 .PHONY: install-strip install uninstall
