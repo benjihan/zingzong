@@ -20,10 +20,7 @@ static int can_use_stdout = 1; /* Whether stdout is used for other mean. */
 
 static int deffunc(FILE *f, const char *fmt, va_list list)
 {
-  return (!f)
-    ? vprintf(fmt,list)
-    : vfprintf(f,fmt,list)
-    ;
+  return vfprintf(f?f:can_use_stdout?stdout:stderr,fmt,list);
 }
 
 msg_f msgfunc = deffunc;
@@ -78,7 +75,7 @@ void ensure_newline(void)
 static int
 vmsg(msg_f fct, FILE *f, const char * fmt, va_list list)
 {
-  return fct(f,fmt,list);
+  return fct ? fct(f,fmt,list) : 0;
 }
 
 static int

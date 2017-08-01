@@ -43,6 +43,7 @@ int zz_play_init(play_t * const P)
     zz_chan_init(P, k);
   P->has_loop = P->muted_voices;
   P->done = 0;
+  P->tick = 0;
   P->mix_ptr = P->mix_buf;
 
   return 0;
@@ -275,7 +276,7 @@ int16_t * zz_pull(play_t * P, int * ptr_n)
       if (ecode != E_OK)
         goto error;
       ecode = E_MIX;
-      if (P->mixer->push(P))
+      if (P->mixer && P->mixer->push(P))
         goto error;
       P->mix_ptr = P->mix_buf;
       have = P->pcm_per_tick;
@@ -292,16 +293,52 @@ error:
   return ptr;
 }
 
+int zz_measure(play_t * P)
+{
+  int ecode = E_OK;
+  mixer_t * const save_mixer = P->mixer;
+  P->mixer = &mixer_void;
+  P->mix_ptr = 0;
+
+  while(!P->done) {
+    int n = P->pcm_per_tick;
+    if (!zz_pull(P, &n)) {
+      ecode = n;
+      break;
+    }
+  }
+
+  /* If everything went as planed and we were able to measure music
+   * duration then set plat_t::end_detect and plat_t::max_ticks.
+   */
+  if (!ecode) {
+    P->end_detect = P->tick <= P->max_ticks;
+    if (P->end_detect)
+      P->max_ticks = P->tick;
+    P->done = 0;
+    P->tick = 0;
+  }
+  P->mix_ptr = 0;
+  P->mixer = save_mixer;
+
+  return ecode;
+}
+
 /* ---------------------------------------------------------------------- */
 
 int zz_init(play_t * P)
 {
   int ecode = E_OK;
 
-  if (!P->rate)
+  if (!P->rate) {
     P->rate = 200;
-  if (!P->spr)
+    dmsg("replay rate not set -- default to %u\n", P->rate);
+  }
+
+  if (!P->spr) {
     P->spr = P->song.khz * 1000u;
+    dmsg("sampling rate not set -- default to %u\n", P->spr);
+  }
 
   /* ----------------------------------------
    *  Mix buffers

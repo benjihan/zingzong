@@ -594,7 +594,6 @@ int main(int argc, char *argv[])
 
       }
       RETURN (E_ARG);
-
     default:
       emsg("unexpected option -- `%c' (%d)\n",
            isgraph(c)?c:'.', c);
@@ -764,6 +763,13 @@ int main(int argc, char *argv[])
 
   if (!ecode)
     ecode = zz_init(P);
+
+  if (P->max_ticks) {
+    ecode = zz_measure(P);
+    if (!ecode && P->end_detect)
+      imsg("duration: %s\n", tickstr(P->max_ticks, P->rate));
+  }
+
   if (!ecode)
     ecode = zz_play(P);
 

@@ -256,8 +256,7 @@ struct songhd {
 /* ---------------------------------------------------------------------- */
 
 EXTERN_C
-mixer_t * const zz_mixers[], * zz_default_mixer;
-
+mixer_t * const zz_mixers[], * zz_default_mixer, mixer_void;
 
 /* ---------------------------------------------------------------------- */
 
@@ -520,6 +519,8 @@ EXTERN_C
 int zz_play(play_t * P);
 EXTERN_C
 int16_t * zz_pull(play_t * P, int * ptr_n);
+EXTERN_C
+int zz_measure(play_t * P);
 EXTERN_C
 int zz_kill(play_t * P);
 /**

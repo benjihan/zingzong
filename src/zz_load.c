@@ -33,7 +33,7 @@ static int song_parse(song_t *song, vfs_t vfs, uint8_t *hd, uint_t size)
   song->tempo = u16(hd+4);
   song->sigm  = hd[6];
   song->sigd  = hd[7];
-  dmsg("%s: rate: %ukHz, bar:%u, tempo:%u, signature:%u/%u\n", vfs_uri(vfs),
+  dmsg("%s: spr: %ukHz, bar:%u, tempo:%u, signature:%u/%u\n", vfs_uri(vfs),
        song->khz, song->barm, song->tempo, song->sigm, song->sigd);
 
   /* Load data (add 12 extra bytes to close truncated sequence if
@@ -56,7 +56,7 @@ static int song_parse(song_t *song, vfs_t vfs, uint8_t *hd, uint_t size)
     if (!song->seq[k])
       song->seq[k] = seq;               /* Sequence */
 
-    if (1) {
+    if (0) {
       dmsg("%c %04u %c %04x %08x %04x-%04x\n",
            k+'A',
            (uint_t)(seq-song->seq[k]),
