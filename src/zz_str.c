@@ -48,9 +48,13 @@ str_t *
 zz_strset(str_t * str, const char * set)
 {
   const uint_t len = strlen(set)+1;
-  str->_s = (char *)set;
-  str->_l = len;
-  str->_n = len;
+  if (!str)
+    str = zz_strdup(set);
+  else {
+    str->_s = (char *)set;
+    str->_l = len;
+    str->_n = len;
+  }
   return str;
 }
 
