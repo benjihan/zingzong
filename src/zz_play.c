@@ -64,6 +64,8 @@ int zz_play_chan(play_t * const P, const int k)
   /* Portamento */
   if (C->note.stp) {
     assert(C->note.cur);
+    if (!C->note.cur)
+      C->note.cur = C->note.aim; /* safety net */
     C->trig = TRIG_SLIDE;
     C->note.cur += C->note.stp;
     if (C->note.stp > 0) {
@@ -123,22 +125,34 @@ int zz_play_chan(play_t * const P, const int k)
       /* triggered |= 1<<(k<<3); */
       break;
 
+    case 'S':                       /* Slide-to-note */
+
+      /* GB: This actually happen (e.g. Wrath of the demon - tune 1)
+       *     I'm not sure what the original quartet player does.
+       *     Here I'm just starting the goal note.
+       */
+      /* assert(C->note.cur); */
+      if (!C->note.cur) {
+        C->trig     = TRIG_NOTE;
+        C->note.ins = P->vset.inst + C->curi;
+        C->note.cur = stp;
+      }
+      C->wait     = len;
+      C->note.aim = stp;
+      C->note.stp = (int32_t)par;   /* sign extend, slide are signed */
+      break;
+
     case 'R':                       /* Rest */
       C->trig     = TRIG_STOP;
       C->wait     = len;
-      C->note.cur = 0;
 
       /* GB: Should I ? What if a slide happens after a rest ? It does
        *     not really make sense but technically it's
        *     possible. We'll see if it triggers the assert.
+       *
+       * GB: See note above. It happens so I shouldn't !
        */
-      break;
-
-    case 'S':                       /* Slide-to-note */
-      assert(C->note.cur);
-      C->wait     = len;
-      C->note.aim = stp;
-      C->note.stp = (int32_t)par;   /* sign extend, slide are signed */
+      C->note.cur = 0;
       break;
 
     case 'l':                       /* Set-Loop-Point */
@@ -297,9 +311,26 @@ int zz_measure(play_t * P)
 {
   int ecode = E_OK;
   mixer_t * const save_mixer = P->mixer;
+
+  if (!P->vset.bin) {
+    /* If there is no voice set we still want to be able to measure
+     * time. As the player will complain in case it tries to play a
+     * non-existing instrument we just create fake a instruments set.
+     */
+    int i;
+    dmsg("No voice set, assuming measuring only\n");
+    P->vset.khz = P->song.khz;
+    P->vset.nbi = 20;
+    for (i=0; i<20; ++i) {
+      P->vset.inst[i].len = 2;
+      P->vset.inst[i].lpl = 0;
+      P->vset.inst[i].end = 2;
+      P->vset.inst[i].pcm = (uint8_t *)&P->vset.inst[i].pcm;
+    }
+  }
+
   P->mixer = &mixer_void;
   P->mix_ptr = 0;
-
   while(!P->done) {
     int n = P->pcm_per_tick;
     if (!zz_pull(P, &n)) {
@@ -320,6 +351,8 @@ int zz_measure(play_t * P)
   }
   P->mix_ptr = 0;
   P->mixer = save_mixer;
+  if (!P->vset.bin)
+    zz_memclr(&P->vset,sizeof(P->vset));
 
   return ecode;
 }
@@ -395,7 +428,7 @@ int zz_kill(play_t * P)
   zz_strfree(&P->vseturi);
   zz_strfree(&P->songuri);
   zz_strfree(&P->infouri);
-  zz_strfree(&P->waveuri);
+  /* zz_strfree(&P->waveuri); */
 
   bin_free(&P->vset.bin);
   bin_free(&P->song.bin);
