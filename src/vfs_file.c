@@ -20,14 +20,15 @@ static int x_close(vfs_t);
 static int x_read(vfs_t, void *, int);
 static int x_tell(vfs_t);
 static int x_size(vfs_t);
+static int x_seek(vfs_t,int,int);
 
 /* ---------------------------------------------------------------------- */
 
 vfs_dri_t vfs_file_dri = {
   "file", x_ismine,
   x_new, x_del, x_uri,
-  x_open, x_close,
-  x_read, x_tell, x_size
+  x_open, x_close, x_read,
+  x_tell, x_size, x_seek
 };
 
 /* ---------------------------------------------------------------------- */
@@ -120,4 +121,11 @@ x_size(vfs_t const _vfs)
           -1 == (size = ftell(fs->fp))    || /* size = position  */
           -1 == fseek(fs->fp,tell,SEEK_SET)) /* restore position */
     ? -1 : size ;
+}
+
+static int
+x_seek(vfs_t const _vfs, int offset, int whence)
+{
+  vfs_file_t const fs = (vfs_file_t) _vfs;
+  return fseek(fs->fp,offset,whence);
 }

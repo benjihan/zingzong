@@ -153,6 +153,68 @@ vfs_tell(vfs_t vfs)
 }
 
 int
+vfs_seek(vfs_t vfs, int pos, int set)
+{
+  VFS_OR_DIE(vfs);
+
+  if (vfs->dri->seek) {
+    return !vfs->dri->seek(vfs,pos,set)
+      ? 0 : vfs_emsg(vfs->dri->name, "seek", "seek error");
+  } else {
+    /* For seek forward simulate by reading */
+    int size, tell;
+
+    dmsg("seek[%s]: pos=%d set=%d\n",
+         vfs->dri->name, pos, set);
+
+    if ( -1 == (size = vfs->dri->size(vfs)) ||
+         -1 == (tell = vfs->dri->tell(vfs)) )
+      return -1;
+
+    dmsg("seek[%s]: size=%u\n", vfs->dri->name, size);
+    dmsg("seek[%s]: tell=%u\n", vfs->dri->name, tell);
+
+    switch (set) {
+    case VFS_SEEK_SET: break;
+    case VFS_SEEK_END: pos = size + pos; break;
+    case VFS_SEEK_CUR: pos = tell + pos; break;
+    default:
+      errno = EINVAL;
+      return vfs_emsg(vfs->dri->name, "seek", "invalid whence");
+    }
+
+    dmsg("seek[%s]: goto=%d offset=%+d\n",
+         vfs->dri->name, pos, pos-tell);
+
+    if (pos < tell || pos > size) {
+      emsg("%s: seek simulation impossible (%d/%d/%d)\n",
+           vfs->dri->uri(vfs), pos, tell, size);
+      return -1;
+    }
+
+    while (tell < pos) {
+      uint8_t tmp[64];
+      int r, n = pos-tell;
+      if (n > sizeof(tmp)) n = sizeof(tmp);
+      r = vfs->dri->read(vfs,tmp,n);
+      if (r != n) {
+        emsg("%s: seek simulation impossible (read error)\n",
+             vfs->dri->uri(vfs));
+        return -1;
+      }
+      tell += n;
+    }
+
+    dmsg("seek[%s]: tell=%d\n",
+         vfs->dri->name, vfs->dri->tell(vfs));
+
+    assert (tell == pos);
+    assert (pos == vfs->dri->tell(vfs));
+    return 0;
+  }
+}
+
+int
 vfs_size(vfs_t vfs)
 {
   VFS_OR_DIE(vfs);

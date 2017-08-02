@@ -213,12 +213,11 @@ struct q4_s {
 };
 
 struct play_s {
-  str_t strings[4];                     /* static strings */
+  str_t strings[3];                     /* static strings */
 
   str_t * vseturi;
   str_t * songuri;
   str_t * infouri;
-  str_t * waveuri;
 
   vset_t vset;
   song_t song;
@@ -473,6 +472,8 @@ EXTERN_C
 int vfs_tell(vfs_t vfs);
 EXTERN_C
 int vfs_size(vfs_t vfs);
+EXTERN_C
+int vfs_seek(vfs_t vfs, int pos, int set);
 /**
  * @}
  */
