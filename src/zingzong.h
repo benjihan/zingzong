@@ -22,6 +22,10 @@ typedef struct vfs_s *vfs_t;            /**< Virtual filesystem. */
 
 #include <stdarg.h>
 
+enum {
+  VFS_SEEK_SET, VFS_SEEK_CUR, VFS_SEEK_END
+};
+
 typedef const struct {
   const char * name;                      /**< friendly name.    */
   int (*ismine)(const char *);            /**< is mine.          */
@@ -33,6 +37,7 @@ typedef const struct {
   int (*read)(vfs_t, void *, int);        /**< read.             */
   int (*tell)(vfs_t);                     /**< get position.     */
   int (*size)(vfs_t);                     /**< get size.         */
+  int (*seek)(vfs_t,int,int);             /**< offset,whence     */
 } vfs_dri_t;
 
 struct vfs_s {
