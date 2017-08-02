@@ -640,7 +640,6 @@ int main(int argc, char *argv[])
   P->vseturi = P->strings+0;
   P->songuri = P->strings+1;
   P->infouri = P->strings+2;
-  waveuri    = 0;
 
   zz_strset(P->vseturi, argv[optind++]);
   zz_strset(P->songuri, ZZSTR(P->vseturi));
@@ -695,28 +694,28 @@ int main(int argc, char *argv[])
 
 #ifndef NO_AO
   if (optind < argc) {
-    waveuri = P->strings+3;
-    zz_strset(P->waveuri,argv[optind++]);
+    static str_t stastr;
+    waveuri = zz_strset(&stastr,argv[optind++]);
     opt_wav = 1;
   }
 
-  if (opt_wav && !P->waveuri) {
-    ecode = wav_filename(&P->waveuri, ZZSTR(P->songuri));
+  if (opt_wav && !waveuri) {
+    ecode = wav_filename(&waveuri, ZZSTR(P->songuri));
     if (ecode)
       goto error_exit;
   }
 
-  if (!opt_force && P->waveuri) {
+  if (!opt_force && waveuri) {
     /* Unless opt_force is set, tries to load 4cc out of the output
      * .wav file. Non RIFF files are rejected unless they are empty.
      */
-    FILE * f = fopen(ZZSTR(P->waveuri),"rb");
+    FILE * f = fopen(ZZSTR(waveuri),"rb");
     if (f) {
       hd[3] = 0;     /* zz_memcmp() will fail unless 4 bytes are read. */
       if (fread(hd,1,4,f) != 0 && zz_memcmp(hd,"RIFF",4)) {
         ecode = E_OUT;
         emsg("output file exists and is not a RIFF wav -- %s\n",
-             ZZSTR(P->waveuri));
+             ZZSTR(waveuri));
         goto error_exit;
       }
       fclose(f);
@@ -732,7 +731,7 @@ int main(int argc, char *argv[])
     P->out = out_raw_open(opt_splrate,"stdout:");
 #ifndef NO_AO
   else if (!opt_null)
-    P->out = out_ao_open(opt_splrate, P->waveuri ? ZZSTR(P->waveuri) : 0);
+    P->out = out_ao_open(opt_splrate, waveuri ? ZZSTR(waveuri) : 0);
 #endif
   else
     P->out = out_raw_open(opt_splrate,"null:");
@@ -756,9 +755,13 @@ int main(int argc, char *argv[])
        basename(ZZSTR(P->vseturi)), P->vset.khz, P->vset.nbi,
        basename(ZZSTR(P->songuri)), P->song.khz, P->song.barm,
        P->song.tempo, P->song.sigm, P->song.sigd);
+
+  if (P->info.comment && *P->info.comment)
+    imsg("Comment:\n~~~~~\n%s\n~~~~~\n",P->info.comment);
+
 #ifndef NO_AO
-  if (P->waveuri)
-    imsg("wave: \"%s\"\n", ZZSTR(P->waveuri));
+  if (waveuri)
+    imsg("wave: \"%s\"\n", ZZSTR(waveuri));
 #endif
 
   if (!ecode)
