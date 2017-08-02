@@ -72,15 +72,8 @@ mix_gen(mix_fp_t * const M, const int k, int16_t * restrict b, int n)
         idx = K->xtp = 0;
       }
       else {
-        idx -= K->lpl;              /* Go back one loop len */
-        if (idx >= K->len) {
-          idx -= K->lpl;            /* Go back a second time */
-          if (idx >= K->len) {
-            /* Third time just use the generic remainder approach. */
-            uint_t ovf = (idx - K->len) % K->lpl;
-            idx = K->len - K->lpl + ovf;
-          }
-        }
+        const uint_t ovf = (idx - K->len) % K->lpl;
+        idx = K->len - K->lpl + ovf;
         assert( idx >= K->len-K->lpl && idx < K->len );
       }
     }
