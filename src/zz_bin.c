@@ -58,7 +58,6 @@ bin_load(bin_t ** pbin, vfs_t vfs, uint_t len, uint_t xlen, uint_t max)
   ecode = bin_alloc(pbin, path, len, xlen);
   if (ecode)
     goto error;
-  dmsg("%s: allocated: %u +%u = %u\n", path, len, xlen, len+xlen);
   ecode = bin_read(*pbin, vfs, 0, len);
 
 error:
