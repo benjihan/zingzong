@@ -12,8 +12,10 @@ top=$(realpath $(dirname "$0")) # Where this script is located.
 arch="${PWD##*/}"		# Current directory name.
 
 DEPLIBS="AO SRATE SOXR"
-vars1=( CC LD PKGCONFIG DEBUG PROFILE MAKERULES )
-vars2=( CPPFLAGS CFLAGS LDFLAGS LDLIBS gb_CFLAGS gb_LDLIBS gb_LDFLAGS )
+vars1=( CC LD STRIP PKGCONFIG INSTALL DEBUG PROFILE MAKERULES )
+vars3=( CPPFLAGS CFLAGS LDFLAGS LDLIBS gb_CFLAGS gb_LDLIBS gb_LDFLAGS
+	prefix )
+vars2=( "${var3[@]}" )
 for dep in $DEPLIBS; do
     vars2+=( NO_${dep} ${dep}_CFLAGS ${dep}_LIBS )
 done
@@ -26,25 +28,31 @@ Usage() {
  Usage: build.sh -j
         build.sh [--no-env] [VAR=VAL ...] [make-args ...]
 
-   This script MUST to be call from one of the host child directory
+   This zingzong build script MUST to be call from one of the host
+   child directory.
+
+   e.g: mkdir i686-pc-cygwin; cd i686-pc-cygwin; ../build.sh
 
    All command line arguments are propagated to make however VAR=VAL are
-   intercepted and mightbe modified.
+   intercepted and might be modified.
 
    The following environment variables are used unless --no-env is set:
 
-   CC .............. Compiler
-   LD .............. Linker
-   CPPFLAGS ..,..... For the C preprocessor
-   CFLAGS .......... For the C compiler
-   LDLIBS .......... Library to link binary
-   LDFLAGS ......... For the linker
-   gb_CFLAGS ....... For the C compiler (use this to keep default CFLAGS)
-   gb_LDLIBS ....... Library to link (use this to keep default LDLIBS)
-   gb_LDFLAGS ...... For the linker (use this to keep default LDFLAGS)
-   PKGCONFIG ....... pkg-config to call when required
+EOF
+    x='  '
+    for var in "${vars1[@]}" "${vars3[@]}"; do
+	y="${x}${x:+ }${var}"
+	if [ ${#y} -gt 78 ]; then
+	    echo "$x"; x="   ${var}"
+	else
+	    x="$y"
+	fi
+    done
+    echo "$x"
 
-   For each dependency library name {${DEPLIBS// /,}}:
+    cat <<EOF
+
+   For each dependency library name in {${DEPLIBS// /,}}:
 
    NO_{name} ....... Disable(0)/Enable(1)
    {name}_CFLAGS ... How to compile (usually -I)
@@ -74,7 +82,7 @@ for arg in "$@"; do
 	    done
 	    ;;
 	    
-	[A-Z]*=*)
+	[[:alpha:]][_[:alnum:]]+)
 	    var="${arg%%=*}"
 	    val="${arg#*=}"
 	    eval $var='"$val"'
@@ -88,7 +96,6 @@ done
 if [ s${MAKERULES+et} != set -a -r makerules ]; then
     MAKERULES=makerules
 fi
-
 
 case "$arch" in
     *-*-*) ;;
@@ -105,22 +112,39 @@ test "${gccarch}" = "${arch}" || crosscompile=yes
 echo "cross-compiling: ${crosscompile}"
 
 if [ ${crosscompile} = yes ]; then
+    ## ---------------------------------------------------
+    ## By default setup a somewhat standard gnu/toolchain
+    ## cross-compile environment
+    ## ---------------------------------------------------
     
-    # unless CC is not empty fallback to {host}-gcc 
-    #
+    ## CC
     if [ -z "${CC-}" ]; then
-	CC="${arch}"-gcc;
+	CC="${arch}"-gcc
 	xx=`which "$CC"`
 	echo "CC=\"$xx\""
     fi
 
-    ## Unless PKGCONFIG is set use {host}-pkg-config
-    #
+    ## LD
+    if [ -z "${LD-}" ]; then
+	LD="${arch}"-ld
+	xx=`which "$LD"`
+	echo "LD=\"$xx\""
+    fi
+
+    ## STRIP
+    if [ -z "${STRIP-}" ]; then
+	STRIP="${arch}"-strip;
+	xx=`which "$STRIP"`
+	echo "STRIP=\"$xx\""
+    fi
+    
+    ## PKGCONFIG
     if [ -z "${PKGCONFIG-}" ]; then
 	PKGCONFIG="${arch}"-pkg-config
-	xxxconfig=`which "$PKGCONFIG"`
-	echo "PKGCONFIG=\"$xxxconfig\""
+	xx=`which "$PKGCONFIG"`
+	echo "PKGCONFIG=\"$xx\""
     fi
+    
 fi
 
 # ----------------------------------------------------------------------
