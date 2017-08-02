@@ -350,6 +350,10 @@ void stop()
   }
 }
 
+enum {
+  NO_MEASURE=0, MEASURE, MEASURE_ONLY
+};
+
 static int load(play_t * const P, const char * uri, int measure)
 {
   int ecode = E_INP;
@@ -369,11 +373,10 @@ static int load(play_t * const P, const char * uri, int measure)
     q4.song = &P->song; q4.songsz = u32(hd+8);
     q4.vset = &P->vset; q4.vsetsz = u32(hd+12);
     q4.info = &P->info; q4.infosz = u32(hd+16);
+    if (measure == MEASURE_ONLY)
+      q4.vset = 0;
     ecode = q4_load(inp , &q4);
-
-    dmsg("zz-winamp: loaded song:%ukhz vset:%ukhz\n",
-         P->song.khz, P->vset.khz);
-
+    dmsg("zz-winamp: loaded song:%ukhz\n", P->song.khz);
   } else {
     /* $$$ TODO */
   }
@@ -485,12 +488,43 @@ static
  * is copied into it.  if msptr is NULL, no length is copied
  * into it.
  ****************************************************************************/
-void getfileinfo(const in_char * uri, in_char * title, int * msptr)
+void getfileinfo(const in_char *uri, in_char *title, int *msptr)
 {
-  if (title)
-    *title = 0;
-  if (msptr)
-    *msptr = 0;
+  play_t * P=0, tmp;
+
+  if (!*uri) uri = 0;
+  if (!uri)
+    P = play_lock();
+  else if (load(P=&tmp, uri, MEASURE_ONLY)) {
+    dmsg("load(%s) to measure only failed ?\n", uri);
+    P = 0;
+  }
+
+  if (P) {
+    if (msptr && P->end_detect && P->max_ticks) {
+      *msptr = P->max_ticks * (1000u / P->rate);
+      dmsg("zz-winamp: '%s' ms=%u\n", uri?uri:"<current>", *msptr);
+    }
+    if (title && P->info.comment) {
+      int i,j;
+      dmsg("zz-winamp: '%s' comment=\n%s\n",
+           uri?uri:"<current>", P->info.comment);
+      for (j=0; isspace(P->info.comment[j]); ++j)
+        ;
+      if (P->info.comment[j]) {
+        for (i=0; i<GETFILEINFO_TITLE_LENGTH-1; ++i, ++j) {
+          title[i] = P->info.comment[j];
+          if (title[i] < 32) break;
+        }
+        title[i] = 0;
+      }
+    }
+  } else {
+    if (title) *title = 0;
+    if (msptr) *msptr = 0;
+  }
+  if (P && !uri)
+    play_unlock(P);
 }
 
 static
@@ -521,7 +555,6 @@ DWORD WINAPI playloop(LPVOID cookie)
         g_mod.VSAAddPCMData(g_pcm, 1, 16, vispos);
         if (g_mod.dsp_isactive()) {
           npcm = g_mod.dsp_dosamples(g_pcm, n = npcm, 16, 1, g_play.spr);
-          /* dmsg("zz-winamp: dsp in:%d out:%d\n", n, npcm); */
         }
         filling = 0;
         pcm = g_pcm;
@@ -571,7 +604,7 @@ static int nomsg(FILE *f, const char *fmt, va_list list)
 #endif
   /* ignore f and write to stdout as winamp seems to redirect
    * stderr */
-  vprintf(fmt,list);
+  return vprintf(fmt,list);
 }
 
 static
