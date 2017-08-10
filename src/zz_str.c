@@ -91,10 +91,11 @@ zz_strdup(const char * org)
 void
 zz_strfree(str_t ** pstr)
 {
-  assert(pstr);
-  if (pstr) {
-    str_t * const str = *pstr;
-    if (str && str->_s == str->_b)
+  str_t * const str = *pstr;
+  if (str) {
+    void * const s = str->_s;
+    zz_memclr(str,sizeof(*str));
+    if (s == str->_b)
       free(str);
     *pstr = 0;
   }

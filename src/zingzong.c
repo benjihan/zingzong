@@ -116,7 +116,7 @@ static void print_usage(int level)
   int i;
   printf (
     "Usage: zingzong [OPTIONS] <inst.set> <song.4v>" OUTWAV "\n"
-    "       zingzong [OPTIONS] <music.q4>" OUTWAV "\n"
+    "       zingzong [OPTIONS] <music.4q>" OUTWAV "\n"
     "\n"
     "  A simple /|\\ Atari ST /|\\ quartet music file player\n"
     "\n"
@@ -637,13 +637,8 @@ int main(int argc, char *argv[])
   }
 
   /* Get the header of the first file to check if its a .4q file */
-  P->vseturi = P->strings+0;
-  P->songuri = P->strings+1;
-  P->infouri = P->strings+2;
-
-  zz_strset(P->vseturi, argv[optind++]);
-  zz_strset(P->songuri, ZZSTR(P->vseturi));
-  zz_strset(P->infouri, ZZSTR(P->vseturi));
+  ;
+  zz_strset(P->vseturi = &P->_str[P->stridx++], argv[optind++]);
 
   ecode = E_SYS;
   if (vfs_open_uri(&inp, ZZSTR(P->vseturi)))
@@ -652,11 +647,11 @@ int main(int argc, char *argv[])
   if (vfs_read_exact(inp, hd, 20))
     goto error_exit;
 
-  /* Check for .q4 "QUARTET" magic id */
+  /* Check for .4q "QUARTET" magic id */
   if (!zz_memcmp(hd,"QUARTET",8)) {
     q4_t q4;
+    P->songuri = P->infouri = P->vseturi;
     zz_memclr(&q4,sizeof(q4));
-
     q4.song = &P->song; q4.songsz = u32(hd+8);
     q4.vset = &P->vset; q4.vsetsz = u32(hd+12);
     q4.info = &P->info; q4.infosz = u32(hd+16);
@@ -686,7 +681,8 @@ int main(int argc, char *argv[])
       goto error_exit;
     vfs_del(&inp);
 
-    zz_strset(P->songuri,argv[optind++]);
+    zz_strset(P->songuri = &P->_str[P->stridx++], argv[optind++]);
+    P->infouri = 0;
     ecode = song_load(&P->song, ZZSTR(P->songuri));
   }
   if (ecode)

@@ -61,9 +61,20 @@
 
 const char me[] = "in_zingzong";
 
+#define USE_LOCK 1
+
 #ifdef USE_LOCK
 static HANDLE g_lock;                   /* mutex handle           */
 #endif
+
+struct xinfo_s {
+  HANDLE lock;                          /* mutex for extended info */
+  char * uri;                           /* load uri (in data[])    */
+  char * title;                         /* title (in data[])       */
+  char * artist;                        /* artist (in data[])      */
+  int  used;                            /* currently used in data */
+  char data[4096];                      /* Buffer for infos       */
+} g_info;
 
 static HANDLE g_thdl;                   /* thread handle          */
 static DWORD  g_tid;                    /* thread id              */
@@ -100,28 +111,25 @@ static void stop();
 static void getfileinfo(const in_char *, in_char *, int *);
 static void seteq(int, char *, int);
 
-EXTERN_C int fileinfo_dialog(HINSTANCE hinst, HWND hwnd, const char * uri);
-EXTERN_C int config_dialog(HINSTANCE hinst, HWND hwnd);
-
 /*****************************************************************************
  * LOCKS
  ****************************************************************************/
 #ifdef USE_LOCK
 
-static inline int lock(void)
-{ return WaitForSingleObject(g_lock, INFINITE) == WAIT_OBJECT_0; }
+static inline int lock(HANDLE h)
+{ return WaitForSingleObject(h, INFINITE) == WAIT_OBJECT_0; }
 
-static inline int lock_noblock(void)
-{ return WaitForSingleObject(g_lock, 0) == WAIT_OBJECT_0; }
+static inline int lock_noblock(HANDLE h)
+{ return WaitForSingleObject(h, 0) == WAIT_OBJECT_0; }
 
-static inline void unlock(void)
-{ ReleaseMutex(g_lock); }
+static inline void unlock(HANDLE h)
+{ ReleaseMutex(h); }
 
 #else
 
-static inline int lock(void) { return 1; }
-static inline int lock_noblock(void) { return 1; }
-static inline void unlock(void) { }
+static inline int lock(HANDLE h) { return 1; }
+static inline int lock_noblock(HANDLE h) { return 1; }
+static inline HANDLE h unlock(HANDLE h) { }
 
 #endif
 
@@ -131,16 +139,24 @@ static inline LONG atomic_set(LONG volatile * ptr, LONG v)
 static inline LONG atomic_get(LONG volatile * ptr)
 { return *ptr; }
 
-play_t * play_lock(void) {
-  return lock() ? &g_play : 0;
-}
+static inline
+play_t * play_lock(void)
+{ return lock(g_lock) ? &g_play : 0; }
 
-void play_unlock(play_t * play) {
-  if (play == &g_play)
-    unlock();
-}
+static inline
+void play_unlock(play_t * play)
+{ if (play == &g_play) unlock(g_lock); }
 
-/* static */
+static inline
+struct xinfo_s * info_lock()
+{ return lock(g_info.lock) ? &g_info : 0; }
+
+static inline
+void info_unlock(struct xinfo_s * xinfo)
+{ if (xinfo == &g_info) unlock(g_info.lock); }
+
+
+static
 /*****************************************************************************
  * THE INPUT MODULE
  ****************************************************************************/
@@ -336,7 +352,8 @@ static
  ****************************************************************************/
 void stop()
 {
-  if (lock()) {
+  play_t * P;
+  if (P = play_lock(), P) {
     atomic_set(&g_stopreq,1);
     if (g_thdl) {
       switch (WaitForSingleObject(g_thdl,10000)) {
@@ -346,7 +363,7 @@ void stop()
       }
     }
     clean_close();
-    unlock();
+    play_unlock(P);
   }
 }
 
@@ -424,7 +441,7 @@ int play(const char * uri)
 
   dmsg("zz-winamp: play -- '%s'\n", uri);
 
-  if (!lock_noblock())
+  if (!lock_noblock(g_lock))
     goto cantlock;
 
   /* Safety net */
@@ -470,7 +487,7 @@ exit:
     clean_close();
 
 inused:
-  unlock();
+  unlock(g_lock);
 
 cantlock:
   return err;
@@ -619,6 +636,7 @@ void init()
 #ifdef USE_LOCK
   g_lock = CreateMutex(NULL, FALSE, NULL);
 #endif
+  g_info.lock = CreateMutex(NULL, FALSE, NULL);
 }
 
 static
@@ -628,9 +646,9 @@ static
 void quit()
 {
 #ifdef USE_LOCK
-  CloseHandle(g_lock);
-  g_lock = 0;
+  CloseHandle(g_lock); g_lock = 0;
 #endif
+  CloseHandle(g_info.lock); g_info.lock = 0;
   dmsg("zz-winamp: quit\n");
 }
 
@@ -752,6 +770,7 @@ void winampGetExtendedRead_close(intptr_t hdl)
 }
 
 
+EXPORT
 /**
  * Provides the extended meta tag support of winamp.
  *
@@ -763,28 +782,50 @@ void winampGetExtendedRead_close(intptr_t hdl)
  * @retval 1 tag handled
  * @retval 0 unsupported tag
  */
-EXPORT
 int winampGetExtendedFileInfo(const char *uri, const char *data,
                               char *dest, size_t max)
 {
+  if (!uri)
+    dmsg("zz-winamp: winampGetExtendedFileInfo '%s' (null)\n", data);
+  else if (!*uri)
+    dmsg("zz-winamp: winampGetExtendedFileInfo '%s' (empty)\n", data);
+  else
+    dmsg("zz-winamp: winampGetExtendedFileInfo '%s' (%s)\n", data, uri);
+
+  /* play_t * P; */
+
+  /* if (!*uri) uri = 0; */
+  /* if (!uri) */
+  /*   P = play_lock(); */
+
+
+
+  /* else { */
+  /*   info_lock(); */
+
+  /*   info_unlock(); */
+  /* } */
+
+
+
   return 0;
 }
 
+EXPORT
 /**
  * Provides fake support for writing tag to prevent winamp unified
  * file info to complain.
  */
-EXPORT
 int winampSetExtendedFileInfo(const char *fn, const char *data, char *val)
 {
   return 1;
 }
 
+EXPORT
 /**
  * Provides writing tags to prevent winamp unified file info to
  * complain.
  */
-EXPORT
 int winampWriteExtendedFileInfo()
 {
   return 1;
@@ -802,22 +843,22 @@ int winampUseUnifiedFileInfoDlg(const char * fn)
   return 1;
 }
 
+EXPORT
 /**
  * Called before uninstalling the plugin DLL.
  *
  * @retval IN_PLUGIN_UNINSTALL_NOW     Plugin can be uninstalled
  * @retval IN_PLUGIN_UNINSTALL_REBOOT  Winamp needs to restart to uninstall
  */
-EXPORT
 int winampUninstallPlugin(HINSTANCE hdll, HWND parent, int param)
 {
   return IN_PLUGIN_UNINSTALL_NOW;
 }
 
+EXPORT
 /**
  * Provides the input module object;
  */
-EXPORT
 In_Module *winampGetInModule2()
 {
   return &g_mod;

@@ -19,7 +19,7 @@ both files into a`.4q` file alongside a small info text.
 ## Usage
 
     zingzong [OPTIONS] <inst.set> <song.4v> [output.wav]
-    zingzong [OPTIONS] <music.q4> [output.wav]
+    zingzong [OPTIONS] <music.4q> [output.wav]
 
 ### Options
     -h --help --usage  Print this message and exit.

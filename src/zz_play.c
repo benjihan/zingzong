@@ -28,6 +28,7 @@ void zz_chan_init(play_t * P, int k)
       C->sqN = seq;
     }
   }
+  C->loop_sp = C->loops;
   C->end = seq;
   assert(C->sq0);
   assert(C->sqN);
@@ -50,6 +51,19 @@ int zz_play_init(play_t * const P)
 }
 
 /* ---------------------------------------------------------------------- */
+
+static inline
+uint16_t loop_off(const chan_t * const C, const sequ_t * const seq)
+{
+  assert( seq - C->seq < 0x10000 );
+  return (const int8_t *)seq - (const int8_t *)C->seq;
+}
+
+static inline
+sequ_t * loop_seq(const chan_t * const C, const uint16_t off)
+{
+  return (sequ_t *)&off[(int8_t *)C->seq];
+}
 
 int zz_play_chan(play_t * const P, const int k)
 {
@@ -91,18 +105,18 @@ int zz_play_chan(play_t * const P, const int k)
 
     switch (cmd) {
 
-    case 'F':                       /* End-Voice */
+    case 'F':                           /* End-Voice */
       seq = C->seq;
       P->has_loop |= 1<<k;
       C->has_loop++;
-      C->loop_level = 0;            /* Safety net */
+      C->loop_sp = C->loops;            /* Safety net */
       break;
 
-    case 'V':                       /* Voice-Change */
+    case 'V':                           /* Voice-Change */
       C->curi = par >> 2;
       break;
 
-    case 'P':                       /* Play-Note */
+    case 'P':                           /* Play-Note */
       if (C->curi < 0 || C->curi >= P->vset.nbi) {
         emsg("%c[%u]@%u: using invalid instrument number -- %d/%d\n",
              'A'+k, (uint_t)(seq-1-C->seq), P->tick,
@@ -156,10 +170,10 @@ int zz_play_chan(play_t * const P, const int k)
       break;
 
     case 'l':                       /* Set-Loop-Point */
-      if (C->loop_level < MAX_LOOP) {
-        const int l = C->loop_level++;
-        C->loop[l].seq = seq;
-        C->loop[l].cnt = 0;
+      if (C->loop_sp < C->loops+MAX_LOOP) {
+        struct loop_s * const l = C->loop_sp++;
+        l->off = loop_off(C,seq);
+        l->cnt = 0;
       } else {
         emsg("%c off:%u tick:%u -- loop stack overflow\n",
              'A'+k, (uint_t)(seq-C->seq-1), P->tick);
@@ -169,16 +183,16 @@ int zz_play_chan(play_t * const P, const int k)
 
     case 'L':                       /* Loop-To-Point */
     {
-      int l = C->loop_level - 1;
+      struct loop_s * l = C->loop_sp-1;
 
-      if (l < 0) {
-        C->loop_level = 1;
-        l = 0;
-        C->loop[0].cnt = 0;
-        C->loop[0].seq = C->seq;
+      if (l < C->loops) {
+        ;
+        C->loop_sp = (l = C->loops) + 1;
+        l->cnt = 0;
+        l->off = 0;
       }
 
-      if (!C->loop[l].cnt) {
+      if (!l->cnt) {
         /* Start a new loop unless the loop point is the start of
          * the sequence and the next row is the end.
          *
@@ -194,18 +208,18 @@ int zz_play_chan(play_t * const P, const int k)
         /*        C->sq0 - C->seq, */
         /*        C->sqN - C->seq); */
 
-        if (C->loop[l].seq <= C->sq0 && seq > C->sqN) {
-          C->loop[l].cnt = 1;
+        if ( loop_seq(C,l->off) <= C->sq0 && seq > C->sqN) {
+          l->cnt = 1;
         } else {
-          C->loop[l].cnt = (par >> 16) + 1;
+          l->cnt = (par >> 16) + 1;
         }
       }
 
-      if (--C->loop[l].cnt) {
-        seq = C->loop[l].seq;
+      if (--l->cnt) {
+        seq = loop_seq(C,l->off);
       } else {
-        --C->loop_level;
-        assert(C->loop_level >= 0);
+        --C->loop_sp;
+        assert(C->loop_sp >= C->loops);
       }
 
 
@@ -377,7 +391,7 @@ int zz_init(play_t * P)
    *  Mix buffers
    * ---------------------------------------- */
 
-  P->pcm_per_tick = (P->spr + (P->rate>>1)) / P->rate;
+  P->pcm_per_tick = divu(P->spr + (P->rate>>1), P->rate);
   dmsg("pcm per tick: %u (%ux%u+%u) %u:%u\n",
        P->pcm_per_tick,
        P->pcm_per_tick/MIXBLK,
@@ -428,7 +442,6 @@ int zz_kill(play_t * P)
   zz_strfree(&P->vseturi);
   zz_strfree(&P->songuri);
   zz_strfree(&P->infouri);
-  /* zz_strfree(&P->waveuri); */
 
   bin_free(&P->vset.bin);
   bin_free(&P->song.bin);

@@ -70,7 +70,7 @@ x_new(const char * uri, va_list list)
 static void
 x_del(vfs_t _vfs)
 {
-  zz_free("vfs-file", &_vfs);
+  zz_free("vfs-file", (void *)&_vfs);
 }
 
 static int

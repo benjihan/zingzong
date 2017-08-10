@@ -6,7 +6,6 @@
  */
 
 #include "zz_private.h"
-#include "zingzong.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -120,7 +119,7 @@ vfs_close(vfs_t vfs)
 }
 
 int
-vfs_read(vfs_t vfs, void * ptr, int size)
+vfs_read(zz_vfs_t vfs, void * ptr, int size)
 {
   if (!size || size == -1)
     return size;
@@ -175,9 +174,9 @@ vfs_seek(vfs_t vfs, int pos, int set)
     dmsg("seek[%s]: tell=%u\n", vfs->dri->name, tell);
 
     switch (set) {
-    case VFS_SEEK_SET: break;
-    case VFS_SEEK_END: pos = size + pos; break;
-    case VFS_SEEK_CUR: pos = tell + pos; break;
+    case ZZ_SEEK_SET: break;
+    case ZZ_SEEK_END: pos = size + pos; break;
+    case ZZ_SEEK_CUR: pos = tell + pos; break;
     default:
       errno = EINVAL;
       return vfs_emsg(vfs->dri->name, "seek", "invalid whence");

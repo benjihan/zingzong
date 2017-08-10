@@ -155,7 +155,7 @@ $(target): override LDFLAGS  = $(zz_LDFLAGS)
 mix := mix_void mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
 out := out_ao out_raw
 vfs := vfs_file
-zz  := zz_bin zz_load zz_msg zz_play zz_str zz_vfs zz_mixers
+zz  := zz_load zz_init zz_play zz_bin zz_str zz_vfs zz_mixers zz_msg
 
 sources := $(addsuffix .c,$(zz) $(vfs) $(mix) $(out))
 objects := $(sources:.c=.o)

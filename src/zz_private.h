@@ -18,6 +18,12 @@
 # define _DEFAULT_SOURCE 1
 #endif
 
+#ifdef ZZ_MINIMAL
+#define NO_FLOAT_SUPPORT
+#define NO_MSG
+#define NO_LIBC
+#endif
+
 #define ZZ_VFS_DRI
 #include "zingzong.h"
 
@@ -27,6 +33,9 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+#ifndef NO_LIBC
+#include <string.h>                     /* memset ... */
+#endif
 
 #ifndef EXTERN_C
 # ifdef __cplusplus
@@ -51,6 +60,14 @@
 #  define unreachable() __builtin_unreachable()
 # else
 #  define unreachable() if (0) {} else
+# endif
+#endif
+
+#ifndef always_inline
+# if defined(__GNUC__) || defined(__clang__)
+#  define always_inline  __attribute__((always_inline))
+# else
+#  define always_inline inline
 # endif
 #endif
 
@@ -94,6 +111,13 @@ enum {
   E_666 = 66
 };
 
+enum {
+  E_SNG_HEADER=1,
+  E_SNG_BAD_CMD,
+  E_SNG_STEP_OUT_OF_RANGE,
+
+};
+
 /* ----------------------------------------------------------------------
  *  Types definitions
  * ----------------------------------------------------------------------
@@ -114,6 +138,9 @@ typedef struct chan_s  chan_t;    /**< one channel. */
 typedef struct note_s  note_t;    /**< channel step (pitch) info. */
 typedef struct mixer_s mixer_t;   /**< channel mixer. */
 typedef struct out_s   out_t;     /**< output. */
+
+typedef zz_vfs_t vfs_t;
+typedef zz_vfs_dri_t vfs_dri_t;
 
 struct str_s {
   void   *_s;                 /**< string pointer. */
@@ -146,10 +173,11 @@ struct inst_s {
 };
 
 struct vset_s {
-  bin_t * bin;                    /**< data container */
-  int khz;                        /**< sampling rate from .set */
-  int nbi;                        /**< number of instrument [1..20] */
-  inst_t inst[20];                /**< instrument definition */
+  bin_t * bin;                  /**< data container */
+  int khz;                      /**< sampling rate from .set */
+  int nbi;                      /**< number of instrument [1..20] */
+  int iused;                    /**< mask of instrument really used */
+  inst_t inst[20];              /**< instrument definition */
 };
 
 struct sequ_s {
@@ -157,20 +185,24 @@ struct sequ_s {
 };
 
 struct song_s {
-  bin_t * bin;
-  uint8_t khz;
-  uint8_t barm;
-  uint8_t tempo;
-  uint8_t sigm;
-  uint8_t sigd;
-  uint32_t stepmin;
-  uint32_t stepmax;
-  sequ_t *seq[4];
+  bin_t * bin;              /**< raw data. */
+  uint8_t khz;              /**< header sampling rate. */
+  uint8_t barm;             /**< header bar measure. */
+  uint8_t tempo;            /**< header tempo. */
+  uint8_t sigm;             /**< header signature numerator. */
+  uint8_t sigd;             /**< header signature denominator. */
+
+  uint32_t iused;           /**< mask of instrument really used */
+  uint32_t stepmin;         /**< estimated minimal note been used. */
+  uint32_t stepmax;         /**< estimated maximal note been used. */
+  sequ_t *seq[4];           /**< pointers to channel sequences. */
 };
 
 struct info_s {
-  bin_t *bin;
-  char  *comment;
+  bin_t * bin;
+  char  * comment;
+  char  * title;
+  char  * artist;
 };
 
 struct note_s {
@@ -179,28 +211,25 @@ struct note_s {
 };
 
 struct chan_s {
-  int      id;                          /* letter ['A'..'D'] */
-  int      num;                         /* channel number [0..3] */
-
   sequ_t  *seq;                         /* sequence address */
   sequ_t  *cur;                         /* next sequence */
   sequ_t  *end;                         /* last sequence */
   sequ_t  *sq0;                         /* First wait-able command */
   sequ_t  *sqN;                         /* Last  wait-able command */
 
-  int loop_level;
-  struct {
-    sequ_t *seq;                        /* loop point */
-    int     cnt;                        /* loop count */
-  } loop[MAX_LOOP];
+  int8_t  id;                           /* letter ['A'..'D'] */
+  int8_t  num;                          /* channel number [0..3] */
+  int8_t  trig;                         /* see TRIG_* enum */
+  int8_t  curi;                         /* current instrument number */
 
+  uint16_t has_loop;                 /* has loop (counter) */
+  uint16_t wait;                     /* number of tick left to wait */
+
+  struct loop_s {
+    uint16_t off;                       /* loop point */
+    uint16_t cnt;                       /* loop count */
+  } loops[MAX_LOOP], *loop_sp;
   note_t note;                          /* note (and slide) info */
-
-  int trig;                          /* see TRIG_* enum */
-  int curi;                          /* current instrument number */
-  int wait;                          /* number of tick left to wait */
-  int has_loop;                      /* has loop (counter) */
-
 };
 
 struct q4_s {
@@ -213,7 +242,8 @@ struct q4_s {
 };
 
 struct play_s {
-  str_t strings[3];                     /* static strings */
+  str_t _str[3];                        /* static strings */
+  int16_t stridx;                       /* string allocation */
 
   str_t * vseturi;
   str_t * songuri;
@@ -225,12 +255,11 @@ struct play_s {
 
   uint_t tick;                          /* current tick */
   uint_t max_ticks;                     /* maximum tick to play ( */
-
-  uint_t pcm_per_tick;
-  int16_t * mix_buf;                    /* mix buffer [pcm_per_tick] */
-  int16_t * mix_ptr;                    /* current pull pointer */
   uint_t spr;                           /* sampling rate (hz) */
 
+  int16_t * mix_buf;                    /* mix buffer [pcm_per_tick] */
+  int16_t * mix_ptr;                    /* current pull pointer */
+  uint16_t pcm_per_tick;                /* pcm per tick */
   uint16_t rate;               /* player rate (usually 200hz) */
   uint8_t  muted_voices;       /* channels mask */
   uint8_t  has_loop;           /* channels mask */
@@ -263,6 +292,54 @@ mixer_t * const zz_mixers[], * zz_default_mixer, mixer_void;
  * Motorola integers
  * @{
  */
+
+#ifdef __m68k__
+
+static inline uint16_t u16(const uint8_t * const v) {
+  return *(const uint16_t *)v;
+}
+
+static inline uint32_t u32(const uint8_t * const v) {
+  return *(const uint32_t *)v;
+}
+
+static inline uint_t always_inline mulu(uint16_t a, uint16_t b)
+{
+  uint32_t c;
+  asm ("mulu.w %1,%0\n\t" : "=d" (c) : "igd" (a), "0" (b));
+  return c;
+}
+
+static inline uint_t always_inline divu(uint32_t v, uint16_t d)
+{
+  uint32_t c;
+  asm("divu.w %1,%0\n\t" : "=d" (c) : "igd" (d), "0" (v));
+  return (uint16_t) c;
+}
+
+static inline uint_t always_inline divu32(uint32_t v, uint16_t d)
+{
+  uint32_t tp1, tp2;
+  asm("move.l %[val],%[tp1]  \n\t" /* tp1 = Xx:Yy */
+      "clr.w %[val]          \n\t" /* val = Xx:00 */
+      "sub.l %[val],%[tp1]   \n\t" /* tp1 = 00:Yy */
+      "swap %[val]           \n\t" /* val = 00:Xx */
+      "divu.w %[div],%[val]  \n\t" /* val = Rx:Qx */
+      "move.l %[val],%[tp2]  \n\t" /* tp2 = Rx:Qx */
+      "clr.w %[tp2]          \n\t" /* tp2 = Rx:00 */
+      "move.w %[tp1],%[tp2]  \n\t" /* tp2 = Rx:Yy */
+      "divu.w %[div],%[tp2]  \n\t" /* tp2 = Ri:Qi */
+      "swap %[val]           \n\t" /* val = Qx:Rx */
+      "move.w %[tp2],%[val]  \n\t" /* val = Qx:Qi */
+      : [val] "+d" (v), [tp1] "=d" (tp1), [tp2] "=d" (tp2)
+      : [div] "g" (d)
+      :
+    );
+  return v;
+}
+
+#else
+
 static inline uint16_t u16(const uint8_t * const v) {
   return ((uint16_t)v[0]<<8) | v[1];
 }
@@ -270,6 +347,24 @@ static inline uint16_t u16(const uint8_t * const v) {
 static inline uint32_t u32(const uint8_t * const v) {
   return ((uint32_t)u16(v)<<16) | u16(v+2);
 }
+
+static inline uint_t always_inline mulu(uint16_t a, uint16_t b)
+{
+  return a * b;
+}
+
+static inline uint_t always_inline divu(uint32_t n, uint16_t d)
+{
+  return n / d;
+}
+
+static inline uint_t always_inline divu32(uint32_t n, uint16_t d)
+{
+  return n / d;
+}
+
+#endif
+
 /**
  * @}
  */
@@ -305,7 +400,15 @@ void fltoi16(int16_t * const d, const float * const s, const int n);
 #define ZZLEN(X)   (X)->_l
 #define ZZMAX(X)   (X)->_n
 
-#ifdef NO_LIBC
+# ifndef zz_memmove
+#  define zz_memmove(D,S,N) *(const char *)(D) = (char)(N)
+# endif
+
+# ifndef zz_memset
+#  define zz_memset(D,S,N) *(const char *)(D) = (char)(S)
+# endif
+
+#ifndef NO_LIBC
 
 # ifndef zz_memcmp
 #  define zz_memcmp(D,S,N) memcmp(D,S,N)
@@ -315,45 +418,21 @@ void fltoi16(int16_t * const d, const float * const s, const int n);
 #  define zz_memcpy(D,S,N) memcpy(D,S,N)
 # endif
 
-# ifndef zz_memmove
-#  define zz_memmove(D,S,N) *(const char *)(D) = (char)(N)
-# endif
-
-# ifndef zz_memset
-#  define zz_memset(D,S,N) memset(D,S,N)
-# endif
+#ifndef zz_memclr
+#define zz_memclr(D,N) memset(D,0,N)
+#endif
 
 #else
 
-static inline void * zz_memcpy(void * restrict _d, const void * _s, int n)
-{
-  uint8_t * d = _d; const uint8_t * s = _s;
-  if (n) do { *d++ = *s++; } while (--n);
-  return _d;
-}
-
-static inline void * zz_memset(void * restrict _d, int v, int n)
-{
-  uint8_t * d = _d;
-  if (n) do { *d++ = v; } while (--n);
-  return _d;
-}
-
-static inline int zz_memcmp(const void *_a, const void *_b, int n)
-{
-  int c = 0;
-  const uint8_t *a = _a, *b = _b;
-  if (n) do {
-      c = *a++ - *b++;
-    } while (!c && --n);
-  return c;
-}
+EXTERN_C
+void zz_memcpy(void * restrict _d, const void * _s, int n);
+EXTERN_C
+void zz_memclr(void * restrict _d, int n);
+EXTERN_C
+int zz_memcmp(const void *_a, const void *_b, int n);
 
 #endif
 
-#ifndef zz_memclr
-# define zz_memclr(D,N) zz_memset(D,0,N)
-#endif
 
 EXTERN_C
 void zz_free(const char * obj, void * pptr);
@@ -399,6 +478,16 @@ int bin_load(bin_t ** pbin, vfs_t vfs, uint_t len, uint_t xlen, uint_t max);
 # endif
 #endif
 
+#ifdef NO_MSG
+
+# define nmsg(FMT,...) do {} while(0)
+# define emsg(FMT,...) nmsg(FMT,##__VA_ARGS__)
+# define wmsg(FMT,...) nmsg(FMT,##__VA_ARGS__)
+# define imsg(FMT,...) nmsg(FMT,##__VA_ARGS__)
+# define dmsg(FMT,...) nmsg(FMT,##__VA_ARGS__)
+
+#else
+
 typedef int (*msg_f)(FILE *, const char *, va_list);
 
 EXTERN_C
@@ -425,11 +514,13 @@ void dummy_msg(const char *fmt, ...);
 #  if DEBUG == 1
 #   define dmsg(FMT,...) debug_msg((FMT),##__VA_ARGS__)
 #  else
-#   define dmsg(FMT,...) if (0) {} else
+#   define dmsg(FMT,...) do {} while(0)
 #  endif
 # else
 #  define dmsg dummy_msg
 # endif
+#endif
+
 #endif
 
 /**
