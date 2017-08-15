@@ -134,7 +134,7 @@ push_cb(play_t * const P)
 
       assert(C->note.ins);
       K->idx = 0;
-      K->pcm = (int8_t *) P->vset.inst[C->curi].pcm;
+      K->pcm = (int8_t *) C->note.ins->pcm;
       K->len = C->note.ins->len << FP;
       K->lpl = C->note.ins->lpl << FP;
       K->end = C->note.ins->end + K->pcm;

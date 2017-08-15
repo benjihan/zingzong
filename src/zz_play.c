@@ -45,7 +45,7 @@ int zz_play_init(play_t * const P)
   P->has_loop = P->muted_voices;
   P->done = 0;
   P->tick = 0;
-  P->mix_ptr = P->mix_buf;
+  P->mix_ptr = P->mix_buf + P->pcm_per_tick;
 
   return 0;
 }
@@ -166,7 +166,7 @@ int zz_play_chan(play_t * const P, const int k)
        *
        * GB: See note above. It happens so I shouldn't !
        */
-      C->note.cur = 0;
+      /* C->note.cur = 0; */
       break;
 
     case 'l':                       /* Set-Loop-Point */
@@ -295,6 +295,7 @@ int16_t * zz_pull(play_t * P, int * ptr_n)
 
   ecode = E_OK;
   assert(P->mix_ptr);
+  ptr = P->mix_ptr;
   if (n > 0) {
     int have = P->mix_buf + P->pcm_per_tick - P->mix_ptr;
 
