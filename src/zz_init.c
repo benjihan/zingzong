@@ -193,11 +193,11 @@ int
 vset_init(zz_vset_t const vset)
 {
   const short n = vset->nbi;
+  short nused;
   uint8_t * const beg = ZZBUF(vset->bin);
   uint8_t * const end = beg+ZZMAX(vset->bin);
   uint8_t * e;
-  int tot,unroll,imask;
-  short i,j, nused;
+  int tot,unroll,imask,i,j;
   uint8_t idx[20];
   bin_t * restrict bin;
 
@@ -243,9 +243,8 @@ vset_init(zz_vset_t const vset)
            off, off+len-lpl, off+len);
     } while (0);
 
-    if ( ! ( vset->iused & (1<<i) ) ) {
-      pcm = 0; len = lpl = 0;           /* If not used mark dirty */
-    }
+    if ( ! ( vset->iused & (1<<i) ) )
+      pcm = 0, len = lpl = 0;           /* If not used mark dirty */
     vset->inst[i].end = len;
     vset->inst[i].len = len;
     vset->inst[i].lpl = lpl;
@@ -267,13 +266,13 @@ vset_init(zz_vset_t const vset)
       dmsg("I%02u length > 64k -- %08x\n", i, len);
     assert( len < 0x10000 );
     idx[i] = i;
-    tot += len;
+    tot += (len+1)&-2;
   }
   assert( tot <= end-beg );
   sort_inst(vset->inst, idx, n);
 
   /* -2- Compute the unroll size. */
-  unroll = divu32(end-beg-tot,n);
+  unroll = ( divu32(end-beg-tot,n) + 1 ) & -2;
   dmsg("%u instrument using %u/%u bytes unroll:%i\n",
        n, tot, (uint_t)(end-beg), unroll);
   if (unroll < VSET_UNROLL)
@@ -282,37 +281,37 @@ vset_init(zz_vset_t const vset)
   /* -3- Unroll starting from bottom to top */
   for (i=0, e=end; i<n; ++i) {
     inst_t * const inst = vset->inst + idx[i];
-    const uint_t len = inst->len;
-    uint8_t * const pcm = (void *)( (intptr_t) (e-unroll-len) & -2 );
+    const uint_t r_len = inst->len;
+    const uint_t a_len = (r_len + 1) & -2;
+    uint8_t * const pcm = (void *)((intptr_t) (e-unroll-a_len) & -2);
 
-    if (len == 0)
-      continue;
-    inst->end = len + unroll;
+    if (!a_len) continue;
 
+    inst->end = a_len+unroll;
+
+    /* Copy and sign PCMs */
     if (pcm <= inst->pcm)
-      for (j=0; j<len; ++j)
+      for (j=0; j<r_len; ++j)
         pcm[j] = 0x80 ^ inst->pcm[j];
     else
-      for (j=len-1; j>=0; --j)
+      for (j=r_len-1; j>=0; --j)
         pcm[j] = 0x80 ^ inst->pcm[j];
     inst->pcm = pcm;
 
     if (!inst->lpl) {
       /* Instrument does not loop -- smooth to middle point */
-      int v = (int)(int8_t)pcm[len-1] << 8;
-      for (j=0; j<unroll; ++j) {
-        v = 3*v >> 2;                   /* v = .75*v */
-        pcm[len+j] = v>>8;
-      }
+      int8_t v = (int8_t)pcm[r_len-1];
+      for (j=r_len; j<inst->end && (pcm[j++] = v = 3*v/4););
+      for (; j<inst->end; ) pcm[j++] = v;
     } else {
-      int lpi = len;
+      int lpi;
       /* Copy loop */
-      for (j=0; j<unroll; ++j) {
-        if (lpi >= len)
+      for(j=lpi=r_len; j<inst->end; ++j) {
+        if (lpi >= r_len)
           lpi -= inst->lpl;
-        assert(lpi < len);
-        assert(lpi >= len-inst->lpl);
-        pcm[len+j] = pcm[lpi++];
+        assert(lpi < r_len);
+        assert(lpi >= r_len-inst->lpl);
+        pcm[j] = pcm[lpi++];
       }
     }
     e = pcm;

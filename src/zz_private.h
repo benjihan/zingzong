@@ -340,7 +340,7 @@ static inline uint_t always_inline divu32(uint32_t v, uint16_t d)
       "divu.w %[div],%[tp2]  \n\t" /* tp2 = Ri:Qi */
       "swap %[val]           \n\t" /* val = Qx:Rx */
       "move.w %[tp2],%[val]  \n\t" /* val = Qx:Qi */
-      : [val] "+d" (v), [tp1] "=d" (tp1), [tp2] "=d" (tp2)
+      : [val] "+d" (v), [tp1] "=r" (tp1), [tp2] "=d" (tp2)
       : [div] "iSd" (d)
       :
     );
