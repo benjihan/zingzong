@@ -306,16 +306,25 @@ static inline uint32_t u32(const uint8_t * const v) {
 static inline uint_t always_inline mulu(uint16_t a, uint16_t b)
 {
   uint32_t c;
-  asm ("mulu.w %1,%0\n\t" : "=d" (c) : "igd" (a), "0" (b));
+  asm ("mulu.w %1,%0\n\t" : "=d" (c) : "iSd" (a), "0" (b));
   return c;
 }
 
 static inline uint_t always_inline divu(uint32_t v, uint16_t d)
 {
-  uint32_t c;
-  asm("divu.w %1,%0\n\t" : "=d" (c) : "igd" (d), "0" (v));
-  return (uint16_t) c;
+  asm("divu.w %1,%0\n\t" : "+d" (v) : "iSd" (d));
+  return (uint16_t) v;
 }
+
+static inline uint_t always_inline modu(uint32_t v, uint16_t d)
+{
+  asm("divu.w %1,%0  \n\t"
+      "clr.w %0      \n\t"
+      "swap %0       \n\t"
+      : "+d" (v) : "iSd" (d));
+  return v;
+}
+
 
 static inline uint_t always_inline divu32(uint32_t v, uint16_t d)
 {
@@ -332,7 +341,7 @@ static inline uint_t always_inline divu32(uint32_t v, uint16_t d)
       "swap %[val]           \n\t" /* val = Qx:Rx */
       "move.w %[tp2],%[val]  \n\t" /* val = Qx:Qi */
       : [val] "+d" (v), [tp1] "=d" (tp1), [tp2] "=d" (tp2)
-      : [div] "g" (d)
+      : [div] "iSd" (d)
       :
     );
   return v;
@@ -356,6 +365,11 @@ static inline uint_t always_inline mulu(uint16_t a, uint16_t b)
 static inline uint_t always_inline divu(uint32_t n, uint16_t d)
 {
   return n / d;
+}
+
+static inline uint_t always_inline modu(uint32_t n, uint16_t d)
+{
+  return n % d;
 }
 
 static inline uint_t always_inline divu32(uint32_t n, uint16_t d)
