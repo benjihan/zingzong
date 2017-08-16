@@ -9,7 +9,12 @@
 # ----------------------------------------------------------------------
 
 top=$(realpath $(dirname "$0")) # Where this script is located.
-arch="${PWD##*/}"		# Current directory name.
+[ -n "${arch}" ] ||		# Host triplet
+    arch="${PWD##*/}"		# - Default to current dir name
+[ -n "${ZZ_MAKEFILE}" ] ||	# Sub project makefile
+    ZZ_MAKEFILE=../src/Makefile	# - Default to zingzong cli program
+
+echo ZZ_MAKEFILE=$ZZ_MAKEFILE
 
 DEPLIBS="AO SRATE SOXR"
 vars1=( CC LD STRIP PKGCONFIG INSTALL DEBUG PROFILE MAKERULES )
@@ -194,7 +199,7 @@ done
 # Let's do this
 #
 set --\
-    -B -f ${top}/../src/Makefile\
+    -B -f ${top}/${ZZ_MAKEFILE}\
     "$@"
 
 echo "> make"
@@ -205,7 +210,7 @@ echo
 make "$@"
 version=`$SHELL ${top}/../src/vcversion.sh`
 
-out="# zinzong ${version} for ${arch} #" 
+out="# ${project:-zingzong} ${version} for ${arch} #" 
 cat <<EOF
 
  ${out//?/#}

@@ -1,0 +1,71 @@
+#! /bin/bash -ufe
+#
+# ----------------------------------------------------------------------
+#
+# zingzong build script for win32/win64
+#
+# by Benjamin Gerard AKA Ben/OVR
+#
+# ----------------------------------------------------------------------
+
+# Program name
+prog=$(basename "$0" .sh)
+
+# Basename of dirname is our host name
+[ -n "$arch" ] ||
+    export arch="${PWD##*/}"
+
+case "$arch" in
+
+    in_zingzong)
+	#########################
+	# Winamp plugin special #
+	#########################
+	set -- WADIR="`regtool -W get /user/Software/Winamp/`" "$@"
+	NO_SRATE=1; NO_SOXR=0
+	export arch=i686-w64-mingw32
+	export ZZ_MAKEFILE=../src/zz-winamp/Makefile
+	;;
+
+    *-*-mingw*)
+	######################
+	# Only support mingw #
+	######################
+	;;
+
+    *) echo "$prog: not a valid host triplet -- $arch" >&2
+       exit 1 ;;
+esac
+
+# You can always set this variable if you are trying to impersonate me
+# :)
+is_benovr=${is_benovr-no}
+
+# Determine if that's me using my gpg footprint
+if gpg -K | grep -c 52D4145B; then
+    is_benovr=yes
+fi >/dev/null 2>/dev/null
+
+# For my eyes only (not really): that's where I store my build of soxr
+# for Windows
+if [ $is_benovr = yes ] && [ s${SOXR+et} != set ]; then
+    SOXR=${SOXR-${HOME}/_Arch/${arch}/soxr-0.1.2.22}
+fi
+
+# Set SOXR_LIBS if not already set
+if [ s${SOXR_LIBS+et} != set ]; then
+    SOXR_LIBS="-L${SOXR}/lib -lsoxr"
+fi
+
+# Set SOXR_CFLAGS if not already set
+if [ s${SOXR_CFLAGS+et} != set ]; then
+    SOXR_CFLAGS="-I${SOXR}/include -DWITH_SOXR=1"
+fi
+
+# Let s build
+exec ../build.sh \
+     NO_SRATE=${NO_SRATE:-0} \
+     NO_SOXR=${NO_SOXR:-0} \
+     SOXR_LIBS="${SOXR_LIBS}" \
+     SOXR_CFLAGS="${SOXR_CFLAGS}" \
+     "$@"
