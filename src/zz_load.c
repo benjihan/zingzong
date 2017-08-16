@@ -86,6 +86,8 @@ q4_load(vfs_t vfs, q4_t *q4)
     ecode = song_parse(q4->song, vfs, hd, q4->songsz-16);
     if (ecode)
       goto error;
+    if (q4->vset)
+      q4->vset->iused = q4->song->iused;
   } else if (vfs_seek(vfs, q4->songsz, ZZ_SEEK_CUR))
     goto error;
 

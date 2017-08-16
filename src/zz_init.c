@@ -192,14 +192,14 @@ static void sort_inst(const inst_t inst[], uint8_t idx[], int nbi)
 int
 vset_init(zz_vset_t const vset)
 {
-  const int n = vset->nbi;
+  const short n = vset->nbi;
   uint8_t * const beg = ZZBUF(vset->bin);
   uint8_t * const end = beg+ZZMAX(vset->bin);
   uint8_t * e;
   int tot,unroll,imask;
-  short i,j;
+  short i,j, nused;
   uint8_t idx[20];
-  bin_t * bin;
+  bin_t * restrict bin;
 
   assert(n>0 && n<=20);
 
@@ -211,20 +211,23 @@ vset_init(zz_vset_t const vset)
     uint8_t * pcm;
 
     do {
-      pcm = 0;
-      len = lpl = 0;
+      pcm = 0; len = lpl = 0;           /* no compiler whining */
 
-      if (!(imask & (1<<i))) break;
-      if (off < 8) break;
-      if (off >= ZZLEN(bin)) break;
+      /* Sanity tests */
+      if (!(imask & (1<<i))) break;     /* Used ? */
+      if (off < 8) break;               /* inside ?  */
+      if (off >= ZZLEN(bin)) break;     /* inside ?  */
+
+      /* get sample info */
       pcm = ZZOFF(bin,off);
       len = u32(pcm-4);
       lpl = u32(pcm-8);
-      if (lpl == 0xFFFFFFFF)
-        lpl = 0;
+      if (lpl == 0xFFFFFFFF) lpl = 0;
 
       /* Some of these tests might be a little conservative but as the
        * format is not very robust It might be a nice safety net.
+       * Currently I haven't found a music file that is valid and does
+       * not pass them.
        */
       if (len & 0xFFFF) break;
       if (lpl & 0xFFFF) break;
@@ -233,6 +236,7 @@ vset_init(zz_vset_t const vset)
       if (off+len > ZZLEN(bin)) break;
 
       vset->iused |= 1<<i;
+      ++nused;
       dmsg("I#%02u [$%05X:$%05X:$%05X] [$%05X:$%05X:$%05X]\n",
            i+1,
            0, len-lpl, len,
@@ -240,8 +244,7 @@ vset_init(zz_vset_t const vset)
     } while (0);
 
     if ( ! ( vset->iused & (1<<i) ) ) {
-      pcm = 0;
-      len = lpl = 0;
+      pcm = 0; len = lpl = 0;           /* If not used mark dirty */
     }
     vset->inst[i].end = len;
     vset->inst[i].len = len;
@@ -249,32 +252,38 @@ vset_init(zz_vset_t const vset)
     vset->inst[i].pcm = pcm;
   }
 
+  /* That's very conservative. we should definitively warn in case any
+   * instrument got dismissed but an error might be a little to rough
+   */
   if (vset->iused != imask)
     return E_SET;
 
-  /* Re-order instrument in memory order. */
+  /* Loops unroll */
+
+  /* -1- Re-order instruments in memory order. */
   for (i=tot=0; i<n; ++i) {
-    uint_t len = vset->inst[i].len;
+    const uint_t len = vset->inst[i].len;
     if (len >= 0x10000)
       dmsg("I%02u length > 64k -- %08x\n", i, len);
     assert( len < 0x10000 );
     idx[i] = i;
     tot += len;
   }
-  assert(tot <= end-beg);
+  assert( tot <= end-beg );
+  sort_inst(vset->inst, idx, n);
+
+  /* -2- Compute the unroll size. */
   unroll = divu32(end-beg-tot,n);
   dmsg("%u instrument using %u/%u bytes unroll:%i\n",
        n, tot, (uint_t)(end-beg), unroll);
-
   if (unroll < VSET_UNROLL)
     dmsg("Have less unroll space than expected -- %d\n", unroll-VSET_UNROLL);
 
-  sort_inst(vset->inst, idx, n);
-
+  /* -3- Unroll starting from bottom to top */
   for (i=0, e=end; i<n; ++i) {
     inst_t * const inst = vset->inst + idx[i];
     const uint_t len = inst->len;
-    uint8_t * const pcm = e - unroll - len;
+    uint8_t * const pcm = (void *)( (intptr_t) (e-unroll-len) & -2 );
 
     if (len == 0)
       continue;

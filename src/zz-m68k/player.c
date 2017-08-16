@@ -61,6 +61,7 @@ void player_init(void)
     1
     && ! song_init_header(&play.song, p.song)
     && ! song_init(&play.song)
+    && ( play.vset.iused = play.song.iused )
     && ! vset_init_header(&play.vset, p.vset)
     && ! vset_init(&play.vset)
     && ! zz_init(&play)

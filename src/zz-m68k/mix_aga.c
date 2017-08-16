@@ -39,6 +39,10 @@ struct mix_chan_s {
 
 struct mix_aga_s {
   mix_chan_t chan[4];
+  struct aga_inst {
+    uint32_t adr, lp_adr;
+    uint16_t len, lp_len, vol, xxx;
+  } inst[20];
 };
 
 
@@ -47,6 +51,7 @@ static mix_aga_t g_aga;
 static uint16_t xstep(uint32_t stp, uint8_t khz)
 {
   static const uint32_t ftbl[][2] = {
+    /* Sampling   PAL         NTSC       */
     /* 04kHz */ { 0x0376b941, 0x037ee2e5 },
     /* 05kHz */ { 0x02c56101, 0x02cbe8b8 },
     /* 06kHz */ { 0x024f262b, 0x02549744 },
@@ -66,7 +71,8 @@ static uint16_t xstep(uint32_t stp, uint8_t khz)
     /* 20kHz */ { 0x00b15840, 0x00b2fa2e },
   };
 
-  return divu(ftbl[khz-4][0]>>6,stp>>6);
+  assert( (stp>>3) < 0x10000);
+  return divu(ftbl[khz-4][0]>>3,stp>>3);
 }
 
 
@@ -86,39 +92,25 @@ push_cb(play_t * const P)
     const uint8_t old_status = K->status;
 
     switch (K->status = C->trig) {
-    case TRIG_NOTE: {
-      uint32_t pcm, end;
-      inst_t * const ins = C->note.ins;
-      assert(ins);
-      C->note.ins = 0;                  /* safety check */
-
+    case TRIG_NOTE:
+      assert (C->note.ins == &P->vset.inst[C->curi]);
       DMACON = K->dmacon;              /* Disable audio channel DMA */
-
-      pcm = (intptr_t) ins->pcm;
-      end = ins->end;
-      if (end > (1<<17))
-        end = 1 << 17;
-
-      /* Program new sound start */
-      K->hw->adr = pcm;
-      K->hw->len = end >> 1;             /* 1<<17 => 0 => max size */
+      K->lp_adr  = M->inst[C->curi].lp_adr;
+      K->lp_len  = M->inst[C->curi].lp_len;
+      K->hw->adr = M->inst[C->curi].adr;
+      K->hw->len = M->inst[C->curi].len;
+      K->hw->vol = M->inst[C->curi].vol;
       K->hw->per = xstep(C->note.cur, P->song.khz);
-      K->hw->vol = 64;
-      DMACON = 0x8000 | K->dmacon;     /* Enable audio channel DMA */
-
-      if (!ins->lpl) {
-        K->lp_adr = pcm + end - 2;
-        K->lp_len = 1;
-      } else {
-        K->lp_adr = pcm + ins->len - ins->lpl;
-        K->lp_len = ins->lpl >> 1;
-      }
-    } break;
+      DMACON = 0x8000 | K->dmacon;      /* Enable audio channel DMA */
+      break;
 
     case TRIG_SLIDE:
       K->hw->per = xstep(C->note.cur, P->song.khz);
     case TRIG_NOP:
       if (old_status == TRIG_NOTE) {
+        /* Setting the sample loop at the frame following the note
+           trigger. Hopefully it's good enough but in some extreme
+           cases it might trigger problems with unwanted loop. */
         K->hw->adr = K->lp_adr;
         K->hw->len = K->lp_len;
       }
@@ -158,6 +150,28 @@ static int init_cb(play_t * const P)
     K->hw->len = 1;
     K->hw->vol = 0;
     K->hw->per = 0x100;
+  }
+
+  for (k=0; k<20; ++k) {
+    inst_t * const ins = P->vset.inst + k;
+    uint32_t end;
+    M->inst[k].len = 1;
+    if (!ins->len) continue;
+    M->inst[k].vol = 64;
+    M->inst[k].adr = (intptr_t) &ins->pcm[1];
+    end = (intptr_t)&ins->pcm[ins->end];
+    if (!ins->lpl) {
+      uint32_t len = end - M->inst[k].adr;
+      if (len > 0x20000) len = 0x20000;
+      M->inst[k].len = len >> 1;
+      M->inst[k].lp_adr = M->inst[k].adr + len - 2;
+      M->inst[k].lp_len = 1;
+    } else {
+      uint32_t len = ins->len;
+      M->inst[k].len = len >> 1;
+      M->inst[k].lp_adr = (intptr_t)&ins->pcm[ins->len - ins->lpl];
+      M->inst[k].lp_len = ins->lpl >> 1;
+    }
   }
 
   /* TO DO : prepare instrument */
