@@ -61,6 +61,7 @@
 
 const char me[] = "in_zingzong";
 
+#define DEFAULT_SEC 150u
 #define USE_LOCK 1
 
 #ifdef USE_LOCK
@@ -383,6 +384,7 @@ static int load(play_t * const P, const char * uri, int measure)
   if (vfs_read_exact(inp, hd, 20))
     goto error_exit;
 
+
   /* Check for .q4 "QUARTET" magic id */
   if (!zz_memcmp(hd,"QUARTET",8)) {
     q4_t q4;
@@ -399,22 +401,28 @@ static int load(play_t * const P, const char * uri, int measure)
   }
 
   if (!ecode) {
-    P->mixer      = zz_default_mixer;
+    P->rate       = 200;
     P->spr        = g_spr;
+    P->mixer      = zz_default_mixer;
     P->end_detect = 1;
-    P->max_ticks  = 10u * 60u * 200u; /* 10' */
+    P->max_ticks  = DEFAULT_SEC * P->rate;
     ecode = zz_init(P);
     dmsg("zz-winamp: inited song:%ukhz vset:%ukhz\n",
          P->song.khz, P->vset.khz);
   }
 
   if (!ecode && measure) {
+    const uint_t save_ticks = P->max_ticks;
+    P->max_ticks = 12u * 60u * 200u;   /* 12' */
     dmsg("zz-winamp: measuring for max %u ticks ...\n", P->max_ticks);
     ecode = zz_measure(P);
     if (!ecode && P->tick) {
-      P->max_ticks = P->tick;
+      P->max_ticks  = P->tick;
       P->end_detect = 0;
       dmsg("zz-winamp: measured %u ticks\n", P->max_ticks);
+    } else {
+      P->max_ticks  = save_ticks;
+      P->end_detect = 0;
     }
   }
 
