@@ -199,7 +199,7 @@ done
 # Let's do this
 #
 set --\
-    -B -f ${top}/${ZZ_MAKEFILE}\
+    -f ${top}/${ZZ_MAKEFILE}\
     "$@"
 
 echo "> make"

@@ -12,7 +12,7 @@
 prog=$(basename "$0" .sh)
 
 # Basename of dirname is our host name
-[ -n "$arch" ] ||
+[ -n "${arch-}" ] ||
     export arch="${PWD##*/}"
 
 case "$arch" in

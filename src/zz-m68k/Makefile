@@ -25,6 +25,7 @@ vpath %.c $(srcdir) $(srcdir)/..
 # ----------------------------------------------------------------------
 
 target     = zingzong-aga.bin
+targets    = $(target)
 
 # ----------------------------------------------------------------------
 
@@ -77,8 +78,10 @@ headers := zingzong.h zz_private.h mix_common.c
 zingzong: $(objects)
 
 # ----------------------------------------------------------------------
-#   Test sc68 files
+#  Test sc68 files
 # ----------------------------------------------------------------------
+
+clean_files += test.sc68 test.dat
 
 test: test.sc68
 .PHONY: test
@@ -86,14 +89,11 @@ test: test.sc68
 test.sc68: test.dat
 test.dat: $(target) test.4v test.set
 
-test.sc68: test_sc68.s
-	$(VASM) $@ $<
+.INTERMEDIATE: test.dat
 
-%.dat: %.s
-	$(VASM) $@ $<
-
-%.bin: %.elf
-	$(ELF2BIN) $< $@
+%.sc68: %_sc68.s	;$(VASM) $@ $<
+%.dat: %.s 		;$(VASM) $@ $<
+%.bin: %.elf		;$(ELF2BIN) $< $@
 
 $(target:bin=elf): $(objects)
 	 $(CC) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LDLIBS) $(LIBS)
@@ -102,42 +102,13 @@ $(target:bin=elf): $(objects)
 #  Clean
 # ----------------------------------------------------------------------
 
-clean-dep:
-	@-rm -f -- $(depends)
-
-clean-obj:
-	@-rm -f -- $(objects)
-
-clean-test:
-	@-rm -f -- test.sc68 test.dat
-
-clean: clean-dep clean-obj clean-test
-	@-rm -f -- $(target) $(target:bin=elf)
-	@echo "$(target) has been cleaned up"
-
-.PHONY: clean clean-obj clean-dep clean-test
+include $(topdir)/src/make.clean
 
 # ----------------------------------------------------------------------
 #  Dependencies
 # ----------------------------------------------------------------------
 
-.PHONY: depend
-
-%.d: %.c ;$(CC) $(zz_CPPFLAGS) $(zz_CFLAGS) -MM -MMD -c $<
-
-ifeq ($(words $(MAKECMDGOALS)),0)
-filtered = ST forever
-else
-filtered = $(filter-out clean% dist%,$(MAKECMDGOALS))
-endif
-
-ifeq ($(NODEPS),1)
-filtered =
-endif
-
-ifneq ($(words $(filtered)),0)
--include $(depends)
-endif
+include $(topdir)/src/make.depend
 
 # ----------------------------------------------------------------------
 # Just in case redefining default rules is needed

@@ -1,0 +1,60 @@
+# -*- Makefile -*-
+#
+# @file    make.depend
+# @author  Benjamin Gerard AKA Ben/OVR
+# @date    2017-08-17
+# @brief   Make rules for depend related targets
+#
+# ----------------------------------------------------------------------
+
+depends    = $(sources:.c=.d)
+cc_conf   := cc_conf.h
+
+# Avoid creating dependencies for targets matching these patterns
+ignore_dep = clean% dist% uninstall%
+
+ifeq ($(words $(MAKECMDGOALS)),0)
+filtered = ST forever
+else
+filtered = $(filter-out $(ignore_dep),$(MAKECMDGOALS))
+endif
+
+ifeq ($(NODEPS),1)
+filtered =
+endif
+
+# Setup CCDEP depending on NODEPS
+
+ifeq ($(words $(filtered)),0)
+CCDEP = true
+.SILENT: $(depends)
+else
+
+CC_CONF_O := $(shell cat $(cc_conf) 2>/dev/null)
+CC_CONF_N  = /* $(VERSION): $(zz_CPPFLAGS) $(zz_CFLAGS) */
+
+#$(info CC_CONF_O=[$(CC_CONF_O)])
+#$(info CC_CONF_N=[$(CC_CONF_N)])
+
+ifneq ($(CC_CONF_O),$(CC_CONF_N))
+$(info *** GENERATING [$(cc_conf)])
+$(shell echo '$(CC_CONF_N)'  >$(cc_conf))
+endif
+
+CCDEP = $(CC)
+DEP_FLAGS = -include $(cc_conf) -MM -MG -MF $@
+-include $(depends)
+endif
+
+# ----------------------------------------------------------------------
+
+
+depend: $(depends)
+.PHONY: depend
+
+# ----------------------------------------------------------------------
+#  Static or implicite rules
+# ----------------------------------------------------------------------
+
+$(depends): %.d: %.c
+	$(CCDEP) $(zz_CPPFLAGS) $(zz_CFLAGS) $(DEP_FLAGS) -c $<

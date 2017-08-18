@@ -4,7 +4,7 @@
 #
 # Makefile for zinzong winamp plugin (for GNU/make)
 #
-# by Benjamin Gerard
+# by Benjamin Gerard AKA Ben/OVR
 #
 
 SHELL      = /bin/sh
@@ -25,6 +25,7 @@ vpath %.c $(srcdir) $(srcdir)/..
 # ----------------------------------------------------------------------
 
 target     = in_zingzong.dll
+targets    = $(target)
 
 # ----------------------------------------------------------------------
 
@@ -128,15 +129,10 @@ PACKAGE_CPPFLAGS  = \
 
 override CPPFLAGS += -I.
 
-org_CPPFLAGS := $(CPPFLAGS)
-org_CFLAGS   := $(CFLAGS)
-org_LDLIBS   := $(LDLIBS)
-org_LDFLAGS  := $(LDFLAGS)
-
-zz_CPPFLAGS   = $(org_CPPFLAGS) $(gb_CPPFLAGS) -DNO_AO=1
-zz_CFLAGS     = $(org_CFLAGS) $(gb_CFLAGS)
-zz_LDLIBS     = $(org_LDLIBS) $(gb_LDLIBS)
-zz_LDFLAGS    = $(org_LDFLAGS) $(gb_LDFLAGS)
+zz_CPPFLAGS := $(CPPFLAGS) $(gb_CPPFLAGS) -DNO_AO=1
+zz_CFLAGS   := $(CFLAGS) $(gb_CFLAGS)
+zz_LDLIBS   := $(LDLIBS) $(gb_LDLIBS)
+zz_LDFLAGS  := $(LDFLAGS) $(gb_LDFLAGS)
 
 # ----------------------------------------------------------------------
 #  Build
@@ -177,42 +173,14 @@ $(target): $(objects)
 #  Clean
 # ----------------------------------------------------------------------
 
-clean-dep:
-	@-rm -f -- $(depends)
-
-clean-obj:
-	@-rm -f -- $(objects)
-
-clean: clean-dep clean-obj
-	@-rm -f -- $(target)
-	@echo "$(target) has been cleaned up"
-
-.PHONY: clean clean-obj clean-dep
+include $(topdir)/src/make.clean
 
 # ----------------------------------------------------------------------
 #  Dependencies
 # ----------------------------------------------------------------------
 
-.PHONY: depend
-
 in_zingzong.d: override zz_CPPFLAGS := $(zz_CPPFLAGS) $(WAINC)
-
-%.d: %.c ;$(CC) $(zz_CPPFLAGS) $(zz_CFLAGS) -MM -MMD -c $<
-
-ifeq ($(words $(MAKECMDGOALS)),0)
-filtered = ST forever
-else
-filtered = $(filter-out clean% dist%,$(MAKECMDGOALS))
-endif
-
-ifeq ($(NODEPS),1)
-filtered =
-endif
-
-ifneq ($(words $(filtered)),0)
--include $(depends)
-endif
-
+include $(topdir)/src/make.depend
 
 # ----------------------------------------------------------------------
 #  Install / Uninstall

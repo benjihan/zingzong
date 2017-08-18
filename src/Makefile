@@ -22,15 +22,17 @@ STRIP      = strip
 # ----------------------------------------------------------------------
 
 target     = zingzong
+targets    = $(target)
 
 # ----------------------------------------------------------------------
 
 vpath %.c $(srcdir)
 
 # ----------------------------------------------------------------------
-
+#  Setup some default CFLAGS
+#
 ifndef CFLAGS
-CFLAGS := -Wall # -std=c99
+CFLAGS := -Wall
 ifdef DEBUG
 CFLAGS += -Og -g -DDEBUG=$(DEBUG)
 else
@@ -40,6 +42,17 @@ ifdef PROFILE
 CFLAGS += -pg
 endif
 endif
+
+ifeq (0,$(words $(filter -I.,-I%,\
+	$(CPPFLAGS) $(gb_CPPFLAGS) $(CFLAGS) $(gb_CFLAGS))))
+override CPPFLAGS += -I.
+endif
+
+# Save original CFLAGS for later use
+override org_CPPFLAGS := $(CPPFLAGS)
+override org_CFLAGS   := $(CFLAGS)
+override org_LDLIBS   := $(LDLIBS)
+override org_LDFLAGS  := $(LDFLAGS)
 
 # ----------------------------------------------------------------------
 #  libao (NO_AO=1 to disable)
@@ -124,29 +137,21 @@ override gb_LDLIBS += $(SOXR_LIBS)
 # ----------------------------------------------------------------------
 
 PACKAGE_CPPFLAGS  = \
- -DPACKAGE_NAME='"$(NAME)"' \
+ -DPACKAGE_NAME='"$(PACKAGE)"' \
  -DPACKAGE_VERSION='"$(VERSION)"'
 
-override CPPFLAGS += -I.
-
-org_CPPFLAGS := $(CPPFLAGS)
-org_CFLAGS   := $(CFLAGS)
-org_LDLIBS   := $(LDLIBS)
-org_LDFLAGS  := $(LDFLAGS)
-
-zz_CPPFLAGS   = $(org_CPPFLAGS) $(gb_CPPFLAGS)
-zz_CFLAGS     = $(org_CFLAGS) $(gb_CFLAGS)
-zz_LDLIBS     = $(org_LDLIBS) $(gb_LDLIBS)
-zz_LDFLAGS    = $(org_LDFLAGS) $(gb_LDFLAGS)
+zz_CPPFLAGS  = $(org_CPPFLAGS) $(gb_CPPFLAGS)
+zz_CFLAGS    = $(org_CFLAGS) $(gb_CFLAGS)
+zz_LDLIBS    = $(org_LDLIBS) $(gb_LDLIBS)
+zz_LDFLAGS   = $(org_LDFLAGS) $(gb_LDFLAGS)
 
 # ----------------------------------------------------------------------
 #  Build
 # ----------------------------------------------------------------------
 
-all: $(target)
+all: $(targets)
 .PHONY: all
 
-$(target): override NAME     = zingzong
 $(target): override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
 $(target): override CFLAGS   = $(zz_CFLAGS)
 $(target): override LDLIBS   = $(zz_LDLIBS)
@@ -158,9 +163,8 @@ vfs := vfs_file
 zz  := zz_load zz_init zz_play zz_bin zz_str zz_vfs zz_mixers zz_msg
 
 sources := $(addsuffix .c,$(zz) $(vfs) $(mix) $(out))
-objects := $(sources:.c=.o)
-depends := $(sources:.c=.d)
 headers := zingzong.h zz_private.h mix_common.c
+objects  = $(sources:.c=.o)
 
 $(target): $(objects)
 
@@ -168,39 +172,13 @@ $(target): $(objects)
 #  Clean
 # ----------------------------------------------------------------------
 
-clean-dep:
-	@-rm -f -- $(depends)
-
-clean-obj:
-	@-rm -f -- $(objects)
-
-clean: clean-dep clean-obj
-	@-rm -f -- $(target)
-	@echo "$(target) has been cleaned up"
-
-.PHONY: clean clean-obj clean-dep
+include $(topdir)/src/make.clean
 
 # ----------------------------------------------------------------------
 #  Dependencies
 # ----------------------------------------------------------------------
 
-.PHONY: depend
-
-%.d: %.c ;$(CC) $(zz_CPPFLAGS) $(zz_CFLAGS) -MM -MMD -c $<
-
-ifeq ($(words $(MAKECMDGOALS)),0)
-filtered = ST forever
-else
-filtered = $(filter-out clean% dist%,$(MAKECMDGOALS))
-endif
-
-ifeq ($(NODEPS),1)
-filtered =
-endif
-
-ifneq ($(words $(filtered)),0)
--include $(depends)
-endif
+include $(topdir)/src/make.depend
 
 # ----------------------------------------------------------------------
 #  Distrib

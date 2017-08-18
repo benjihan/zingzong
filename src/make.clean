@@ -1,0 +1,24 @@
+# -*- Makefile -*-
+#
+# @file    make.clean
+# @author  Benjamin Gerard AKA Ben/OVR
+# @date    2017-08-17
+# @brief   Make rules for clean related targets
+#
+
+depends := $(sources:.c=.d)
+
+clean-cfg:
+	@-rm -f -- $(cc_conf)
+
+clean-dep: clean-cfg
+	@-rm -f -- $(depends) 
+
+clean-obj:
+	@-rm -f -- $(objects)
+
+clean: clean-dep clean-obj
+	@-rm -f -- $(targets) $(clean_files)
+	@echo "$(targets) cleaned up"
+
+.PHONY: clean clean-obj clean-dep clean-cfg
