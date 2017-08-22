@@ -12,31 +12,24 @@
 extern "C" {
 #endif
 
+  enum {
+    ZZ_FORMAT_UNKNOWN,
+    ZZ_FORMAT_4V,
+    ZZ_FORMAT_4Q,
+  };
+
   typedef struct vfs_s  * restrict zz_vfs_t;
   typedef struct vset_s * restrict zz_vset_t;
   typedef struct song_s * restrict zz_song_t;
   typedef struct play_s * restrict zz_play_t;
 
-  /* typedef enum { */
-  /*   ZZ_GET_LAST, */
-  /*   ZZ_VERSION_NUM, */
-  /*   ZZ_VERSION_STR, */
-  /*   ZZ_SAMPLE_RATE, */
-  /*   ZZ_TICK_RATE, */
-  /*   ZZ_LOAD_URI, */
-  /*   ZZ_LOAD_VFS, */
-  /*   ZZ_CLOSE, */
-  /*   /\** Always last *\/ */
-  /*   ZZ_LAST */
-  /* } zz_cntl_e; */
-
   /* int zz_get_vernum(); */
   /* int zz_get_verstr(); */
-
   /* int zz_player_new(zz_play_t * play, int extra); */
   /* int zz_player_free(zz_play_t * play); */
 
-  int zz_load(zz_play_t const play, const char * uri);
+  int zz_load(zz_play_t const play,
+              const char * songuri, const char * pvseturi);
   int zz_close(zz_play_t const play);
 
   /**

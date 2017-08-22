@@ -88,25 +88,24 @@ static const char bugreport[] = \
 
 char me[] = PACKAGE_NAME;
 
+enum {
+  /* First (0) is default */
+#ifndef NO_AO
+  OUT_IS_LIVE, OUT_IS_WAVE,
+#endif
+  OUT_IS_STDOUT, OUT_IS_NULL,
+};
+
 /* Options */
 static int opt_splrate=SPR_DEF, opt_mixerid=-1, opt_tickrate=200;
-static int opt_stdout, opt_null, opt_mute, opt_help;
-static char *opt_length;
-#ifndef NO_AO
-static int opt_wav, opt_force;
-#endif
+static int8_t opt_mute, opt_help, opt_outtype;
+static char * opt_length, * opt_output;
 static play_t play;
 
 /* ----------------------------------------------------------------------
  * Usage and version
  * ----------------------------------------------------------------------
  */
-
-#ifndef NO_AO
-# define OUTWAV " [output.wav]"
-#else
-# define OUTWAV ""
-#endif
 
 /**
  * Print usage message.
@@ -115,8 +114,8 @@ static void print_usage(int level)
 {
   int i;
   printf (
-    "Usage: zingzong [OPTIONS] <inst.set> <song.4v>" OUTWAV "\n"
-    "       zingzong [OPTIONS] <music.4q>" OUTWAV "\n"
+    "Usage: zingzong [OPTIONS] <song.4v> [<inst.set>]" "\n"
+    "       zingzong [OPTIONS] <music.4q>"  "\n"
     "\n"
     "  A simple /|\\ Atari ST /|\\ quartet music file player\n"
     "\n"
@@ -139,25 +138,31 @@ static void print_usage(int level)
   puts(
     " -l --length=TIME   Set play time.\n"
     " -m --mute=ABCD     Mute selected channels (bit-field or string).\n"
-    " -c --stdout        Output raw sample to stdout (mono native 16-bit).\n"
+    " -o --output=URI    Set output file name (-w or -c).\n"
+    " -c --stdout        Output raw PCM to stdout or file (native 16-bit).\n"
     " -n --null          Output to the void.\n"
 #ifndef NO_AO
-    " -w --wav           Generated a .wav file (implicit if output is set).\n"
-    " -f --force         Clobber output .wav file.\n");
+    " -w --wav           Generated a .wav file.\n"
+#endif
+    );
 
-  puts( !level ? "Try `-hh' for more details on OUTPUT and TIME." :
+  puts(
+    !level ?
+    "Try `-hh' for more details on OUTPUT and TIME." :
+
     "OUTPUT:\n"
-    " If output is set it creates a .wav file of this name (implies `-w').\n"
-    " Else with `-w' alone the .wav file is the song file stripped of its\n"
+#ifndef NO_AO
+    " Without -o/--output the .wav file is the song file stripped of its\n"
     " path with its extension replaced by .wav.\n"
-    " If output exists the program will refuse to create the file unless\n"
-    " the -f/--force option is used or it is either empty or a RIFF file.\n"
-#else
+#endif
+
+#ifdef NO_AO
     "\n"
     "IMPORTANT:\n"
     " This version of zingzong has been built without libao support.\n"
     " Therefore it can not produce audio output nor RIFF .wav file.\n"
 #endif
+
     "\n"
     "TIME:\n"
     "  * pure integer number to represent a number of ticks\n"
@@ -524,14 +529,14 @@ static int too_many_arguments(void)
 #define RETURN(V) do { ecode = V; goto error_exit; } while(0)
 
 #ifndef NO_AO
-# define WAVOPT "wf"  /* libao adds support for wav file generation */
+# define WAVOPT "w"  /* libao adds support for wav file generation */
 #else
 # define WAVOPT
 #endif
 
 int main(int argc, char *argv[])
 {
-  static char sopts[] = "hV" WAVOPT "cn" "r:t:l:m:";
+  static char sopts[] = "hV" WAVOPT "cno:" "r:t:l:m:";
   static struct option lopts[] = {
     { "help",    0, 0, 'h' },
     { "usage",   0, 0, 'h' },
@@ -539,8 +544,8 @@ int main(int argc, char *argv[])
     /**/
 #ifndef NO_AO
     { "wav",     0, 0, 'w' },
-    { "force",   0, 0, 'f' },
 #endif
+    { "output",  1, 0, 'o' },
     { "stdout",  0, 0, 'c' },
     { "null",    0, 0, 'n' },
     { "tick=",   1, 0, 't' },
@@ -549,11 +554,11 @@ int main(int argc, char *argv[])
     { "mute=",   1, 0, 'm' },
     { 0 }
   };
-  int c, can_do_wav=0, ecode=E_ERR;
+  int c, ecode=E_ERR;
   vfs_t inp = 0;
-  static uint8_t hd[222];
   play_t * const P = &play;
-  str_t  * waveuri = 0;
+  str_t  * outuri = 0;
+  char * songuri = 0, * vseturi = 0;
 
   assert( sizeof(songhd_t) ==  16);
   assert( sizeof(sequ_t)   ==  12);
@@ -564,11 +569,11 @@ int main(int argc, char *argv[])
     case 'h': opt_help++; break;
     case 'V': print_version(); return E_OK;
 #ifndef NO_AO
-    case 'w': opt_wav = 1; break;
-    case 'f': opt_force = 1; break;
+    case 'w': opt_outtype = OUT_IS_WAVE; break;
 #endif
-    case 'n': opt_null = 1; break;
-    case 'c': opt_stdout = 1; break;
+    case 'o': opt_output = optarg; break;
+    case 'n': opt_outtype = OUT_IS_NULL; break;
+    case 'c': opt_outtype = OUT_IS_STDOUT; break;
     case 'l': opt_length = optarg; break;
     case 'r':
       if (-1 == uint_spr(optarg, "rate", &opt_splrate, &opt_mixerid))
@@ -610,14 +615,6 @@ int main(int argc, char *argv[])
   if (optind >= argc)
     RETURN (too_few_arguments());
 
-#ifndef NO_AO
-  if (opt_wav+opt_stdout+opt_null > 1) {
-    emsg("-w/--wav, -c/--stdout and -n/--null are exclusive options\n");
-    RETURN (E_ARG);
-  }
-  can_do_wav = !(opt_stdout+opt_null);
-#endif
-
   zz_memclr(P,sizeof(*P));
 
   if (opt_mixerid < 0)
@@ -636,101 +633,51 @@ int main(int argc, char *argv[])
       goto error_exit;
   }
 
-  /* Get the header of the first file to check if its a .4q file */
-  ;
-  zz_strset(P->vseturi = &P->_str[P->stridx++], argv[optind++]);
+  songuri = argv[optind++];
+  if (optind<argc)
+    vseturi = argv[optind++];
 
-  ecode = E_SYS;
-  if (vfs_open_uri(&inp, ZZSTR(P->vseturi)))
-    goto error_exit;
-  ecode = E_INP;
-  if (vfs_read_exact(inp, hd, 20))
-    goto error_exit;
-
-  /* Check for .4q "QUARTET" magic id */
-  if (!zz_memcmp(hd,"QUARTET",8)) {
-    q4_t q4;
-    P->songuri = P->infouri = P->vseturi;
-    zz_memclr(&q4,sizeof(q4));
-    q4.song = &P->song; q4.songsz = u32(hd+8);
-    q4.vset = &P->vset; q4.vsetsz = u32(hd+12);
-    q4.info = &P->info; q4.infosz = u32(hd+16);
-    dmsg("QUARTET header [sng:%u set:%u inf:%u]\n",
-         q4.songsz, q4.vsetsz, q4.infosz);
-    if (optind+can_do_wav < argc)
-      RETURN (too_many_arguments());
-    ecode = q4_load(inp , &q4);
-    vfs_del(&inp);
-  }
-
-  else if (optind >= argc)
-    RETURN(too_few_arguments());
-  else if (optind+1+can_do_wav < argc)
+  ecode = zz_load(P, songuri, vseturi);
+  if (ecode == E_ARG)
     RETURN (too_many_arguments());
-  else {
-    /* emsg("not for now\n"); */
-    /* RETURN (E_666); */
-
-    /* Load voice set file */
-    ecode = E_INP;
-    if (vfs_read_exact(inp, hd+20, 222-20))
-      goto error_exit;
-
-    ecode = vset_parse(&P->vset, inp, hd, 0);
-    if (ecode)
-      goto error_exit;
-    vfs_del(&inp);
-
-    zz_strset(P->songuri = &P->_str[P->stridx++], argv[optind++]);
-    P->infouri = 0;
-    ecode = song_load(&P->song, ZZSTR(P->songuri));
-  }
   if (ecode)
     goto error_exit;
 
-#ifndef NO_AO
-  if (optind < argc) {
-    static str_t stastr;
-    waveuri = zz_strset(&stastr,argv[optind++]);
-    opt_wav = 1;
-  }
+  optind -= vseturi && P->songuri == P->vseturi;
+  if (optind < argc)
+    RETURN(too_many_arguments());       /* or we could just warn */
 
-  if (opt_wav && !waveuri) {
-    ecode = wav_filename(&waveuri, ZZSTR(P->songuri));
-    if (ecode)
-      goto error_exit;
-  }
-
-  if (!opt_force && waveuri) {
-    /* Unless opt_force is set, tries to load 4cc out of the output
-     * .wav file. Non RIFF files are rejected unless they are empty.
-     */
-    FILE * f = fopen(ZZSTR(waveuri),"rb");
-    if (f) {
-      hd[3] = 0;     /* zz_memcmp() will fail unless 4 bytes are read. */
-      if (fread(hd,1,4,f) != 0 && zz_memcmp(hd,"RIFF",4)) {
-        ecode = E_OUT;
-        emsg("output file exists and is not a RIFF wav -- %s\n",
-             ZZSTR(waveuri));
-        goto error_exit;
-      }
-      fclose(f);
-    }
-    errno = 0;
-  }
-#endif
   /* ----------------------------------------
    *  Output
    * ---------------------------------------- */
 
-  if (opt_stdout)
-    P->out = out_raw_open(opt_splrate,"stdout:");
+  switch (opt_outtype) {
+
 #ifndef NO_AO
-  else if (!opt_null)
-    P->out = out_ao_open(opt_splrate, waveuri ? ZZSTR(waveuri) : 0);
+  case OUT_IS_WAVE:
+    ecode = !opt_output
+      ? wav_filename(&outuri, ZZSTR(P->songuri))
+      : ! zz_strset(outuri,opt_output) ? E_SYS : E_OK
+      ;
+    if (ecode)
+      goto error_exit;
+  case OUT_IS_LIVE:
+    P->out = out_ao_open(opt_splrate, outuri ? ZZSTR(outuri) : 0);
+    break;
 #endif
-  else
+
+  case OUT_IS_STDOUT:
+    P->out = out_raw_open(opt_splrate, opt_output ? opt_output : "stdout:");
+    break;
+
+  default:
+    assert(!"unexpected output type");
+
+  case OUT_IS_NULL:
     P->out = out_raw_open(opt_splrate,"null:");
+    break;
+  }
+
   if (!P->out)
     RETURN (E_OUT);
 
@@ -756,8 +703,8 @@ int main(int argc, char *argv[])
     imsg("Comment:\n~~~~~\n%s\n~~~~~\n",P->info.comment);
 
 #ifndef NO_AO
-  if (waveuri)
-    imsg("wave: \"%s\"\n", ZZSTR(waveuri));
+  if (outuri)
+    imsg("wave: \"%s\"\n", ZZSTR(outuri));
 #endif
 
   if (!ecode)
@@ -774,7 +721,7 @@ int main(int argc, char *argv[])
 
 error_exit:
   /* clean exit */
-  zz_strfree(&waveuri);
+  zz_strfree(&outuri);
   vfs_del(&inp);
   if (c = zz_kill(P), (c && !ecode))
     ecode = c;

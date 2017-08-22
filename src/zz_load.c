@@ -8,10 +8,11 @@
 #include "zz_private.h"
 #include "zingzong.h"
 
-#include <stdlib.h>                     /* qsort */
-#include <ctype.h>
+/* #include <stdlib.h>                     /\* qsort *\/ */
+/* #include <ctype.h> */
 
-static int song_parse(song_t *song, vfs_t vfs, uint8_t *hd, uint_t size)
+int
+song_parse(song_t *song, vfs_t vfs, uint8_t *hd, uint_t size)
 {
   int ecode;
   if ( (ecode = song_init_header(song,hd)) ||
@@ -22,14 +23,14 @@ static int song_parse(song_t *song, vfs_t vfs, uint8_t *hd, uint_t size)
 }
 
 int
-song_load(song_t *song, const char *path)
+song_load(song_t *song, const char *uri)
 {
   uint8_t hd[16];
   vfs_t vfs = 0;
   int ecode;
 
   if ( 0
-       || (ecode = vfs_open_uri(&vfs,path))
+       || (ecode = vfs_open_uri(&vfs,uri))
        || (ecode = vfs_read_exact(vfs,hd,16))
        || (ecode = song_parse(song,vfs,hd,0)))
     ;
@@ -54,6 +55,23 @@ vset_parse(vset_t *vset, vfs_t vfs, uint8_t *hd, uint_t size)
     bin_free(&vset->bin);
   return ecode;
 }
+
+int
+vset_load(vset_t *vset, const char *uri)
+{
+  uint8_t hd[222];
+  vfs_t vfs = 0;
+  int ecode;
+
+  if ( 0
+       || (ecode = vfs_open_uri(&vfs,uri))
+       || (ecode = vfs_read_exact(vfs,hd,222))
+       || (ecode = vset_parse(vset,vfs,hd,0)))
+    ;
+  vfs_del(&vfs);
+  return ecode;
+}
+
 
 /**
  * Load .4q file (after header).
@@ -157,5 +175,75 @@ q4_load(vfs_t vfs, q4_t *q4)
   }
 
 error:
+  return ecode;
+}
+
+int
+zz_load(play_t * P, const char * songuri, const char * vseturi)
+{
+  uint8_t hd[20];
+  vfs_t inp = 0;
+  int ecode;
+
+  for (ecode = !P || !songuri ? E_ARG : 0; !ecode;) {
+    ecode = E_SYS;
+    if (vfs_open_uri(&inp, songuri))
+      break;
+
+    /* Read song header */
+    ecode = E_INP;
+    if (vfs_read_exact(inp, hd, 16))
+      break;
+
+    /* Check for .4q "QUARTET" magic id */
+    if (!zz_memcmp(hd,"QUARTET",8)) {
+      q4_t q4;
+
+      ecode = E_INP;
+      if (vfs_read_exact(inp, hd+16, 4))
+        break;
+
+      P->format = ZZ_FORMAT_4Q;
+      ecode = E_SYS;
+      P->songuri = P->infouri = P->vseturi = zz_strdup(songuri);
+      if (!P->songuri)
+        break;
+      q4.song = &P->song; q4.songsz = u32(hd+8);
+      q4.vset = &P->vset; q4.vsetsz = u32(hd+12);
+      q4.info = &P->info; q4.infosz = u32(hd+16);
+      dmsg("QUARTET header [sng:%u set:%u inf:%u]\n",
+           q4.songsz, q4.vsetsz, q4.infosz);
+      ecode = q4_load(inp,&q4);
+      vfs_del(&inp);
+      break;
+    }
+
+    /* Load song */
+    ecode = E_SNG;
+    if (song_parse(&P->song, inp, hd, 0))
+      break;
+    vfs_del(&inp);
+
+    ecode = E_SYS;
+    if (P->songuri = zz_strdup(songuri), !P->songuri)
+      break;
+
+    assert(inp == 0);
+    if (vseturi) {
+      ecode = E_SYS;
+      if (vset_load(&P->vset,vseturi))
+        break;
+      if (P->vseturi = zz_strdup(vseturi), !P->vseturi)
+        break;
+      ecode = E_OK;
+    } else {
+      /* Looking for a voiceset that more or less match the song uri */
+      wmsg("looking for a voiceset for song \"%s\"\n", songuri);
+      ecode = E_666;
+    }
+    break;
+  }
+
+  vfs_del(&inp);
   return ecode;
 }

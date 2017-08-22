@@ -111,13 +111,6 @@ enum {
   E_666 = 66
 };
 
-enum {
-  E_SNG_HEADER=1,
-  E_SNG_BAD_CMD,
-  E_SNG_STEP_OUT_OF_RANGE,
-
-};
-
 /* ----------------------------------------------------------------------
  *  Types definitions
  * ----------------------------------------------------------------------
@@ -242,8 +235,6 @@ struct q4_s {
 };
 
 struct play_s {
-  str_t _str[3];                        /* static strings */
-  int16_t stridx;                       /* string allocation */
 
   str_t * vseturi;
   str_t * songuri;
@@ -265,6 +256,7 @@ struct play_s {
   uint8_t  has_loop;           /* channels mask */
   uint8_t  end_detect;         /* true if trying to auto detect end */
   uint8_t  done;               /* true when done */
+  uint8_t  format;             /* see ZZ_FORMAT_ enum */
 
   mixer_t * mixer;
   void    * mixer_data;
@@ -603,10 +595,15 @@ out_t * out_raw_open(int hz, const char * uri);
  * voiceset and song file loader.
  * @{
  */
+
 EXTERN_C
-int song_load(song_t *song, const char *path);
+int song_parse(song_t *song, vfs_t vfs, uint8_t *hd, uint_t size);
+EXTERN_C
+int song_load(song_t *song, const char *uri);
 EXTERN_C
 int vset_parse(vset_t *vset, vfs_t vfs, uint8_t *hd, uint_t size);
+EXTERN_C
+int vset_load(vset_t *vset, const char *uri);
 EXTERN_C
 int q4_load(vfs_t vfs, q4_t *q4);
 /**
