@@ -189,7 +189,8 @@ dist_arch := $(dist_base).tar.xz
 dist_list := \
  $(addprefix src/,$(sources) $(headers) Makefile vcversion.sh) \
  LICENSE README.md \
- _build/zz_build _build/zz_win_build
+ _build/zz_build _build/zz_win_build \
+src/make.depend src/make.clean
 
 dist: distrib
 distcheck: dist-check
