@@ -29,10 +29,10 @@ both files into a`.4q` file alongside a small info text.
 		       Try `-hh' to print the list of [R]esampler.
     -l --length=TIME   Set play time.
     -m --mute=ABCD     Mute selected channels (bit-field or string).
-    -c --stdout        Output raw sample to stdout (mono native 16-bit).
+    -o --output=URI    Set output file name (`-w` or `-c`).
+    -c --stdout        Output raw PCM to stdout or file (native 16-bit).
     -n --null          Output to the void.
     -w --wav           Generated a .wav file (implicit if output is set).
-    -f --force         Clobber output .wav file.
 
 ### Time
 
@@ -49,16 +49,17 @@ If time is set to zero `0` or `inf` the player will run forever.
 
 ### Output
 
-If output is set it creates a `.wav` file of this name (implies `-w`).
+Options `-n/--null`,'-c/--stdout' and `-w/--wav` are used to set the
+output type. The last one is used. Without it the default output type
+is used which should be playing sound via the default or configured
+libao driver.
 
-Else with `-w` alone the `.wav` file is the song file stripped of its
-path with its extension replaced by `.wav`. In other words the `.wav`
-file is created in the current directory.
+The `-o/--output` option specify the output depending on the output
+type.
 
-If output exists the program will refuse to create the file unless the
--f`/`--force` option is used or it is either empty or a RIFF file (4cc
-test only).
-
+ * `-n/--null` output is ignored.
+ * `-c/--stdout` output to the specified file instead of `stdout`.
+ * `-w/--wav` unless set output is a file based on song filename.
 
 ## Building
 
@@ -88,8 +89,8 @@ test only).
 
 ### Build script
 
-There is a build script _build/build.sh. To use it create a directory
-named after the host-triplet and call the build.sh script from there.
+There is a build script _build/zz_build. To use it create a directory
+named after the host-triplet and call the zz_build script from there.
 You can cross-compile with this script provided the environment is
 properly setup for it. Make variables and targets can be set on the
 command line just like you do with `make`. The script will set the
@@ -98,7 +99,7 @@ build directory.
 
     > mkdir _build/i686-w64-mingw32
     > cd _build/i686-w64-mingw32
-    > ../build.sh NO_SOXR=0 SOXR_LDLIBS=-lsoxr
+    > ../zz_build NO_SOXR=0 SOXR_LDLIBS=-lsoxr
 
 
 ### Build directly with make

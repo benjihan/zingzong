@@ -151,10 +151,17 @@ static void print_usage(int level)
     "Try `-hh' for more details on OUTPUT and TIME." :
 
     "OUTPUT:\n"
-#ifndef NO_AO
-    " Without -o/--output the .wav file is the song file stripped of its\n"
-    " path with its extension replaced by .wav.\n"
-#endif
+    " Options `-n/--null`,'-c/--stdout' and `-w/--wav` are used to set the\n"
+    " output type. The last one is used. Without it the default output type\n"
+    " is used which should be playing sound via the default or configured\n"
+    " libao driver.\n"
+    "\n"
+    " The `-o/--output` option specify the output depending on the output\n"
+    " type.\n"
+    "\n"
+    " -n/--nul`    output is ignored\n"
+    " -c/--stdout  output to the specified file instead of `stdout`.\n"
+    " -w/--wav     unless set output is a file based on song filename.\n"
 
 #ifdef NO_AO
     "\n"
