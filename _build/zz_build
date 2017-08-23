@@ -8,13 +8,16 @@
 #
 # ----------------------------------------------------------------------
 
+me=${0##*/}
+error() { echo "$me: $*" >&2; return 2; }
+
 top=$(realpath $(dirname "$0")) # Where this script is located.
 [ -n "${arch}" ] ||		# Host triplet
     arch="${PWD##*/}"		# - Default to current dir name
+
 [ -n "${ZZ_MAKEFILE}" ] ||	# Sub project makefile
     ZZ_MAKEFILE=../src/Makefile	# - Default to zingzong cli program
-
-echo ZZ_MAKEFILE=$ZZ_MAKEFILE
+#echo ZZ_MAKEFILE=$ZZ_MAKEFILE
 
 DEPLIBS="AO SRATE SOXR"
 vars1=( CC LD STRIP PKGCONFIG INSTALL DEBUG PROFILE MAKERULES )
@@ -30,13 +33,13 @@ done
 #
 Usage() {
     cat <<EOF
- Usage: build.sh -j
-        build.sh [--no-env] [VAR=VAL ...] [make-args ...]
+ Usage: $me -h
+        $me [--no-env] [VAR=VAL ...] [make-args ...]
 
    This zingzong build script MUST to be call from one of the host
    child directory.
 
-   e.g: mkdir i686-pc-cygwin; cd i686-pc-cygwin; ../build.sh
+   e.g: mkdir i686-pc-cygwin; cd i686-pc-cygwin; ../$me
 
    All command line arguments are propagated to make however VAR=VAL are
    intercepted and might be modified.
@@ -63,6 +66,11 @@ EOF
    {name}_CFLAGS ... How to compile (usually -I)
    {name}_LIBS ..... How to link (usually -L and -l)
 
+   gb_ family variables will never be override by this script.
+
+   Meaning that if at least one of them is set (even empty) the script
+   will not try to tweak the build.
+
 EOF
     exit 0
 }
@@ -86,27 +94,26 @@ for arg in "$@"; do
 		eval unset NO_${dep} ${dep}_CFLAGS ${dep}_LIBS
 	    done
 	    ;;
-	    
-	[[:alpha:]][_[:alnum:]]+)
-	    var="${arg%%=*}"
-	    val="${arg#*=}"
-	    eval $var='"$val"'
-	    ;;
+	
 	*)
-	    set -- "$@" "$arg"
+	    if expr "$arg" : '[[:alpha:]][_[:alnum:]]\+=.*'; then
+		var="${arg%%=*}"
+		val="${arg#*=}"
+		eval $var='"$val"'
+	    else
+		set -- "$@" "$arg"
+	    fi >/dev/null
 	    ;;
     esac
 done
+
+[[ "$arch" = *-*-* ]] ||
+    error "not a valid host triplet -- $arch"
 
 if [ s${MAKERULES+et} != set -a -r makerules ]; then
     MAKERULES=makerules
 fi
 
-case "$arch" in
-    *-*-*) ;;
-    *) echo "build.sh: build directory is not a valid host-triplet." >&2
-       exit 1 ;;
-esac
 
 # ----------------------------------------------------------------------
 # Cross-Compile
@@ -152,28 +159,66 @@ if [ ${crosscompile} = yes ]; then
     
 fi
 
+pkgconfig="${PKGCONFIG:-pkg-config}"	# pkg-config to use in here
+pkgconfig+=' --short-errors'
+
 # ----------------------------------------------------------------------
 # Architecture specific
 #
-case "$arch" in
-    *-w64-mingw32)
-	gb_CFLAGS+="${gb_CFLAGS:+ }-static"
-	gb_LDFLAGS+="${gb_LDFLAGS:+ }-static -static-libgcc" ;;
-    *-*-*)
-	true ;;
-    *)
-	echo "build.sh: can not build for host -- ${arch}" >&2
-	exit 1 ;;
-esac
+#  Do that only if none of the gb_ family flags is set. Otherwise the
+#  script assumes the user has taken control over the gory details of
+#  the build and leave it alone.
+#
+
+if [ -z "${gb_CFLAGS+set}${gb_LDFLAGS+set}${gb_LDLIBS+set}" ]; then
+    case "$arch" in
+	*-w64-mingw32)
+	    # For win32 platform try to build fully static (even for dlls)
+	    gb_CFLAGS="-static"
+	    gb_LDFLAGS="-static -static-libgcc"
+	    pkgconfig+=' --static'
+	    ;;
+	*-*-*)
+	    true ;;
+	*)
+	    error "WTH ??? -- $arch" ;;
+    esac
+fi
 
 # ----------------------------------------------------------------------
 # Dependency libraries
 #
 for var in $DEPLIBS; do
-    if eval test s\${NO_${var}+et} = set -a x\"\$NO_${var}\" != x0
+    if eval test s\${NO_${var}+et} = set
     then
-	eval unset ${var}_CFLAGS ${var}_LIBS
-	eval NO_${var}=1
+	# NO_${DEP} is set
+	if  eval test x\"\$NO_${var}\" != x0; then
+	    eval unset ${var}_CFLAGS ${var}_LIBS
+	    eval NO_${var}=1
+	fi
+    else
+	# NO_DEP is not set
+	add=yes
+	case $var in
+	    AO) mod=ao; add=must ;;
+	    SOXR) mod=soxr ;;
+	    SRATE) mod=samplerate; add=no ;;
+	    *) error "WTH ??? -- $var"
+	esac
+
+	if modversion=`$pkgconfig $mod --modversion`; then
+	    echo "Found $mod $modversion"
+	    case "$add" in
+		yes | must)
+		    eval NO_$var=0 ;;
+		no)
+		    echo " * Use \"NO_$var=0\" for zingzong to support $mod" ;;
+		*) error "WTH ??? $var $mod $add" ;;
+	    esac
+	elif [ $add = must ]; then
+	    echo " * Use \"NO_$var=1\" for really build without $mod"
+	    error "bailing out due to previous message" 
+	fi
     fi
 done
 

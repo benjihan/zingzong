@@ -8,6 +8,8 @@
 #
 # ----------------------------------------------------------------------
 
+build=../zz_build
+
 # Program name
 prog=$(basename "$0" .sh)
 
@@ -63,7 +65,7 @@ if [ s${SOXR_CFLAGS+et} != set ]; then
 fi
 
 # Let s build
-exec ../build.sh \
+exec $build \
      NO_SRATE=${NO_SRATE:-0} \
      NO_SOXR=${NO_SOXR:-0} \
      SOXR_LIBS="${SOXR_LIBS}" \

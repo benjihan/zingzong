@@ -33,6 +33,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <ctype.h>
 #ifndef NO_LIBC
 #include <string.h>                     /* memset ... */
 #endif

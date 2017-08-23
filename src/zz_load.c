@@ -8,11 +8,6 @@
 #include "zz_private.h"
 #include "zingzong.h"
 
-/* #include <stdlib.h>                     /\* qsort *\/ */
-#include <ctype.h>
-
-#include <alloca.h>
-
 int
 song_parse(song_t *song, vfs_t vfs, uint8_t *hd, uint_t size)
 {
