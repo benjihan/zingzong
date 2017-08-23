@@ -25,7 +25,7 @@ static int deffunc(FILE *f, const char *fmt, va_list list)
 
 msg_f msgfunc = deffunc;
 
-int set_binary(FILE * f)
+int msg_binary(FILE * f)
 {
   int fd = -1;
 
@@ -64,7 +64,7 @@ static void set_newline(const char * fmt)
     newline = fmt[strlen(fmt)-1] == '\n';
 }
 
-void ensure_newline(void)
+void msg_newline(void)
 {
   if (!newline) {
     fputc('\n',stdout_or_stderr());
@@ -92,17 +92,19 @@ msg(msg_f fct, FILE *f, const char * fmt, ...)
 void
 emsg(const char * fmt, ...)
 {
-  va_list list;
+  if (msgfunc) {
+    va_list list;
 
-  assert(me);
-  assert(*me);
-  msg(msgfunc, stderr, "\n%s: "+newline, me);
-  newline = 0;
+    assert(me);
+    assert(*me);
+    msg(msgfunc, stderr, "\n%s: "+newline, me);
+    newline = 0;
 
-  va_start(list,fmt);
-  vmsg(msgfunc, stderr, fmt, list);
-  set_newline(fmt);
-  va_end(list);
+    va_start(list,fmt);
+    vmsg(msgfunc, stderr, fmt, list);
+    set_newline(fmt);
+    va_end(list);
+  }
 }
 
 int
@@ -122,30 +124,34 @@ sysmsg(const char * obj, const char * alt)
 void
 wmsg(const char * fmt, ...)
 {
-  va_list list;
+  if (msgfunc) {
+    va_list list;
 
-  msg(msgfunc, stderr,"%s","\nWARNING: "+newline);
-  newline = 0;
+    msg(msgfunc, stderr,"%s","\nWARNING: "+newline);
+    newline = 0;
 
-  va_start(list,fmt);
-  vmsg(msgfunc, stderr, fmt, list);
-  set_newline(fmt);
-  fflush(stderr);
-  va_end(list);
+    va_start(list,fmt);
+    vmsg(msgfunc, stderr, fmt, list);
+    set_newline(fmt);
+    fflush(stderr);
+    va_end(list);
+  }
 }
 
 void
 debug_msg(const char *fmt, ...)
 {
-  FILE * const out = stdout_or_stderr();
-  va_list list;
+  if (msgfunc) {
+    FILE * const out = stdout_or_stderr();
+    va_list list;
 
-  ensure_newline();
-  va_start(list,fmt);
-  vfprintf(out,fmt,list);
-  va_end(list);
-  set_newline(fmt);
-  fflush(out);
+    msg_newline();
+    va_start(list,fmt);
+    vfprintf(out,fmt,list);
+    va_end(list);
+    set_newline(fmt);
+    fflush(out);
+  }
 }
 
 void
@@ -154,15 +160,17 @@ dummy_msg(const char *fmt, ...) {}
 void
 imsg(const char *fmt, ...)
 {
-  FILE * const out = stdout_or_stderr();
-  va_list list;
+  if (msgfunc) {
+    FILE * const out = stdout_or_stderr();
+    va_list list;
 
-  ensure_newline();
-  va_start(list,fmt);
-  vmsg(msgfunc, out, fmt, list);
-  va_end(list);
-  set_newline(fmt);
-  fflush(out);
+    msg_newline();
+    va_start(list,fmt);
+    vmsg(msgfunc, out, fmt, list);
+    va_end(list);
+    set_newline(fmt);
+    fflush(out);
+  }
 }
 
 void

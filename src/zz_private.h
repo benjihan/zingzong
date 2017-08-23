@@ -499,9 +499,9 @@ typedef int (*msg_f)(FILE *, const char *, va_list);
 EXTERN_C
 msg_f msgfunc;
 EXTERN_C
-void ensure_newline(void);
+void msg_newline(void);
 EXTERN_C
-int set_binary(FILE * f);
+int msg_binary(FILE * f);
 EXTERN_C FMT12
 void emsg(const char * fmt, ...);
 EXTERN_C FMT12

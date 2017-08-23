@@ -9,7 +9,9 @@
 #include "zingzong.h"
 
 /* #include <stdlib.h>                     /\* qsort *\/ */
-/* #include <ctype.h> */
+#include <ctype.h>
+
+#include <alloca.h>
 
 int
 song_parse(song_t *song, vfs_t vfs, uint8_t *hd, uint_t size)
@@ -42,6 +44,114 @@ song_load(song_t *song, const char *uri)
  * quartet voiceset
  * ----------------------------------------------------------------------
  */
+
+static int
+vset_guess(zz_play_t const P, const char * songuri)
+{
+  int method, i, c, songlen = strlen(songuri), ext = 0;
+  char *s;
+
+   /* $$$ improve me */
+  static const char ext_brk[] = ".:/\\"; /* breaks extension lookup */
+  static const char num_sep[] = " -_~.:,#"; /* prefix song num */
+  static const char pre_sep[] = "/\\.:-_([{";  /* prefix "4v" */
+  static const char suf_sep[] = "/\\.:-_)]}";  /* suffix "4v" */
+
+  P->vseturi = zz_stralloc(songlen+32);
+  if (!P->vseturi)
+    return E_SYS;
+  s = ZZSTR(P->vseturi);
+#if defined(WIN32) || defined(SYMBIAN32)
+  /* Detect and skip drive letter */
+  if (isalpha((int)s[0]) && s[1] == ':') {
+    *s++ = *songuri++;
+    *s++ = *songuri++;
+    songlen -= 2;
+  }
+#endif
+
+  for (method=0; ++method; ) {
+    *s = 0;
+    switch (method) {
+    case 1: case 2:
+      /* Simply add ".set" */
+      zz_memcpy(s,songuri,songlen);
+      zz_memcpy(s+songlen,method==1?".set":".SET",5);
+      break;
+
+    case 3: case 4:
+      /* Change extension to ".set" */
+      if (songlen < 4)
+        break;
+      if (ext) {
+        c = '.';
+        i = ext;
+      } else {
+        for (c=0, i=songlen-2;
+             i >= 1 &&  songlen-i <= 5 && !strchr(ext_brk, c=songuri[i]);
+             --i)
+          ;
+      }
+
+      if (c == '.') {
+        ext = i;                        /* Keep that in mind */
+        zz_memcpy(s,songuri,i);
+        zz_memcpy(s+i,method==3?".set":".SET",5);
+      }
+      break;
+
+    case 5: case 6:
+      /* Eliminate song number just before the extension before adding
+       * the .set */
+      i = (ext ? ext : songlen) - 1;
+      if (i>0 && isdigit(songuri[i])) {
+        do { --i; } while (i>0 && isdigit(songuri[i]));
+        if (i>0 && strchr(num_sep, songuri[i])) --i;
+        zz_memcpy(s,songuri,i+1);
+        zz_memcpy(s+i+1,method==5?".set":".SET",5);
+      }
+      break;
+
+    case 7:
+      /* Replace the latest "4v" word by "set" */
+      c = i = (ext ? ext : songlen);
+      while (i>0 && songuri[--i] != '4');
+
+      dmsg("we are : %d \"%s\"\n", i, songuri+i);
+      if (songuri[i] == '4' && tolower(songuri[i+1]) == 'v' &&
+          (i+0 == 0 || strchr(pre_sep,songuri[i-1])) &&
+          (i+2 == c || strchr(suf_sep,songuri[i+2]))) {
+        const int shift = songuri[i+1] - 'v';
+        zz_memcpy(s,songuri,i);
+        s[i++] = 's' + shift;
+        s[i++] = 'e' + shift;
+        s[i++] = 't' + shift;
+        while ( (s[i] = songuri[i-1]) != 0 ) ++i;
+      }
+      break;
+
+    default:
+      method = -1;
+    }
+
+    if (*s) {
+      msg_f msgsave = msgfunc;
+      int res;
+      dmsg("Testing #%i voiceset \"%s\"\n", method, ZZSTR(P->vseturi));
+      bin_free(&P->vset.bin);
+      zz_memclr(&P->vset,sizeof(P->vset));
+      msgfunc = 0;
+      res = vset_load(&P->vset,ZZSTR(P->vseturi));
+      msgfunc = msgsave;
+      if (!res)
+        return E_OK;
+    }
+  }
+  wmsg("could not find suitable set for \"%s\"\n", songuri);
+  return E_SET;
+}
+
+int (*zz_guess_vset)(zz_play_t const, const char *) = vset_guess;
 
 int
 vset_parse(vset_t *vset, vfs_t vfs, uint8_t *hd, uint_t size)
@@ -222,6 +332,7 @@ zz_load(play_t * P, const char * songuri, const char * vseturi)
     ecode = E_SNG;
     if (song_parse(&P->song, inp, hd, 0))
       break;
+    P->format = ZZ_FORMAT_4V;
     vfs_del(&inp);
 
     ecode = E_SYS;
@@ -236,14 +347,23 @@ zz_load(play_t * P, const char * songuri, const char * vseturi)
       if (P->vseturi = zz_strdup(vseturi), !P->vseturi)
         break;
       ecode = E_OK;
-    } else {
-      /* Looking for a voiceset that more or less match the song uri */
-      wmsg("looking for a voiceset for song \"%s\"\n", songuri);
-      ecode = E_666;
+    } else if (ecode = vset_guess(P,songuri), ecode) {
+      if (ecode < 0)
+        ecode = E_SET;
     }
     break;
   }
 
   vfs_del(&inp);
+  if (ecode) {
+    bin_free(&P->song.bin);
+    zz_memclr(&P->song,sizeof(P->song));
+    zz_strfree(&P->songuri);
+
+    bin_free(&P->vset.bin);
+    zz_memclr(&P->vset,sizeof(P->vset));
+    zz_strfree(&P->vseturi);
+  }
+
   return ecode;
 }

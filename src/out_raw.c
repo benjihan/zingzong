@@ -35,7 +35,7 @@ out_t * out_raw_open(int hz, const char * uri)
   }
   else if (!strcmp(uri,"stdout:")) {
     raw.out.name = "<stdout>";
-    if (set_binary(stdout))
+    if (msg_binary(stdout))
       return 0;
     raw.fp = stdout;
   } else {

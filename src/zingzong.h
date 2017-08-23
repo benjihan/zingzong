@@ -31,6 +31,7 @@ extern "C" {
   int zz_load(zz_play_t const play,
               const char * songuri, const char * pvseturi);
   int zz_close(zz_play_t const play);
+  int (*zz_guess_vset)(zz_play_t const play, const char * songuri);
 
   /**
    */

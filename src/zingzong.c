@@ -725,6 +725,6 @@ error_exit:
   vfs_del(&inp);
   if (c = zz_kill(P), (c && !ecode))
     ecode = c;
-  ensure_newline();
+  msg_newline();
   return ecode;
 }
