@@ -375,30 +375,10 @@ enum {
 static int load(play_t * const P, const char * uri, int measure)
 {
   int ecode = E_INP;
-  vfs_t inp = 0;
   uint8_t hd[222];
 
   zz_memclr(P,sizeof(*P));
-  if (vfs_open_uri(&inp, uri))
-    goto error_exit;
-  if (vfs_read_exact(inp, hd, 20))
-    goto error_exit;
-
-
-  /* Check for .q4 "QUARTET" magic id */
-  if (!zz_memcmp(hd,"QUARTET",8)) {
-    q4_t q4;
-    zz_memclr(&q4,sizeof(q4));
-    q4.song = &P->song; q4.songsz = u32(hd+8);
-    q4.vset = &P->vset; q4.vsetsz = u32(hd+12);
-    q4.info = &P->info; q4.infosz = u32(hd+16);
-    if (measure == MEASURE_ONLY)
-      q4.vset = 0;
-    ecode = q4_load(inp , &q4);
-    dmsg("zz-winamp: loaded song:%ukhz\n", P->song.khz);
-  } else {
-    /* $$$ TODO */
-  }
+  ecode = zz_load(P,uri,0);
 
   if (!ecode) {
     P->rate       = 200;
@@ -427,7 +407,6 @@ static int load(play_t * const P, const char * uri, int measure)
   }
 
 error_exit:
-  vfs_del(&inp);
   dmsg("zz-winamp: load -- '%s' => %d\n", uri, ecode);
   return ecode;
 }
