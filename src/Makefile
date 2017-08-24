@@ -184,13 +184,20 @@ include $(topdir)/src/make.depend
 #  Distrib
 # ----------------------------------------------------------------------
 
+zz_winamp_list = in_zingzong.c in_zingzong.h Makefile
+zz_m68k_list = Makefile mix_aga.c player.c startup.s test.s	\
+test_sc68.s zz_m68k.c
+
 dist_base := zingzong-$(VERSION)
 dist_arch := $(dist_base).tar.xz
 dist_list := \
  $(addprefix src/,$(sources) $(headers) Makefile vcversion.sh) \
  LICENSE README.md \
  _build/zz_build _build/zz_win_build \
-src/make.depend src/make.clean
+ src/make.depend src/make.clean \
+ $(addprefix src/zz-winamp/,$(zz_winamp_list)) \
+ $(addprefix src/zz-m68k/,$(zz_m68k_list))
+
 
 dist: distrib
 distcheck: dist-check
