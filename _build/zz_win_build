@@ -23,8 +23,8 @@ case "$arch" in
 	#########################
 	# Winamp plugin special #
 	#########################
-	set -- WADIR="`regtool -W get /user/Software/Winamp/`" "$@"
-	NO_SRATE=1; NO_SOXR=0
+	export WADIR="`regtool -W get /user/Software/Winamp/`" "$@"
+	export NO_SRATE=1 NO_SOXR=0
 	export arch=i686-w64-mingw32
 	export ZZ_MAKEFILE=../src/zz-winamp/Makefile
 	;;
@@ -64,10 +64,13 @@ if [ s${SOXR_CFLAGS+et} != set ]; then
     SOXR_CFLAGS="-I${SOXR}/include -DWITH_SOXR=1"
 fi
 
+set -- \
+    NO_SRATE=${NO_SRATE:-0} \
+    NO_SOXR=${NO_SOXR:-0} \
+    SOXR_LIBS="${SOXR_LIBS}" \
+    SOXR_CFLAGS="${SOXR_CFLAGS}" \
+    "$@"
+
 # Let s build
-exec $build \
-     NO_SRATE=${NO_SRATE:-0} \
-     NO_SOXR=${NO_SOXR:-0} \
-     SOXR_LIBS="${SOXR_LIBS}" \
-     SOXR_CFLAGS="${SOXR_CFLAGS}" \
-     "$@"
+set -x
+exec $build "$@"

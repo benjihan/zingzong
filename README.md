@@ -1,6 +1,12 @@
 # :musical_note: zingzong :musical_note:
 
-An simple `Atari ST quartet` music file player.
+### A `Microdeal Quartet` music file player
+
+[Quartet](https://demozoo.org/productions/131242/) is a music score
+editor edited by Microdeal in 1989 for the Atari ST and The Amiga home
+computers. It features a 4 digital channel sample sequencer and DSP
+software rather rare at this time. It was progammed by Illusions
+Programmers Rob Povey and Kevin Cowtan.
 
 Original `quartet` music consists of
 
@@ -13,20 +19,22 @@ both files into a`.4q` file alongside a small info text.
 
 ## Download
 
+Source code, binaries for Windows, Atari ST and Amiga binaries ...
+
 :floppy_disk: [GitHub Release page](https://github.com/benjihan/zingzong/releases)
 
 
 ## Usage
 
-    zingzong [OPTIONS] <inst.set> <song.4v> [output.wav]
-    zingzong [OPTIONS] <music.4q> [output.wav]
+    zingzong [OPTIONS] <song.4v> [<inst.set>]
+    zingzong [OPTIONS] <music.4q>
 
 ### Options
     -h --help --usage  Print this message and exit.
     -V --version       Print version and copyright and exit.
     -t --tick=HZ       Set player tick rate (default is 200hz).
     -r --rate=[R,]HZ   Set re-sampling method and rate (qerp,48K).
-		       Try `-hh' to print the list of [R]esampler.
+		               Try `-hh' to print the list of [R]esampler.
     -l --length=TIME   Set play time.
     -m --mute=ABCD     Mute selected channels (bit-field or string).
     -o --output=URI    Set output file name (`-w` or `-c`).
@@ -72,8 +80,8 @@ type.
     traditional variables have a look to `NODEPS` and `MAKERULES`.
   * `pkg-config` to help configure the dependency libraries.
     Alternatively each dependency can be configured manually by
-    setting the corresponding //PACKAGE//_CFLAGS and the
-    //PACKAGE//_LIBS variables. See below for the //PACKAGE// prefix.
+    setting the corresponding *PACKAGE*_CFLAGS and the
+    *PACKAGE*_LIBS variables. See below for the *PACKAGE* prefix.
 
 ### Dependencies
 
