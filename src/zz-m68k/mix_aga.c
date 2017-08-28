@@ -186,9 +186,9 @@ static void free_cb(play_t * const P)
 static mixer_t _mixer_aga;
 
 /* Need to keep PCR */
-EXTERN_C mixer_t * mixer_aga_get(void);
+EXTERN_C mixer_t * mixer_get(void);
 
-mixer_t * mixer_aga_get(void)
+mixer_t * mixer_get(void)
 {
   _mixer_aga.name = NAME;
   _mixer_aga.desc = DESC;

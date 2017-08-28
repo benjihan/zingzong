@@ -3,6 +3,8 @@
 ;;; @date   2017/08/12
 ;;; @brief  sc68 stub for zingzong test
 
+	opt p+,o-
+
 	bra.w	init
 	bra.w	player+4
 	bra.w	player+8

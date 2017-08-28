@@ -3,12 +3,20 @@
 
 void bin_free(bin_t ** pbin) {}
 void zz_strfree(str_t ** pstr) {}
-void zz_free(const char * obj, void * pptr) {}
-
-void *zz_malloc(const char * obj, const uint_t size)
+void zz_free_real(void ** pptr) {}
+void *zz_alloc_real(const uint_t size, const int clear)
 {
   return (void *)(intptr_t) 0x1337;     /* any value but 0 */;
 }
+
+/* static void * */
+/* m68k_alloc(const uint_t size, int clear) */
+/* { */
+/*   return (void *)(intptr_t) 0x1337;     /\* any value but 0 *\/; */
+/* } */
+/* static void m68k_free(void ** pptr) { } */
+/* void (*zz_free_func)(void **) = m68k_free; */
+/* void * (*zz_alloc_func)(const uint_t, int) = m68k_alloc; */
 
 void zz_memcpy(void * restrict _d, const void * _s, int n)
 {

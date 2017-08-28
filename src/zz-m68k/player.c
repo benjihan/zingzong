@@ -6,29 +6,31 @@
   ----------------------------------------------------------------------
   player header
 
-  void player_init(void)
-  void player_play(void)
-  void player_kill(void)
+  void player_init(void);
+  void player_play(void);
+  void player_kill(void);
   ----------------------------------------------------------------------
 */
 
-void player_init(void);
-void player_kill(void);
-void player_play(void);
-
 #include "../zz_private.h"
+
+int song_init_header(zz_song_t const song, const void * hd);
+int song_init(zz_song_t const song);
+int vset_init_header(zz_vset_t const vset, const void * hd);
+int vset_init(zz_vset_t const vset);
 
 /* https://gcc.gnu.org/bugzilla/show_bug.cgi?id=59946
  *
  * To avoid this problem we force the player not to access any static
  * variables. Everything will be addressed relative to the bear
- * struct. */
+ * struct.
+ */
 
 static play_t play;
 static bin_t songbin, vsetbin;
 static volatile int16_t ready;
 
-EXTERN_C mixer_t * mixer_aga_get(void); /* mix_aga.c */
+mixer_t * mixer_get(void); /* provided by mix_aga.c or mix_st.c */
 
 static void set_bin(bin_t * bin, void * data, int32_t len)
 {
@@ -55,7 +57,7 @@ void player_init(void)
   set_bin(&songbin, p.song+16, p.songsz-16);
   set_bin(&vsetbin, p.vset+222, p.vsetsz-222);
 
-  play.mixer = mixer_aga_get();
+  play.mixer = mixer_get();
 
   ready =
     1

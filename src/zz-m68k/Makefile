@@ -7,15 +7,16 @@
 # by Benjamin Gerard
 #
 
-SHELL      = /bin/sh
+targets    = zingzong-aga.bin zingzong-st.bin
+
+PACKAGE   := zingzong-m68k
 srcdir    := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
 topdir    := $(realpath $(srcdir)/../..)
-PKGCONFIG  = pkg-config
-PACKAGE   := zingzong-winamp
-VERSION   := $(shell $(srcdir)/../vcversion.sh || echo ERROR)
+VERSION   := $(shell $(topdir)/vcversion.sh || echo ERROR)
 ifeq ($(VERSION),ERROR)
 $(error vcversion.sh failed)
 endif
+PKGCONFIG  = pkg-config
 pkgconfig  = $(shell $(PKGCONFIG) $(1) || echo n/a)
 
 # ----------------------------------------------------------------------
@@ -24,70 +25,84 @@ vpath %.c $(srcdir) $(srcdir)/..
 
 # ----------------------------------------------------------------------
 
-target     = zingzong-aga.bin
-targets    = $(target)
+CC          = m68k-sc68-elf-gcc
+AS          = $(CC:gcc=as)
+OBJCOPY     = $(CC:gcc=objcopy)
+m68_CFLAGS  = -m68000 -mpcrel -mno-short -mno-align-int
+GCC_CFLAGS  = -Wall -fshort-enums -fno-common -fPIC
+REL_CFLAGS  = -g -Os -fomit-frame-pointer
+DBG_CFLAGS  = -g -O0
+NOSTARTFILE = -nostartfiles
+NODEFLIB    = -nodefaultlibs
+NOSTDLIB    = -nostdlib
+VASM        = vasmm68k_mot -Fbin -quiet -no-opt -o
+ELF2BIN = $(OBJCOPY) -S -Obinary --set-section-flags .bss=contents,data,load
+
+ifdef DEBUG
+CFLAGS += $(DBG_CFLAGS) -DDEBUG=$(DEBUG)
+else
+CFLAGS += $(REL_CFLAGS) -DNDEBUG=1
+endif
 
 # ----------------------------------------------------------------------
 
-CC              = m68k-sc68-elf-gcc
-AS              = $(CC:gcc=as)
-OBJCOPY         = $(CC:gcc=objcopy)
-M68_CFLAGS      = -m68000 -mtune=68000 -mpcrel -mno-short -mno-align-int
-GCC_CFLAGS      = -Wall -Wno-multichar -Wno-unused-variable
-REL_CFLAGS      = -g -Os -fomit-frame-pointer
-DBG_CFLAGS      = -g -O0
-NOSTARTFILE     = -nostartfiles
-NODEFLIB        = -nodefaultlibs
-NOSTDLIB        = -nostdlib
-VASM            = vasmm68k_mot -Fbin -quiet -no-opt -o
-ELF2BIN = $(OBJCOPY) -S -Obinary --set-section-flags .bss=contents,data,load
+PACKAGE_CPPFLAGS  = \
+ -DPACKAGE_NAME='"$(PACKAGE)"' \
+ -DPACKAGE_VERSION='"$(VERSION)"'
 
-ifndef CFLAGS
-CFLAGS	:= -Wall
-ifdef DEBUG
-CFLAGS	+= $(DBG_CFLAGS) -DDEBUG=$(DEBUG)
-else
-CFLAGS	+= $(REL_CFLAGS) -DNDEBUG=1
-endif
-endif
+m68_WL = -Wl,-EB,--gc-sections,--no-undefined,--no-dynamic-linker,--unresolved-symbols=report-all
+#,--verbose=5
 
-all: $(target)
-.PHONY: all
+m68_LDFLAGS = -e _start $(NOSTARTFILE) $(NOSTDLIB) $(NODEFLIB) $(m68_WL)
 
-zz_CPPFLAGS := $(CPPFLAGS) -DZZ_MINIMAL
-zz_CFLAGS   := $(CFLAGS)
-zz_LDFLAGS  := -e player_init $(NOSTARTFILE)
+zz_CPPFLAGS = -DZZ_MINIMAL $(gb_CPPFLAGS)
+zz_CFLAGS   = $(m68_CFLAGS) $(gb_CFLAGS)
+zz_LDFLAGS  = $(m68_LDFLAGS) $(gb_LDFLAGS)
 
-$(target): override NAME     = zingzong (Amiga)
-$(target): override CPPFLAGS = $(zz_CPPFLAGS)
-$(target): override CFLAGS   = $(M68_CFLAGS) $(zz_CFLAGS)
-$(target): override LDLIBS   = $(zz_LDLIBS)
-$(target): override LDFLAGS  = $(zz_LDFLAGS)
+common =  player zz_m68k zz_play zz_init
+amiga  = mix_aga
+atari  = mix_st
 
-mix := mix_void mix_aga
-out := 
-vfs :=
-zz  := zz_play zz_init
-src := zz_m68k player
+atari_src = $(addsuffix .c,$(common) $(atari))
+amiga_src = $(addsuffix .c,$(common) $(amiga))
 
-sources := $(addsuffix .c,$(zz) $(vfs) $(mix) $(out) $(src))
-objects := startup.o $(sources:.c=.o)
+atari_obj = startup.o $(atari_src:%.c=%.o)
+amiga_obj = startup.o player.o $(amiga_src:%.c=%.o)
+
+sources := $(sort $(atari_src) $(amiga_src))
+objects := $(sort $(atari_obj) $(amiga_obj))
 depends := $(sources:.c=.d)
 headers := zingzong.h zz_private.h mix_common.c
 
-zingzong: $(objects)
+# ----------------------------------------------------------------------
+#  Targets
+# ----------------------------------------------------------------------
+
+all: $(targets)
+.PHONY: all
+
+zingzong-aga.elf: $(amiga_obj)
+zingzong-st.elf: $(atari_obj)
+
+%.elf: override CPPFLAGS = $(zz_CPPFLAGS)
+%.elf: override CFLAGS   = $(zz_CFLAGS)
+%.elf: override LDFLAGS  = $(m68_LDFLAGS) $(gb_LDFLAGS)
+zz_play.o: override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
+
+%.elf:; $(CC) $(LDFLAGS) $(CFLAGS) -o $@ $^
+
 
 # ----------------------------------------------------------------------
 #  Test sc68 files
 # ----------------------------------------------------------------------
 
-clean_files += test.sc68 test.dat
+clean_files += test.sc68 test.dat $(targets:%.bin=%.elf)
 
 test: test.sc68
 .PHONY: test
 
 test.sc68: test.dat
-test.dat: $(target) test.4v test.set
+test.dat: $(targets) test.4v test.set
 
 .INTERMEDIATE: test.dat
 
@@ -95,8 +110,9 @@ test.dat: $(target) test.4v test.set
 %.dat: %.s 		;$(VASM) $@ $<
 %.bin: %.elf		;$(ELF2BIN) $< $@
 
-$(target:bin=elf): $(objects)
-	 $(CC) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LDLIBS) $(LIBS)
+
+#-Wl,-e,0x10000 -Wl,-Ttext,0x10000
+
 
 # ----------------------------------------------------------------------
 #  Clean
