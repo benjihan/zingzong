@@ -6,53 +6,90 @@
  */
 
 #include "zz_private.h"
-#include <stdio.h>
-#include <string.h>
-#include <errno.h>
 
-#define VFS_OR_DIE(E) if (!(E)) {errno=EINVAL; return -1;} else errno=0
-#define VFS_OR_NIL(E) if (!(E)) {errno=EINVAL; return  0;} else errno=0
+#ifdef NO_VFS
+# error  zz_vfs.c should not be compiled with NO_VFS defined
+#endif
 
-EXTERN_C const vfs_dri_t vfs_file_dri;
+#define VFS_OR_DIE(E) if (!(E)) { return -1; } else (E)->err=0
+#define VFS_OR_NIL(E) if (!(E)) { return  0; } else (E)->err=0
 
 #ifndef DRIVER_MAX
 # define DRIVER_MAX 8
 #endif
 
-static vfs_dri_t * drivers[DRIVER_MAX] = {
-  &vfs_file_dri,
-  0
-};
+static zz_vfs_dri_t drivers[DRIVER_MAX];
 
+#ifdef NO_LOG
+# define vfs_emsg(DRI,ERR,FCT,ALT,OBJ) (-1)
+# else
+static int
+vfs_emsg(const char * dri, int err, const char * fct, const char * alt, const char * obj)
+{
+  const char* msg = alt ? alt : "failed";
+
+#ifndef NO_LIBC
+  if (err)
+    msg = strerror(err);
+#endif
+  if (!obj)
+    emsg("VFS(%s): %s: (%d) %s\n",
+         dri, fct, err, msg);
+  else
+    emsg("VFS(%s): %s: (%d) %s -- %s\n",
+         dri, fct, err, msg, obj);
+  return -1;
+}
+#endif
 
 static int
-vfs_emsg(const char * dri, const char * fct, const char * alt)
+vfs_find(zz_vfs_dri_t dri)
 {
-  emsg("VFS(%s): %s -- %s\n",
-       dri, fct, errno ? strerror(errno) : (alt?alt:"failed"));
-  return -1;
+  const int max = sizeof(drivers)/sizeof(*drivers);
+  int i;
+  for (i=0; i<max && drivers[i] != dri; ++i)
+    ;
+  return i<max ? i : -1;
+}
+
+
+int
+vfs_register(zz_vfs_dri_t dri)
+{
+  int i = -1;
+  if (dri) {
+    i = vfs_find(dri);              /* looking for this driver slot */
+    if (i < 0)                      /* not found ? */
+      i = vfs_find(0);              /* looking for a free slot */
+    if (i >= 0) {
+      if (dri->reg(dri) >= 0)
+        drivers[i] = dri;
+      else
+        i = -1;
+    }
+    if (i < 0)
+      (void) vfs_emsg(dri->name,0,"register",0,0);
+  }
+  return -(i<0);
 }
 
 int
-vfs_add(vfs_dri_t * dri)
+vfs_unregister(zz_vfs_dri_t dri)
 {
-  const int max = sizeof(drivers)/sizeof(*drivers);
-  int i = max;
-
+  int i = -1;
   if (dri) {
-    for (i=0; i<max; ++i) {
-      if (!drivers[i])
-        drivers[i] = dri;
-      if (drivers[i] == dri)
-        break;
-    }
-    if (i == max) {
-      errno = 0;
-      vfs_emsg(dri->name,"add",0);
+    i = vfs_find(dri);              /* looking for this driver slot */
+    if (i >= 0) {                   /* found ? */
+      int res = drivers[i]->unreg(dri);
+      if (!res)
+        drivers[i] = 0;
+      else if (res < 0)
+        i = vfs_emsg(dri->name,0,"unregister",0,0);
     }
   }
-  return -(i==max);
+  return -(i<0);
 }
+
 
 vfs_t
 vfs_new(const char * uri, ...)
@@ -61,8 +98,7 @@ vfs_new(const char * uri, ...)
   int i, best, k = -1;
   vfs_t vfs = 0;
 
-  assert(uri);
-  errno = 0;
+  zz_assert(uri);
   for (i=0, best=0, k=-1; i<max; ++i) {
     int score;
     if (!drivers[i]) continue;
@@ -80,8 +116,10 @@ vfs_new(const char * uri, ...)
     va_start(list,uri);
     vfs = drivers[k]->new(uri, list);
     va_end(list);
-    if (!vfs)
-      vfs_emsg(drivers[k]->name,"new",0);
+    if (vfs)
+      vfs->err = 0;
+    else
+      (void)vfs_emsg(drivers[k]->name,0,"new",0,uri);
   }
   return vfs;
 }
@@ -93,7 +131,7 @@ vfs_open(vfs_t vfs)
   VFS_OR_DIE(vfs);
   ret = vfs->dri->open(vfs);
   if (ret < 0)
-    vfs_emsg(vfs->dri->name,"open",0);
+    ret = vfs_emsg(vfs->dri->name,vfs->err,"open",0,vfs_uri(vfs));
   return ret;
 }
 
@@ -113,7 +151,7 @@ vfs_close(vfs_t vfs)
 {
   VFS_OR_DIE(vfs);
   return vfs->dri->close(vfs)
-    ? vfs_emsg( vfs->dri->name, "close", 0)
+    ? vfs_emsg(vfs->dri->name,vfs->err,"close", 0, vfs_uri(vfs))
     : 0
     ;
 }
@@ -123,7 +161,8 @@ vfs_read(zz_vfs_t vfs, void * ptr, int size)
 {
   if (!size || size == -1)
     return size;
-  VFS_OR_DIE(vfs && ptr);
+  if (!ptr) vfs = 0;
+  VFS_OR_DIE(vfs);
   return vfs->dri->read(vfs,ptr,size);
 }
 
@@ -133,15 +172,20 @@ vfs_read_exact(vfs_t vfs, void * ptr, int size)
   uint_t n;
   if (!size || size == -1)
     return size;
-  VFS_OR_DIE(vfs && ptr);
+  if (!ptr) vfs = 0;
+  VFS_OR_DIE(vfs);
   n = vfs->dri->read(vfs,ptr,size);
 
   if (n == -1)
-    sysmsg(vfs->dri->uri(vfs),"read");
-  else if (n != size)
+    n = vfs_emsg(vfs->dri->name, vfs->err,"read_exact", 0, vfs_uri(vfs));
+  else if (n != size) {
     emsg("%s: read too short by %u\n",
-         vfs->dri->uri(vfs), size-n);
-  return -(n != size);
+             vfs->dri->uri(vfs), size-n);
+    n = -1;
+  }
+  else
+    n = 0;
+  return n;
 }
 
 int
@@ -158,7 +202,8 @@ vfs_seek(vfs_t vfs, int pos, int set)
 
   if (vfs->dri->seek) {
     return !vfs->dri->seek(vfs,pos,set)
-      ? 0 : vfs_emsg(vfs->dri->name, "seek", "seek error");
+      ? 0
+      : vfs_emsg(vfs->dri->name,vfs->err,"seek","seek error", vfs_uri(vfs));
   } else {
     /* For seek forward simulate by reading */
     int size, tell;
@@ -178,15 +223,15 @@ vfs_seek(vfs_t vfs, int pos, int set)
     case ZZ_SEEK_END: pos = size + pos; break;
     case ZZ_SEEK_CUR: pos = tell + pos; break;
     default:
-      errno = EINVAL;
-      return vfs_emsg(vfs->dri->name, "seek", "invalid whence");
+      return vfs_emsg(vfs->dri->name, vfs->err=ZZ_EINVAL,
+                      "seek", "invalid whence", vfs_uri(vfs));
     }
 
     dmsg("seek[%s]: goto=%d offset=%+d\n",
          vfs->dri->name, pos, pos-tell);
 
     if (pos < tell || pos > size) {
-      emsg("%s: seek simulation impossible (%d/%d/%d)\n",
+      dmsg("%s: seek simulation impossible (%d/%d/%d)\n",
            vfs->dri->uri(vfs), pos, tell, size);
       return -1;
     }
@@ -196,19 +241,17 @@ vfs_seek(vfs_t vfs, int pos, int set)
       int r, n = pos-tell;
       if (n > sizeof(tmp)) n = sizeof(tmp);
       r = vfs->dri->read(vfs,tmp,n);
-      if (r != n) {
-        emsg("%s: seek simulation impossible (read error)\n",
-             vfs->dri->uri(vfs));
-        return -1;
-      }
+      if (r != n)
+        return vfs_emsg(vfs->dri->name, vfs->err=ZZ_EIO,
+                        "seek", "simulation impossible", vfs_uri(vfs));
       tell += n;
     }
 
     dmsg("seek[%s]: tell=%d\n",
          vfs->dri->name, vfs->dri->tell(vfs));
 
-    assert (tell == pos);
-    assert (pos == vfs->dri->tell(vfs));
+    zz_assert( tell == pos );
+    zz_assert( pos == vfs->dri->tell(vfs) );
     return 0;
   }
 }
@@ -223,20 +266,20 @@ vfs_size(vfs_t vfs)
 const char *
 vfs_uri(vfs_t vfs)
 {
-  VFS_OR_NIL(vfs);
-  return vfs->dri->uri(vfs);
+  const char * uri = vfs ? vfs->dri->uri(vfs) : 0;
+  if (!uri) uri = "";
+  return uri;
 }
 
 int
 vfs_open_uri(vfs_t * pvfs, const char * uri)
 {
   vfs_t vfs = 0;
-  errno = EINVAL;
   if (pvfs && uri) {
     vfs = vfs_new(uri,0);
     if (vfs && vfs_open(vfs)) {
       vfs_del(&vfs);
-      assert(vfs == 0);
+      zz_assert(vfs == 0);
       vfs = 0;
     }
     *pvfs = vfs;

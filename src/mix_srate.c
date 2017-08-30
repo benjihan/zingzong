@@ -85,26 +85,26 @@ rate_of_fp16(const uint_t fp16, const double rate) {
 static void chan_flread(float * const d, mix_chan_t * const K, const int n)
 {
   if (!n) return;
-  assert(n > 0);
-  assert(n < VSET_UNROLL);
+  zz_assert(n > 0);
+  zz_assert(n < VSET_UNROLL);
 
   if (!K->ptr)
     zz_memclr(d, n*sizeof(float));
   else {
-    assert(K->ptr < K->pte);
+    zz_assert(K->ptr < K->pte);
     i8tofl(d, K->ptr, n);
 
     if ( (K->ptr += n) >= K->pte ) {
       if (!K->ptl) {
         K->ptr = 0;
       } else {
-        assert(K->ptl < K->pte);
+        zz_assert(K->ptl < K->pte);
         K->ptr = &K->ptl[ ( K->ptr - K->pte ) % ( K->pte - K->ptl ) ];
-        assert(K->ptr >= K->ptl);
-        assert(K->ptr <  K->pte);
+        zz_assert(K->ptr >= K->ptl);
+        zz_assert(K->ptr <  K->pte);
       }
     }
-    assert(K->ptr < K->pte);
+    zz_assert(K->ptr < K->pte);
   }
 }
 
@@ -114,7 +114,7 @@ fill_cb(void *_K, float **data)
 {
   mix_chan_t * const restrict K = _K;
 
-  assert(K->imax == FLIMAX);
+  zz_assert(K->imax == FLIMAX);
   K->ilen = K->imax;
   chan_flread(K->iflt,K,K->ilen);
   *data = K->iflt;
@@ -147,8 +147,8 @@ push_cb(play_t * const P)
   const int N = P->pcm_per_tick;
   int k;
 
-  assert(P);
-  assert(M);
+  zz_assert(P);
+  zz_assert(M);
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -158,7 +158,7 @@ push_cb(play_t * const P)
     switch (C->trig) {
 
     case TRIG_NOTE:
-      assert(C->note.ins);
+      zz_assert(C->note.ins);
 
       K->ptr = C->note.ins->pcm;
       K->pte = K->ptr + C->note.ins->len;
@@ -170,8 +170,8 @@ push_cb(play_t * const P)
 
     case TRIG_SLIDE:
       K->rate = rate_of_fp16(C->note.cur, M->rate);
-      assert(K->rate >= M->rate_min);
-      assert(K->rate <= M->rate_max);
+      zz_assert(K->rate >= M->rate_min);
+      zz_assert(K->rate <= M->rate_max);
 #if !SRATE_USER_SUPPLY
       K->sd.src_ratio = RATIO(K->rate);
 #endif
@@ -180,7 +180,7 @@ push_cb(play_t * const P)
     case TRIG_NOP:  break;
     default:
       emsg("INTERNAL ERROR: %c: invalid trigger -- %d\n", 'A'+k, C->trig);
-      assert(!"wtf");
+      zz_assert(!"wtf");
       return E_MIX;
     }
   }
@@ -203,8 +203,8 @@ push_cb(play_t * const P)
     while (need > 0) {
       int i, idone, odone, want;
 
-      assert( K->omax == FLOMAX );
-      assert( K->imax == FLIMAX );
+      zz_assert( K->omax == FLOMAX );
+      zz_assert( K->imax == FLIMAX );
 
       if ( (want=need) > K->omax)
         want = K->omax;
@@ -252,8 +252,8 @@ push_cb(play_t * const P)
           *flt++ += K->oflt[i];
 
     }
-    assert( need == 0 );
-    assert( flt-N == M->flt_buf );
+    zz_assert( need == 0 );
+    zz_assert( flt-N == M->flt_buf );
   }
   /* Convert back to s16 */
   fltoi16(P->mix_buf, M->flt_buf, N);
@@ -268,7 +268,7 @@ static void free_cb(play_t * const P)
   mix_data_t * const M = (mix_data_t *) P->mixer_data;
   if (M) {
     int k;
-    assert(M == P->mixer_data);
+    zz_assert(M == P->mixer_data);
     for (k=0; k<4; ++k) {
       mix_chan_t * const K = M->chan+k;
       if (K->st)
@@ -287,9 +287,9 @@ static int init_srate(play_t * const P, const int quality)
   mix_data_t * M;
   const int N = P->pcm_per_tick;
   const uint_t size = sizeof(mix_data_t) + sizeof(float)*N;
-  assert(!P->mixer_data);
-  assert(N>0);
-  assert(sizeof(float) == 4);
+  zz_assert(!P->mixer_data);
+  zz_assert(N>0);
+  zz_assert(sizeof(float) == 4);
   P->mixer_data = M = zz_calloc("srate-data", size);
   if (M) {
     M->quality = quality;

@@ -30,7 +30,7 @@ static int
 close(out_t * out)
 {
   int ret = 0;
-  assert(out == &aoo.out);
+  zz_assert(out == &aoo.out);
 
   if (aoo.dev) {
     ret = -!ao_close(aoo.dev);
@@ -43,10 +43,9 @@ close(out_t * out)
 out_t *
 out_ao_open(int hz, const char * uri)
 {
-  assert(!aoo.dev);
+  zz_assert(!aoo.dev);
   if (aoo.dev) {
     errno = EAGAIN;
-    sysmsg("audio:","already opened");
     return 0;
   }
 
@@ -61,14 +60,14 @@ out_ao_open(int hz, const char * uri)
     ;
   aoo.info = ao_driver_info(aoo.id);
   if (!aoo.info) {
-    emsg("libao: failed to get driver #%d info\n", aoo.id);
+    dmsg("libao: failed to get driver #%d info\n", aoo.id);
   } else {
     aoo.dev = uri
       ? ao_open_file(aoo.id, uri, 1, &aoo.fmt, 0)
       : ao_open_live(aoo.id, &aoo.fmt, 0)
       ;
     if (!aoo.dev) {
-      emsg("libao: failed to initialize audio driver #%d \"%s\"\n",
+      dmsg("libao: failed to initialize audio driver #%d \"%s\"\n",
            aoo.id, aoo.info->short_name);
     } else {
       aoo.out.hz = aoo.fmt.rate;
@@ -97,11 +96,11 @@ out_ao_open(int hz, const char * uri)
 static int
 write(out_t * out, void * const pcm, int bytes)
 {
-  assert(out == &aoo.out);
+  zz_assert(out == &aoo.out);
 
   if (out == &aoo.out &&
       !ao_play(aoo.dev, pcm, bytes)) {
-    emsg("libao: failed to play buffer #%d \"%s\"\n",
+    dmsg("libao: failed to play buffer #%d \"%s\"\n",
          aoo.id, aoo.info->short_name);
     return -1;
   }

@@ -62,8 +62,8 @@ fltoi16(int16_t * const d, const float * const s, const int n)
     d[i] = v;
 #else
     d[i] = s[i] * sc;
-    assert(s[i] > -1.0);
-    assert(s[i] <  1.0);
+    zz_assert(s[i] > -1.0);
+    zz_assert(s[i] <  1.0);
 #endif
   }
 }

@@ -64,26 +64,26 @@ static void
 chan_flread(float * const d, mix_chan_t * const K, const int n)
 {
   if (!n) return;
-  assert(n > 0);
-  assert(n < VSET_UNROLL);
+  zz_assert(n > 0);
+  zz_assert(n < VSET_UNROLL);
 
   if (!K->ptr)
     zz_memclr(d,n*sizeof(*d));
   else {
-    assert(K->ptr < K->pte);
+    zz_assert(K->ptr < K->pte);
     i8tofl(d, K->ptr, n);
 
     if ( (K->ptr += n) >= K->pte ) {
       if (!K->ptl) {
         K->ptr = 0;
       } else {
-        assert(K->ptl < K->pte);
+        zz_assert(K->ptl < K->pte);
         K->ptr = &K->ptl[ ( K->ptr - K->pte ) % ( K->pte - K->ptl ) ];
-        assert(K->ptr >= K->ptl);
-        assert(K->ptr <  K->pte);
+        zz_assert(K->ptr >= K->ptl);
+        zz_assert(K->ptr <  K->pte);
       }
     }
-    assert(K->ptr < K->pte);
+    zz_assert(K->ptr < K->pte);
   }
 }
 
@@ -108,8 +108,8 @@ fill_cb(void * _K, soxr_in_t * data, size_t reqlen)
   mix_chan_t * const K = _K;
   int len = reqlen;
 
-  assert(len <= K->imax);              /* Limited by set_input_fb() */
-  assert(K->imax == FLIMAX);           /* For now keep it simple */
+  zz_assert(len <= K->imax);              /* Limited by set_input_fb() */
+  zz_assert(K->imax == FLIMAX);           /* For now keep it simple */
   if (len > K->imax)
     len = K->imax;
   *data = K->iflt;
@@ -165,8 +165,8 @@ push_cb(play_t * const P)
   const int N = P->pcm_per_tick;
   int k;
 
-  assert(P);
-  assert(M);
+  zz_assert(P);
+  zz_assert(M);
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -178,7 +178,7 @@ push_cb(play_t * const P)
     switch (C->trig) {
 
     case TRIG_NOTE:
-      assert(C->note.ins);
+      zz_assert(C->note.ins);
 
       K->ptr = C->note.ins->pcm;
       K->pte = K->ptr + C->note.ins->len;
@@ -191,8 +191,8 @@ push_cb(play_t * const P)
 
     case TRIG_SLIDE:
       K->rate = rate_of_fp16(C->note.cur, M->rate);
-      assert(K->rate >= M->rate_min);
-      assert(K->rate <= M->rate_max);
+      zz_assert(K->rate >= M->rate_min);
+      zz_assert(K->rate <= M->rate_max);
       err = soxr_set_io_ratio(K->soxr, K->rate, slew+slew_val);
 
       /* dmsg("%c: trig=%d stp=%08X %.3lf\n", */
@@ -205,7 +205,7 @@ push_cb(play_t * const P)
     case TRIG_NOP:  break;
     default:
       emsg("INTERNAL ERROR: %c: invalid trigger -- %d\n", 'A'+k, C->trig);
-      assert(!"wtf");
+      zz_assert(!"wtf");
       return E_MIX;
     }
   }
@@ -229,8 +229,8 @@ push_cb(play_t * const P)
       int i;
       size_t want = need, idone, odone;
 
-      assert( K->omax == FLOMAX );
-      assert( K->imax == FLIMAX );
+      zz_assert( K->omax == FLOMAX );
+      zz_assert( K->imax == FLIMAX );
 
       if (want > K->omax)
         want = K->omax;
@@ -250,9 +250,9 @@ push_cb(play_t * const P)
       /* Fill input when it's empty */
       if (!K->ilen)
         chan_flread(K->icur = K->iflt, K, K->ilen = K->imax);
-      assert( K->ilen > 0 );
-      assert( K->ilen <= K->omax );
-      assert( &K->iflt[K->omax] == &K->icur[K->ilen] );
+      zz_assert( K->ilen > 0 );
+      zz_assert( K->ilen <= K->omax );
+      zz_assert( &K->iflt[K->omax] == &K->icur[K->ilen] );
       err = soxr_process(
         K->soxr,
         K->icur, K->ilen, &idone,
@@ -264,8 +264,8 @@ push_cb(play_t * const P)
       K->ilen -= idone;
       K->icur += idone;
 
-      assert( K->ilen >= 0 && K->ilen <= K->imax );
-      assert( odone >= 0 && odone <= want && odone <= K->omax );
+      zz_assert( K->ilen >= 0 && K->ilen <= K->imax );
+      zz_assert( odone >= 0 && odone <= want && odone <= K->omax );
 #endif
 
       if (idone+odone != 0) {
@@ -291,8 +291,8 @@ push_cb(play_t * const P)
         for (i=0; i<odone; ++i)
           *flt++ += K->oflt[i];
     }
-    assert( need == 0 );
-    assert( flt-N == M->flt_buf );
+    zz_assert( need == 0 );
+    zz_assert( flt-N == M->flt_buf );
   }
 
   /* Convert back to s16 */
@@ -308,7 +308,7 @@ static void free_cb(play_t * const P)
   mix_data_t * const M = (mix_data_t *) P->mixer_data;
   if (M) {
     int k;
-    assert(M == P->mixer_data);
+    zz_assert(M == P->mixer_data);
     for (k=0; k<4; ++k) {
       mix_chan_t * const K = M->chan+k;
       if (K->soxr) {
@@ -330,9 +330,9 @@ static int init_soxr(play_t * const P, const int quality)
   soxr_error_t err;
   mix_data_t * M;
   const uint_t size = sizeof(mix_data_t) + sizeof(float)*N;
-  assert(!P->mixer_data);
-  assert(N > 0);
-  assert(sizeof(float) == 4);
+  zz_assert(!P->mixer_data);
+  zz_assert(N > 0);
+  zz_assert(sizeof(float) == 4);
   P->mixer_data = M = zz_calloc("soxr-data", size);
   if (M) {
     M->qspec    = soxr_quality_spec(quality, SOXR_VR);

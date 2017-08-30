@@ -83,6 +83,7 @@ all: $(targets)
 
 zingzong-aga.elf: $(amiga_obj)
 zingzong-st.elf: $(atari_obj)
+zingzong.elf: startup.o $(objects)
 
 %.elf: override CPPFLAGS = $(zz_CPPFLAGS)
 %.elf: override CFLAGS   = $(zz_CFLAGS)
@@ -101,16 +102,21 @@ clean_files += test.sc68 test.dat $(targets:%.bin=%.elf)
 test: test.sc68
 .PHONY: test
 
-test.sc68: test.dat
-test.dat: $(targets) test.4v test.set
+#test.sc68: test.dat
+test.dat: $(targets)
 
 .INTERMEDIATE: test.dat
 
-%.sc68: %_sc68.s	;$(VASM) $@ $<
-%.dat: %.s 		;$(VASM) $@ $<
+test_sc68.elf: test_sc68.o
+
+%.sc68: %_sc68.elf %.dat
+	echo [$*].sc68	
+
+%.dat: %.s %.4v %.set	;$(VASM) $@ $<
 %.bin: %.elf		;$(ELF2BIN) $< $@
 
 
+#test_sc68.S
 #-Wl,-e,0x10000 -Wl,-Ttext,0x10000
 
 

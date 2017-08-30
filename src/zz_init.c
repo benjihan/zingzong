@@ -2,7 +2,7 @@
  * @file   zz_init.c
  * @author Benjamin Gerard AKA Ben/OVR
  * @date   2017-07-04
- * @brief  quartet files loader.
+ * @brief  quartet song and voice-set parser.
  */
 
 #include "zz_private.h"
@@ -28,7 +28,7 @@ static int is_valid_sig(const uint8_t sigm, const uint8_t sigd) {
   return sigm >= 1 && sigd <= 4 && sigm <= sigd;
 }
 
-/* {1..20} */
+/* Instruments {1..20} */
 static int is_valid_ins(const uint8_t ins) {
   return ins >= 1 && ins <= 20;
 }
@@ -38,7 +38,8 @@ static int is_valid_ins(const uint8_t ins) {
  * ----------------------------------------------------------------------
  */
 
-int song_init_header(song_t * song, const void *_hd)
+int
+song_init_header(song_t * song, const void *_hd)
 {
   const uint8_t * hd = _hd;
   const uint16_t khz = u16(hd+0), bar = u16(hd+2), spd = u16(hd+4);
@@ -58,7 +59,8 @@ int song_init_header(song_t * song, const void *_hd)
                      is_valid_sig(song->sigm,song->sigd) );
 }
 
-int song_init(song_t * song)
+int
+song_init(song_t * song)
 {
   uint8_t ins, has_note, k, ecode=E_SNG;
   int off, size;
@@ -201,7 +203,7 @@ vset_init(zz_vset_t const vset)
   uint8_t idx[20];
   bin_t * restrict bin;
 
-  assert(n>0 && n<=20);
+  zz_assert(n>0 && n<=20);
 
   imask = vset->iused ? vset->iused : (1 << vset->nbi) - 1;
 
@@ -264,11 +266,11 @@ vset_init(zz_vset_t const vset)
     const uint_t len = vset->inst[i].len;
     if (len >= 0x10000)
       dmsg("I%02u length > 64k -- %08x\n", i, len);
-    assert( len < 0x10000 );
+    zz_assert( len < 0x10000 );
     idx[i] = i;
     tot += (len+1)&-2;
   }
-  assert( tot <= end-beg );
+  zz_assert( tot <= end-beg );
   sort_inst(vset->inst, idx, n);
 
   /* -2- Compute the unroll size. */
@@ -309,8 +311,8 @@ vset_init(zz_vset_t const vset)
       for(j=lpi=r_len; j<inst->end; ++j) {
         if (lpi >= r_len)
           lpi -= inst->lpl;
-        assert(lpi < r_len);
-        assert(lpi >= r_len-inst->lpl);
+        zz_assert(lpi < r_len);
+        zz_assert(lpi >= r_len-inst->lpl);
         pcm[j] = pcm[lpi++];
       }
     }

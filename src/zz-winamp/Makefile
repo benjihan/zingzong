@@ -12,7 +12,7 @@ srcdir    := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
 topdir    := $(realpath $(srcdir)/../..)
 PKGCONFIG  = pkg-config
 PACKAGE   := zingzong-winamp
-VERSION   := $(shell $(srcdir)/../vcversion.sh || echo ERROR)
+VERSION   := $(shell $(topdir)/vcversion.sh || echo ERROR)
 ifeq ($(VERSION),ERROR)
 $(error vcversion.sh failed)
 endif

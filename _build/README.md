@@ -1,5 +1,4 @@
-# Zingzong - Buildbing help and guidelines
-
+# Zingzong - Building help
 
 ## Building
 

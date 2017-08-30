@@ -18,7 +18,7 @@ bin_alloc(bin_t ** pbin, const char * path,
           uint_t len, uint_t xlen)
 {
   bin_t * bin;
-  assert(pbin); assert(path);
+  zz_assert(pbin); zz_assert(path);
   *pbin = bin = zz_stralloc(len + xlen);
   if (!bin)
     return E_SYS;
@@ -51,7 +51,7 @@ bin_load(bin_t ** pbin, vfs_t vfs, uint_t len, uint_t xlen, uint_t max)
     len -= pos;
   }
   if (max && len > max) {
-    emsg("too large (load > %u) -- %s\n", max, path);
+    dmsg("too large (load > %u) -- %s\n", max, path);
     ecode = E_ERR;
     goto error;
   }

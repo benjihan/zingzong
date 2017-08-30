@@ -12,30 +12,51 @@
 
 #ifdef HAVE_CONFIG_H
 # include "config.h"
-#endif
-
-#if (defined(__GNUC__) || defined(__clang__)) && !defined (_DEFAULT_SOURCE)
-# define _DEFAULT_SOURCE 1
+#else
+# define _DEFAULT_SOURCE
+# define _GNU_SOURCE
 #endif
 
 #ifdef ZZ_MINIMAL
-#define NO_FLOAT_SUPPORT
-#define NO_MSG
-#define NO_LIBC
+# define NO_FLOAT_SUPPORT
+# define NO_LOG
+# define NO_LIBC
+# define NO_VFS
 #endif
 
 #define ZZ_VFS_DRI
 #include "zingzong.h"
 
-#if !defined(DEBUG) && !defined(NDEBUG)
+#ifndef zz_void
+# define zz_void ((void) 0)
+#endif
+
+#if !defined DEBUG && !defined NDEBUG
 # define NDEBUG 1
 #endif
-#include <assert.h>
+
+#ifndef zz_assert
+# ifdef NDEBUG
+#  define zz_assert(E) zz_void
+# else
+#  include <assert.h>
+#  define zz_assert(E) assert(E)
+# endif
+#endif
+
 #include <stdint.h>
 #include <stdio.h>
 #include <ctype.h>
 #ifndef NO_LIBC
-#include <string.h>                     /* memset ... */
+# include <string.h>                     /* memset ... */
+# include <errno.h>
+# define ZZ_EIO EIO
+# define ZZ_EINVAL EINVAL
+# define ZZ_ENODEV ENODEV
+#else
+# define ZZ_EIO    5
+# define ZZ_EINVAL 22
+# define ZZ_ENODEV 19
 #endif
 
 #ifndef EXTERN_C
@@ -107,11 +128,6 @@ enum {
   TRIG_NOP, TRIG_NOTE, TRIG_SLIDE, TRIG_STOP
 };
 
-enum {
-  E_OK, E_ERR, E_ARG, E_SYS, E_INP, E_OUT, E_SET, E_SNG, E_PLA, E_MIX,
-  E_666 = 66
-};
-
 /* ----------------------------------------------------------------------
  *  Types definitions
  * ----------------------------------------------------------------------
@@ -133,8 +149,8 @@ typedef struct note_s  note_t;    /**< channel step (pitch) info. */
 typedef struct mixer_s mixer_t;   /**< channel mixer. */
 typedef struct out_s   out_t;     /**< output. */
 
-typedef zz_vfs_t vfs_t;
-typedef zz_vfs_dri_t vfs_dri_t;
+typedef struct vfs_s * vfs_t;
+typedef struct zz_vfs_dri_s vfs_dri_t;
 
 struct str_s {
   void   *_s;                 /**< string pointer. */
@@ -276,8 +292,8 @@ struct songhd {
 
 /* ---------------------------------------------------------------------- */
 
-EXTERN_C
-mixer_t * const zz_mixers[], * zz_default_mixer, mixer_void;
+/* EXTERN_C */
+/* mixer_t * const zz_mixers[], * zz_default_mixer, mixer_void; */
 
 /* ---------------------------------------------------------------------- */
 
@@ -441,14 +457,32 @@ int zz_memcmp(const void *_a, const void *_b, int n);
 #endif
 
 
+#if 0 && defined NO_LIBC
+
 EXTERN_C
-void zz_free(const char * obj, void * pptr);
+void (*zz_free_func)(void ** pptr);
 EXTERN_C
-void *zz_alloc(const char * obj, const uint_t size, const int clear);
+void * (*zz_alloc_func)(const uint_t size, int clear);
+
+#define zz_malloc(OBJ,SIZE) (zz_alloc_func ? zz_alloc_func((SIZE),0) : 0)
+#define zz_calloc(OBJ,SIZE) (zz_alloc_func ? zz_alloc_func((SIZE),1) : 0)
+#define zz_free(OBJ,PTR) \
+  if (zz_free_func) { zz_free_func( (void**)(PTR) ); } else
+
+#else
+
 EXTERN_C
-void *zz_calloc(const char * obj, const uint_t size);
+void zz_free_real(void ** pptr);
 EXTERN_C
-void *zz_malloc(const char * obj, const uint_t size);
+void *zz_alloc_real(const uint_t size, const int clear);
+
+#define zz_malloc(OBJ,SIZE) zz_alloc_real((SIZE),0)
+#define zz_calloc(OBJ,SIZE) zz_alloc_real((SIZE),1)
+#define zz_free(OBJ,PTR) zz_free_real( (void **) (PTR) ) 
+
+#endif
+
+
 EXTERN_C
 str_t * zz_strset(str_t * str, const char * set);
 EXTERN_C
@@ -474,7 +508,7 @@ int bin_load(bin_t ** pbin, vfs_t vfs, uint_t len, uint_t xlen, uint_t max);
 /* ---------------------------------------------------------------------- */
 
 /**
- * Messages and errors.
+ * Messages logging.
  * @{
  */
 #ifndef FMT12
@@ -485,61 +519,31 @@ int bin_load(bin_t ** pbin, vfs_t vfs, uint_t len, uint_t xlen, uint_t max);
 # endif
 #endif
 
-#ifdef NO_MSG
-
-# define nmsg(FMT,...) do {} while(0)
-# define emsg(FMT,...) nmsg(FMT,##__VA_ARGS__)
-# define wmsg(FMT,...) nmsg(FMT,##__VA_ARGS__)
-# define imsg(FMT,...) nmsg(FMT,##__VA_ARGS__)
-# define dmsg(FMT,...) nmsg(FMT,##__VA_ARGS__)
-
+#ifdef NO_LOG
+# define zz_log_err(FMT,...) zz_void
+# define zz_log_wrn(FMT,...) zz_void
+# define zz_log_inf(FMT,...) zz_void
+# define zz_log_dbg(FMT,...) zz_void
 #else
-
-typedef int (*msg_f)(FILE *, const char *, va_list);
-
-EXTERN_C
-msg_f msgfunc;
-EXTERN_C
-void msg_newline(void);
-EXTERN_C
-int msg_binary(FILE * f);
-EXTERN_C FMT12
-void emsg(const char * fmt, ...);
-EXTERN_C FMT12
-void wmsg(const char * fmt, ...);
-EXTERN_C FMT12
-void debug_msg(const char *fmt, ...);
-EXTERN_C FMT12
-void imsg(const char *fmt, ...);
-EXTERN_C
-int sysmsg(const char * obj, const char * alt);
-EXTERN_C FMT12
-void dummy_msg(const char *fmt, ...);
-
-#ifndef dmsg
-# if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
-#  if DEBUG == 1
-#   define dmsg(FMT,...) debug_msg((FMT),##__VA_ARGS__)
-#  else
-#   define dmsg(FMT,...) do {} while(0)
-#  endif
-# else
-#  define dmsg dummy_msg
-# endif
+EXTERN_C FMT12 void
+zz_log_err(const char * fmt,...);
+EXTERN_C FMT12 void
+zz_log_wrn(const char * fmt,...);
+EXTERN_C FMT12 void
+zz_log_inf(const char * fmt,...);
+EXTERN_C FMT12 void
+zz_log_dbg(const char * fmt,...);
 #endif
 
+#define emsg(FMT,...) zz_log_err(FMT,##__VA_ARGS__)
+#define wmsg(FMT,...) zz_log_wrn(FMT,##__VA_ARGS__)
+#define imsg(FMT,...) zz_log_inf(FMT,##__VA_ARGS__)
+#ifndef NDEBUG
+# define dmsg(FMT,...) zz_log_dbg(FMT,##__VA_ARGS__)
+#else
+# define dmsg(FMT,...) zz_void
 #endif
 
-/**
- * @}
- */
-
-/* ---------------------------------------------------------------------- */
-
-/**
- * Binary container functions.
- * @{
- */
 /**
  * @}
  */
@@ -551,7 +555,9 @@ void dummy_msg(const char *fmt, ...);
  * @{
  */
 EXTERN_C
-int vfs_add(vfs_dri_t * dri);
+int vfs_register(const vfs_dri_t * dri);
+EXTERN_C
+int vfs_unregister(const vfs_dri_t * dri);
 EXTERN_C
 const char * vfs_uri(vfs_t vfs);
 EXTERN_C
@@ -607,26 +613,6 @@ EXTERN_C
 int vset_load(vset_t *vset, const char *uri);
 EXTERN_C
 int q4_load(vfs_t vfs, q4_t *q4);
-/**
- * @}
- */
-
-/* ---------------------------------------------------------------------- */
-
-/**
- * Player
- * @{
- */
-EXTERN_C
-int zz_init(play_t * P);
-EXTERN_C
-int zz_play(play_t * P);
-EXTERN_C
-int16_t * zz_pull(play_t * P, int * ptr_n);
-EXTERN_C
-int zz_measure(play_t * P);
-EXTERN_C
-int zz_kill(play_t * P);
 /**
  * @}
  */

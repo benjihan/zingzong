@@ -6,19 +6,25 @@
 # @brief   Make rules for clean related targets
 #
 
-depends := $(sources:.c=.d)
+RM_F ?= rm -f --
+
+depends = $(sources:.c=.d)
 
 clean-cfg:
-	@-rm -f -- $(cc_conf)
+	@$(RM_F) $(cc_conf)
 
 clean-dep: clean-cfg
-	@-rm -f -- $(depends) 
+	@$(RM_F) $(depends) 
 
 clean-obj:
-	@-rm -f -- $(objects)
+	@$(RM_F) $(objects)
 
-clean: clean-dep clean-obj
-	@-rm -f -- $(targets) $(clean_files)
-	@echo "$(targets) cleaned up"
 
-.PHONY: clean clean-obj clean-dep clean-cfg
+clean-tgt: CLEAN_TARGETS ?= $(sort $(targets) $(clean_files))
+clean-tgt:
+	@-$(RM_F) $(CLEAN_TARGETS)
+	@echo "[DEL] $(CLEAN_TARGETS)"
+
+clean: clean-dep clean-obj clean-tgt
+
+.PHONY: clean clean-tgt clean-obj clean-dep clean-cfg

@@ -7,22 +7,30 @@
 # by Benjamin Gerard AKA Ben/OVR
 #
 
-SHELL      = /bin/sh
+PACKAGE   := zingzong
 srcdir    := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
 topdir    := $(realpath $(srcdir)/..)
-PKGCONFIG  = pkg-config
-PACKAGE   := zingzong
-VERSION   := $(shell $(srcdir)/vcversion.sh || echo ERROR)
+VERSION   := $(shell $(topdir)/vcversion.sh || echo ERROR)
 ifeq ($(VERSION),ERROR)
 $(error vcversion.sh failed)
 endif
+PKGCONFIG  = pkg-config
 pkgconfig  = $(shell $(PKGCONFIG) $(1) || echo n/a)
 STRIP      = strip
 
 # ----------------------------------------------------------------------
 
-target     = zingzong
-targets    = $(target)
+exename = $1
+libname = $1.a
+dllname = $1.dll
+
+# ----------------------------------------------------------------------
+
+targets = $(zingzong_exe) # $(zingzong_dll)
+
+zingzong_exe = $(call exename,zingzong)
+zingzong_lib = $(call libname,zingzong)
+zingzong_dll = $(call dllname,zingzong)
 
 # ----------------------------------------------------------------------
 
@@ -32,7 +40,7 @@ vpath %.c $(srcdir)
 #  Setup some default CFLAGS
 #
 ifndef CFLAGS
-CFLAGS := -Wall
+CFLAGS := -Wall -fvisibility=hidden
 ifdef DEBUG
 CFLAGS += -Og -g -DDEBUG=$(DEBUG)
 else
@@ -152,21 +160,48 @@ zz_LDFLAGS   = $(org_LDFLAGS) $(gb_LDFLAGS)
 all: $(targets)
 .PHONY: all
 
-$(target): override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
-$(target): override CFLAGS   = $(zz_CFLAGS)
-$(target): override LDLIBS   = $(zz_LDLIBS)
-$(target): override LDFLAGS  = $(zz_LDFLAGS)
+$(zingzong_exe) $(zingzong_dll): override CPPFLAGS = $(zz_CPPFLAGS)
+$(zingzong_exe) $(zingzong_dll): override CFLAGS   = $(zz_CFLAGS)
+$(zingzong_exe): override LDLIBS   = $(zz_LDLIBS)
+$(zingzong_exe): override LDFLAGS  = $(zz_LDFLAGS)
 
-mix := mix_void mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
+zz_play.o: override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
+
+zingzong_dll_src = $(zingzong_vfs_src)
+zingzong_exe_src = $(zingzong_out_src) $(zingzong_vfs_src)
+zingzong_lib_src = $(zingzong_mix_src) $(zingzong_zzz_src)
+
+zingzong_dll_obj = $(zingzong_dll_src:.c=.o)
+zingzong_exe_obj = $(zingzong_exe_src:.c=.o)
+zingzong_lib_obj = $(zingzong_lib_src:.c=.o)
+
+zingzong_mix_src = $(addsuffix .c,$(mix))
+zingzong_out_src = $(addsuffix .c,$(out))
+zingzong_vfs_src = $(addsuffix .c,$(vfs))
+zingzong_zzz_src = $(addsuffix .c,$(zzz))
+
+zingzong_mix_obj = $(zingzong_mix_src:.c=.o)
+zingzong_out_obj = $(zingzong_out_src:.c=.o)
+zingzong_vfs_obj = $(zingzong_vfs_src:.c=.o)
+zingzong_zzz_obj = $(zingzong_zzz_src:.c=.o)
+
+mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
 out := out_ao out_raw
 vfs := vfs_file
-zz  := zz_load zz_init zz_play zz_bin zz_str zz_vfs zz_mixers zz_msg
+zzz := zz_load zz_init zz_play zz_bin zz_str zz_vfs zz_mixers zz_log
 
-sources := $(addsuffix .c,$(zz) $(vfs) $(mix) $(out))
-headers := zingzong.h zz_private.h mix_common.c
-objects  = $(sources:.c=.o)
+sources = $(sort $(zingzong_exe_src) $(zingzong_lib_src) $(zingzong_dll_src))
+headers = zingzong.h zz_private.h mix_common.c
+objects = $(sources:.c=.o)
 
-$(target): $(objects)
+$(zingzong_dll): $(zingzong_lib_obj) $(zingzong_dll_obj)
+$(zingzong_exe): $(zingzong_lib_obj) $(zingzong_exe_obj)
+$(zingzong_lib): $(zingzong_lib_obj:%=$(zingzong_lib)(%))
+
+%.dll:
+	$(CC) -mdll $(LDFLAGS) $(LDLIBS) -o $@ $^
+
+clean_files += $(zingzong_lib) $(zingzong_exe) $(zingzong_dll)
 
 # ----------------------------------------------------------------------
 #  Clean
@@ -184,73 +219,20 @@ include $(topdir)/src/make.depend
 #  Distrib
 # ----------------------------------------------------------------------
 
-zz_winamp_list = in_zingzong.c in_zingzong.h Makefile
-zz_m68k_list = Makefile mix_aga.c player.c startup.s test.s	\
+dist_top_lst = LICENSE README.md vcversion.sh
+dist_src_lst = README.md Makefile $(sources) $(headers) make.clean	\
+make.depend make.dist
+dist_amp_lst = README.md Makefile in_zingzong.c in_zingzong.h
+dist_68k_lst = README.md Makefile mix_aga.c player.c startup.s test.s	\
 test_sc68.s zz_m68k.c
 
-dist_base := zingzong-$(VERSION)
-dist_arch := $(dist_base).tar.xz
-dist_list := \
- $(addprefix src/,$(sources) $(headers) Makefile vcversion.sh) \
- LICENSE README.md \
- _build/zz_build _build/zz_win_build \
- src/make.depend src/make.clean \
- $(addprefix src/zz-winamp/,$(zz_winamp_list)) \
- $(addprefix src/zz-m68k/,$(zz_m68k_list))
+dist_lst = \
+ $(addprefix ./,$(dist_top_lst)) \
+ $(addprefix src/,$(dist_src_lst)) \
+ $(addprefix src/zz-winamp/,$(dist_amp_lst)) \
+ $(addprefix src/zz-m68k/,$(dist_68k_lst))
 
-
-dist: distrib
-distcheck: dist-check
-
-distrib: dist-arch
-
-dist-base:
-	@test ! -d "$(dist_base)" || \
-	chmod -R -- u+w $(dist_base)/ && \
-	rm -rf -- $(dist_base)/
-	@mkdir -- "$(dist_base)" # Fail if exist or whatever
-
-.PHONY: 
-
-dist-arch: dist-base
-	@tar -C $(topdir) -cpf - $(dist_list) | tar -C $(dist_base) -xpf -
-	@echo $(VERSION) >$(dist_base)/VERSION
-	@echo $(VERSION) >$(dist_base)/src/VERSION
-	@tar --owner=0 --group=0 -czpf $(dist_arch) $(dist_base)/
-	@rm -rf -- $(dist_base)
-	@echo "distrib file -- \"$(dist_arch)\" -- is ready"
-
-dist-extract: dist-arch
-	@[ ! -e $(dist_base) ] || { echo $(dist_base) already exist; false; }
-	@[ ! -e _build-$(dist_base) ] || rm -rf -- _build-$(dist_base)
-	@tar xf $(dist_arch)
-	@chmod -R ug-w $(dist_base)/
-	@echo "extracted -- \"$(dist_arch)\""
-
-dist-all: all distrib
-
-.IGNORE: dist-make 	 # detect error on presence of _build-distbase
-dist-make: dist-extract
-	@mkdir -- _build-$(dist_base) && \
-	echo "compiling -- $(dist_base)" && \
-	{ test "x$(MAKERULES)" = x || \
-	cp -- "$(MAKERULES)" _build-$(dist_base)/; } && \
-	$(MAKE) -sC _build-$(dist_base) \
-		-f ../$(dist_base)/src/Makefile dist-all && \
-	rm -rf -- _build-$(dist_base)
-
-dist-sweep:
-	@test ! -d $(dist_base) || \
-	chmod -R -- u+w $(dist_base) && rm -rf -- $(dist_base)
-	@test ! -d _build-$(dist_base) || {\
-		rm -rf -- _build-$(dist_base); \
-		echo "compilation of $(dist_base) has failed"; \
-		false; }
-
-dist-check: dist-make dist-sweep
-
-.PHONY: distcheck dist-check distrib dist
-.PHONY: dist-make dist-extract dist-arch dist-base
+include $(topdir)/src/make.dist
 
 # ----------------------------------------------------------------------
 #  Install / Uninstall

@@ -10,39 +10,31 @@
 #include <stdlib.h>
 #include <errno.h>
 
+
+#ifdef NO_LIBC
+
+void (*zz_free_func)(void ** pptr);
+void * (*zz_alloc_func)(const uint_t size, int clear);
+
+#else
+
 void
-zz_free(const char * obj, void * pptr)
+zz_free_real(void ** pptr)
 {
-  void ** const p = (void **) pptr;
-  if (*p) {
-    errno = 0;
-    free(*p);
-    *p = 0;
-    if (errno)
-      sysmsg(obj,"free");
+  if (*pptr) {
+    free(*pptr);
+    *pptr = 0;
   }
 }
 
 void *
-zz_alloc(const char * obj, const uint_t size, const int clear)
+zz_alloc_real(const uint_t size, const int clear)
 {
   void * ptr = clear ? calloc(1,size) : malloc(size);
-  if (!ptr)
-    sysmsg(obj,"alloc");
   return ptr;
 }
 
-void *
-zz_calloc(const char * obj, const uint_t size)
-{
-  return zz_alloc(obj, size, 1);
-}
-
-void *
-zz_malloc(const char * obj, const uint_t size)
-{
-  return zz_alloc(obj, size, 0);
-}
+#endif
 
 str_t *
 zz_strset(str_t * str, const char * set)
@@ -64,7 +56,7 @@ zz_stralloc(unsigned int size)
   str_t * str;
   const uint_t nalloc = size + (intptr_t)(((str_t*)0)->_b);
 
-  str = zz_alloc("string", nalloc, 0);
+  str = zz_malloc("string", nalloc);
   if (str) {
     str->_s = str->_b;
     str->_n = size;

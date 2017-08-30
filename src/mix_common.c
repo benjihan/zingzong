@@ -47,23 +47,23 @@ mix_gen(mix_fp_t * const M, const int k, int16_t * restrict b, int n)
   mix_chan_t * const restrict K = M->chan+k;
   const int8_t * const pcm = (const int8_t *)K->pcm;
 
-  assert(n > 0 && n <= MIXBLK);
-  assert(k >= 0 && k < 4);
+  zz_assert(n > 0 && n <= MIXBLK);
+  zz_assert(k >= 0 && k < 4);
 
   if (K->xtp) {
     uint_t idx = K->idx;
     const uint_t stp = K->xtp;
 
-    assert(K->pcm);
-    assert(K->end > K->pcm);
-    assert(idx >= 0 && idx < K->len);
+    zz_assert(K->pcm);
+    zz_assert(K->end > K->pcm);
+    zz_assert(idx >= 0 && idx < K->len);
 
     /* Add N PCM */
     do {
       ADDPCM();
     } while(--n);
 
-    assert ( K->pcm+(idx>>FP) <= K->end );
+    zz_assert( K->pcm+(idx>>FP) <= K->end );
 
     /* Have reach end ? */
     if (idx >= K->len) {
@@ -74,11 +74,11 @@ mix_gen(mix_fp_t * const M, const int k, int16_t * restrict b, int n)
       else {
         const uint_t ovf = (idx - K->len) % K->lpl;
         idx = K->len - K->lpl + ovf;
-        assert( idx >= K->len-K->lpl && idx < K->len );
+        zz_assert( idx >= K->len-K->lpl && idx < K->len );
       }
     }
 
-    assert(idx >= 0 && idx < K->len);
+    zz_assert(idx >= 0 && idx < K->len);
     K->idx = idx;
   }
 }
@@ -106,8 +106,8 @@ static uint_t xstep(uint_t stp, uint_t ikhz, uint_t ohz)
     : (uint64_t) stp * ikhz * (1000u >> 3) / (ohz << (16-FP-3))
     ;
   uint_t res = tmp;
-  assert( (uint64_t)res == tmp); /* check overflow */
-  assert( res );
+  zz_assert( (uint64_t)res == tmp); /* check overflow */
+  zz_assert( res );
   return res;
 }
 
@@ -118,8 +118,8 @@ push_cb(play_t * const P)
   int16_t  * restrict b;
   int k, n;
 
-  assert(P);
-  assert(M);
+  zz_assert(P);
+  zz_assert(M);
 
   /* Clear mix buffer */
   zz_memclr(P->mix_buf,P->pcm_per_tick<<1);
@@ -132,7 +132,7 @@ push_cb(play_t * const P)
     switch (C->trig) {
     case TRIG_NOTE:
 
-      assert(C->note.ins);
+      zz_assert(C->note.ins);
       K->idx = 0;
       K->pcm = (int8_t *) C->note.ins->pcm;
       K->len = C->note.ins->len << FP;
@@ -146,7 +146,7 @@ push_cb(play_t * const P)
     case TRIG_NOP:
       break;
     default:
-      assert(!"wtf");
+      zz_assert(!"wtf");
       return E_MIX;
     }
   }
@@ -168,7 +168,7 @@ push_cb(play_t * const P)
 static int init_cb(play_t * const P)
 {
   int ecode = E_SYS;
-  mix_fp_t * const M = zz_calloc("mixer-data", sizeof(mix_fp_t));
+  mix_fp_t * const M = zz_calloc("mixer",sizeof(mix_fp_t));
 
   if (M) {
     P->mixer_data = M;
@@ -179,7 +179,7 @@ static int init_cb(play_t * const P)
 
 static void free_cb(play_t * const P)
 {
-  zz_free("mixer-data",&P->mixer_data);
+  zz_free("mixer",&P->mixer_data);
 }
 
 mixer_t SYMB =

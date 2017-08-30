@@ -71,7 +71,7 @@ static uint16_t xstep(uint32_t stp, uint8_t khz)
     /* 20kHz */ { 0x00b15840, 0x00b2fa2e },
   };
 
-  assert( (stp>>3) < 0x10000);
+  zz_assert( (stp>>3) < 0x10000);
   return divu(ftbl[khz-4][0]>>3,stp>>3);
 }
 
@@ -82,8 +82,8 @@ push_cb(play_t * const P)
   mix_aga_t * const M = (mix_aga_t *)P->mixer_data;
   int k;
 
-  assert(P);
-  assert(M);
+  zz_assert(P);
+  zz_assert(M);
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -93,7 +93,7 @@ push_cb(play_t * const P)
 
     switch (K->status = C->trig) {
     case TRIG_NOTE:
-      assert (C->note.ins == &P->vset.inst[C->curi]);
+      zz_assert(C->note.ins == &P->vset.inst[C->curi]);
       DMACON = K->dmacon;              /* Disable audio channel DMA */
       K->lp_adr  = M->inst[C->curi].lp_adr;
       K->lp_len  = M->inst[C->curi].lp_len;
@@ -123,7 +123,7 @@ push_cb(play_t * const P)
       break;
 
     default:
-      assert(!"wtf");
+      zz_assert(!"wtf");
       return E_MIX;
     }
   }

@@ -253,7 +253,7 @@ for arg in "$@"; do
 done
 echo
 make "$@"
-version=`$SHELL ${top}/../src/vcversion.sh`
+version=`$SHELL ${top}/../vcversion.sh`
 
 out="# ${project:-zingzong} ${version} for ${arch} #" 
 cat <<EOF

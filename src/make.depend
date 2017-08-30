@@ -37,8 +37,9 @@ CC_CONF_N  = /* $(VERSION): $(zz_CPPFLAGS) $(zz_CFLAGS) */
 #$(info CC_CONF_N=[$(CC_CONF_N)])
 
 ifneq ($(CC_CONF_O),$(CC_CONF_N))
-$(info *** GENERATING [$(cc_conf)])
-$(shell echo '$(CC_CONF_N)'  >$(cc_conf))
+# $(shell echo '$(CC_CONF_N)'  >$(cc_conf))
+$(file > $(cc_conf),$(CC_CONF_N))
+$(info Generating [$(cc_conf)])
 endif
 
 CCDEP = $(CC)

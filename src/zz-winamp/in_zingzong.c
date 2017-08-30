@@ -375,7 +375,6 @@ enum {
 static int load(play_t * const P, const char * uri, int measure)
 {
   int ecode = E_INP;
-  uint8_t hd[222];
 
   zz_memclr(P,sizeof(*P));
   ecode = zz_load(P,uri,0);
@@ -406,7 +405,6 @@ static int load(play_t * const P, const char * uri, int measure)
     }
   }
 
-error_exit:
   dmsg("zz-winamp: load -- '%s' => %d\n", uri, ecode);
   return ecode;
 }
@@ -710,7 +708,7 @@ intptr_t winampGetExtendedRead_getData(
   volatile int * end = _end;
   int cnt;
 
-  assert(end);
+  zz_assert(end);
 
   for (cnt = 0; len >= 2; ) {
     int16_t * pcm;

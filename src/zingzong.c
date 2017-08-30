@@ -2,7 +2,7 @@
  * @file   zingzong.c
  * @data   2017-06-06
  * @author Benjamin Gerard
- * @brief  a simple quartet music player.
+ * @brief  a simple Microdeal quartet music player.
  *
  * ----------------------------------------------------------------------
  *
@@ -67,26 +67,12 @@ static const char bugreport[] = \
 #endif
 
 /* ----------------------------------------------------------------------
- * Package info
- * ---------------------------------------------------------------------- */
-
-#ifndef PACKAGE_NAME
-#define PACKAGE_NAME "zingzong"
-#endif
-
-#ifndef PACKAGE_VERSION
-#error PACKAGE_VERSION should be defined
-#endif
-
-#ifndef PACKAGE_STRING
-#define PACKAGE_STRING PACKAGE_NAME " " PACKAGE_VERSION
-#endif
-
-/* ----------------------------------------------------------------------
  * Globals
  * ---------------------------------------------------------------------- */
 
-char me[] = PACKAGE_NAME;
+EXTERN_C zz_vfs_dri_t zz_file_vfs(void);
+
+char me[] = "zingzong";
 
 enum {
   /* First (0) is default */
@@ -100,7 +86,58 @@ enum {
 static int opt_splrate=SPR_DEF, opt_mixerid=-1, opt_tickrate=200;
 static int8_t opt_mute, opt_help, opt_outtype;
 static char * opt_length, * opt_output;
-static play_t play;
+static play_t play;        /* $$$ GB: Bad ... need to used zz_new() */
+
+/* ----------------------------------------------------------------------
+ * Message and logging
+ * ----------------------------------------------------------------------
+ */
+
+static int8_t newline = 1;              /* newline tracker */
+EXTERN_C int8_t can_use_std;            /* out_raw.c */
+
+/* Very lazy and very wrong way to handle that. It won't work as soon
+ * as stdout ans stderr are not the same file (or tty).
+ */
+static void set_newline(const char * fmt)
+{
+  if (*fmt)
+    newline = fmt[strlen(fmt)-1] == '\n';
+}
+
+/* Determine log FILE from log level. */
+static FILE * log_file(int log)
+{
+  int8_t fd = 1 + ( log <= ZZ_LOG_WRN ); /* preferred channel */
+  if ( ! (fd & can_use_std) ) fd ^= 3;   /* alternate channel */
+  return  (fd & can_use_std)
+    ? fd == 1 ? stdout : stderr
+    : 0                                 /* should not happen anyway */
+    ;
+}
+
+static void log_newline(int log)
+{
+  if (!newline) {
+    FILE * out = log_file(log);
+    if (out) putc('\n',out);
+    newline = 1;
+  }
+}
+
+static void mylog(int log, void * user, const char * fmt, va_list list)
+{
+  FILE * out = log_file(log);
+  if (out) {
+    if (log <= ZZ_LOG_WRN) {
+      fprintf(out, "\n%s: "+newline, me);
+      newline = 0;
+    }
+    vfprintf(out, fmt, list);
+    set_newline(fmt);
+    fflush(out);
+  }
+}
 
 /* ----------------------------------------------------------------------
  * Usage and version
@@ -113,26 +150,28 @@ static play_t play;
 static void print_usage(int level)
 {
   int i;
+  const char * name="?", * desc;
+  zz_mixer_enum(ZZ_DEFAULT_MIXER,&name,&desc);
+
   printf (
     "Usage: zingzong [OPTIONS] <song.4v> [<inst.set>]" "\n"
     "       zingzong [OPTIONS] <music.4q>"  "\n"
     "\n"
-    "  A simple /|\\ Atari ST /|\\ quartet music file player\n"
+    "  A makeMicrodeal quartet music file player\n"
     "\n"
     "OPTIONS:\n"
     " -h --help --usage  Print this message and exit.\n"
     " -V --version       Print version and copyright and exit.\n"
     " -t --tick=HZ       Set player tick rate (default is 200hz).\n"
     " -r --rate=[R,]HZ   Set re-sampling method and rate (%s,%uK).\n",
-    zz_default_mixer->name, SPR_DEF/1000u);
+    name, SPR_DEF/1000u);
 
   if (!level)
     puts("                    Try `-hh' to print the list of [R]esampler.");
   else
-    for (i=0; zz_mixers[i]; ++i) {
-      const  mixer_t * const m = zz_mixers[i];
+    for (i=0; i == zz_mixer_enum(i,&name,&desc); ++i) {
       printf("%6s `%s' %s %s.\n",
-             i?"":" R :=", m->name,"............."+strlen(m->name),m->desc);
+             i?"":" R :=", name,"............."+strlen(name),desc);
     }
 
   puts(
@@ -190,7 +229,7 @@ static void print_usage(int level)
  */
 static void print_version(void)
 {
-  puts(PACKAGE_STRING "\n");
+  printf("%s\n",zz_version());
   puts(copyright);
   puts(license);
 }
@@ -201,6 +240,7 @@ static void print_version(void)
  * ----------------------------------------------------------------------
  */
 
+#ifndef NO_LOG
 static const char * tickstr(uint_t ticks, uint_t rate)
 {
   static char s[80];
@@ -234,6 +274,9 @@ static const char * tickstr(uint_t ticks, uint_t rate)
   s[i] = 0;
   return s;
 }
+
+#endif
+
 #ifndef NO_AO
 
 static char * fileext(char * base)
@@ -340,7 +383,7 @@ static int time_parse(uint_t * pticks, char * time)
     }
   }
 
- done:
+done:
   if (*s) {
     emsg("invalid argument -- length=%s\n", time);
     return E_ARG;
@@ -422,7 +465,7 @@ static int modecmp(const char * mix, char * arg,  char ** pend)
   /* [arg:len] = quality */
   if (len > qlen || strncasecmp(qua,arg,len))
     return 0;
-  assert (*brk == 0 || *brk == ',');
+  zz_assert(*brk == 0 || *brk == ',');
   *pend = brk + (*brk == ',');
   res |= 2 - (len == qlen);
   return res;
@@ -438,14 +481,16 @@ static int modecmp(const char * mix, char * arg,  char ** pend)
 static int find_mixer(char * arg, char ** pend)
 {
   int i,f;
-  const mixer_t * m;
+
+  const char * name, * desc;
+
   /* Get re-sampling mode */
-  for (i=0, f=-1; !!(m = zz_mixers[i]); ++i) {
-    int res = modecmp(m->name, arg, pend);
+  for (i=0, f=-1; i == zz_mixer_enum(i,&name,&desc); ++i) {
+    int res = modecmp(name, arg, pend);
 
     if (res == 1) {
       /* prefect match */
-      f = i; m = 0;
+      f = i; i = ZZ_DEFAULT_MIXER;
       break;
     } else if (res) {
       /* partial match */
@@ -457,7 +502,7 @@ static int find_mixer(char * arg, char ** pend)
 
   if (f < 0)
     f = 0;                              /* not found */
-  else if (m)
+  else if (i != ZZ_DEFAULT_MIXER)
     f = -(f+1);                         /* ambiguous */
   else
     f = f+1;                            /* found */
@@ -516,13 +561,13 @@ static int uint_mute(char * arg, char * name)
   return mute;
 }
 
-static int too_few_arguments(void)
+static zz_err_t too_few_arguments(void)
 {
   emsg("too few arguments. Try --help.\n");
   return E_ARG;
 }
 
-static int too_many_arguments(void)
+static zz_err_t too_many_arguments(void)
 {
   emsg("too many arguments. Try --help.\n");
   return E_ARG;
@@ -561,14 +606,17 @@ int main(int argc, char *argv[])
     { "mute=",   1, 0, 'm' },
     { 0 }
   };
-  int c, ecode=E_ERR;
+  int c, ecode=E_ERR, ecode2;
   vfs_t inp = 0;
   play_t * const P = &play;
   str_t  * outuri = 0;
   char * songuri = 0, * vseturi = 0;
 
-  assert( sizeof(songhd_t) ==  16);
-  assert( sizeof(sequ_t)   ==  12);
+  zz_assert( sizeof(songhd_t) ==  16);
+  zz_assert( sizeof(sequ_t)   ==  12);
+
+  /* Install logger */
+  zz_log(mylog,0);
 
   opterr = 0;
   while ((c = getopt_long (argc, argv, sopts, lopts, 0)) != -1) {
@@ -609,7 +657,7 @@ int main(int argc, char *argv[])
     default:
       emsg("unexpected option -- `%c' (%d)\n",
            isgraph(c)?c:'.', c);
-      assert(!"should not happen");
+      zz_assert(!"should not happen");
       RETURN (E_666);
     }
   }
@@ -624,17 +672,23 @@ int main(int argc, char *argv[])
 
   zz_memclr(P,sizeof(*P));
 
-  if (opt_mixerid < 0)
-    opt_mixerid = find_mixer((char *)zz_default_mixer->name,0) - 1;
+  if (opt_mixerid < 0) {
+    const char * name = "?", * desc;
+    zz_mixer_enum(ZZ_DEFAULT_MIXER,&name,&desc);
+    opt_mixerid = find_mixer((char *)name,0) - 1;
+    dmsg("Default mixer is %d:%s (%s)\n", opt_mixerid, name, desc);
+    zz_assert( opt_mixerid >= 0 );
+  }
   if (opt_mixerid < 0)
     opt_mixerid = 0;
 
-  P->mixer      = zz_mixers[opt_mixerid];
+  zz_mixer_set(P,opt_mixerid);
   P->spr        = opt_splrate;
   P->rate       = opt_tickrate;
   P->max_ticks  = MAX_DETECT * P->rate;
   P->end_detect = !opt_length;
   if (!P->end_detect) {
+    zz_assert(opt_length);
     ecode = time_parse(&P->max_ticks, opt_length);
     if (ecode)
       goto error_exit;
@@ -644,6 +698,8 @@ int main(int argc, char *argv[])
   if (optind<argc)
     vseturi = argv[optind++];
 
+  if (zz_vfs_add(zz_file_vfs()))
+    RETURN(E_SYS);
   ecode = zz_load(P, songuri, vseturi);
   if (ecode == E_ARG)
     RETURN (too_many_arguments());
@@ -678,7 +734,7 @@ int main(int argc, char *argv[])
     break;
 
   default:
-    assert(!"unexpected output type");
+    zz_assert(!"unexpected output type");
 
   case OUT_IS_NULL:
     P->out = out_raw_open(opt_splrate,"null:");
@@ -723,15 +779,34 @@ int main(int argc, char *argv[])
       imsg("duration: %s\n", tickstr(P->max_ticks, P->rate));
   }
 
-  if (!ecode)
-    ecode = zz_play(P);
+  if (!ecode) {
+    uint_t sec = (uint_t) -1;
+    int8_t done = 0;
+    do {
+      ecode = zz_push(P,&done);
+      if (!ecode) {
+        uint_t s = zz_position(P,0) / 1000u;
+        if (s != sec) {
+          sec = s;
+          imsg("\n |> %02u:%02u\r"+newline,
+               sec / 60u, sec % 60u );
+          newline = 1;
+        }
+      }
+    } while (!done);
+    if (ecode) {
+      emsg("(%d) prematured end (tick: %u) -- %s\n",
+           ecode, P->tick, ZZSTR(P->songuri));
+    }
+  }
 
 error_exit:
   /* clean exit */
   zz_strfree(&outuri);
   vfs_del(&inp);
-  if (c = zz_kill(P), (c && !ecode))
-    ecode = c;
-  msg_newline();
+
+  if (ecode2 = zz_close(P), (ecode2 && !ecode))
+    ecode = ecode2;
+  log_newline(ZZ_LOG_INF);
   return ecode;
 }

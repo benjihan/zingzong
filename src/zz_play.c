@@ -9,13 +9,14 @@
 
 /* ---------------------------------------------------------------------- */
 
-void zz_chan_init(play_t * P, int k)
+void
+zz_chan_init(play_t * P, int k)
 {
   chan_t * const C = P->chan+k;
   sequ_t * seq;
   int cmd;
 
-  assert(k >= 0 && k < 4);
+  zz_assert(k >= 0 && k < 4);
   zz_memclr(C,sizeof(*C));
   C->id  = 'A'+k;
   C->num = k;
@@ -30,13 +31,13 @@ void zz_chan_init(play_t * P, int k)
   }
   C->loop_sp = C->loops;
   C->end = seq;
-  assert(C->sq0);
-  assert(C->sqN);
+  zz_assert(C->sq0);
+  zz_assert(C->sqN);
 }
 
 /* ---------------------------------------------------------------------- */
 
-int zz_play_init(play_t * const P)
+zz_err_t zz_play_init(play_t * const P)
 {
   int k;
 
@@ -55,7 +56,7 @@ int zz_play_init(play_t * const P)
 static inline
 uint16_t loop_off(const chan_t * const C, const sequ_t * const seq)
 {
-  assert( seq - C->seq < 0x10000 );
+  zz_assert( seq - C->seq < 0x10000 );
   return (const int8_t *)seq - (const int8_t *)C->seq;
 }
 
@@ -77,7 +78,7 @@ int zz_play_chan(play_t * const P, const int k)
 
   /* Portamento */
   if (C->note.stp) {
-    assert(C->note.cur);
+    zz_assert(C->note.cur);
     if (!C->note.cur)
       C->note.cur = C->note.aim; /* safety net */
     C->trig = TRIG_SLIDE;
@@ -118,13 +119,13 @@ int zz_play_chan(play_t * const P, const int k)
 
     case 'P':                           /* Play-Note */
       if (C->curi < 0 || C->curi >= P->vset.nbi) {
-        emsg("%c[%u]@%u: using invalid instrument number -- %d/%d\n",
+        dmsg("%c[%u]@%u: using invalid instrument number -- %d/%d\n",
              'A'+k, (uint_t)(seq-1-C->seq), P->tick,
              C->curi+1,P->vset.nbi);
         return E_SNG;
       }
       if (!P->vset.inst[C->curi].len) {
-        emsg("%c[%u]@%u: using tainted instrument -- I#%02u\n",
+        dmsg("%c[%u]@%u: using tainted instrument -- I#%02u\n",
              'A'+k, (uint_t)(seq-1-C->seq), P->tick,
              C->curi+1);
         return E_SET;
@@ -145,7 +146,7 @@ int zz_play_chan(play_t * const P, const int k)
        *     I'm not sure what the original quartet player does.
        *     Here I'm just starting the goal note.
        */
-      /* assert(C->note.cur); */
+      /*zz_assert(C->note.cur); */
       if (!C->note.cur) {
         C->trig     = TRIG_NOTE;
         C->note.ins = P->vset.inst + C->curi;
@@ -162,7 +163,7 @@ int zz_play_chan(play_t * const P, const int k)
 
       /* GB: Should I ? What if a slide happens after a rest ? It does
        *     not really make sense but technically it's
-       *     possible. We'll see if it triggers the assert.
+       *     possible. We'll see if it triggers thezz_assert.
        *
        * GB: See note above. It happens so I shouldn't !
        */
@@ -175,7 +176,7 @@ int zz_play_chan(play_t * const P, const int k)
         l->off = loop_off(C,seq);
         l->cnt = 0;
       } else {
-        emsg("%c off:%u tick:%u -- loop stack overflow\n",
+        dmsg("%c off:%u tick:%u -- loop stack overflow\n",
              'A'+k, (uint_t)(seq-C->seq-1), P->tick);
         return E_PLA;
       }
@@ -219,14 +220,14 @@ int zz_play_chan(play_t * const P, const int k)
         seq = loop_seq(C,l->off);
       } else {
         --C->loop_sp;
-        assert(C->loop_sp >= C->loops);
+        zz_assert(C->loop_sp >= C->loops);
       }
 
 
     } break;
 
     default:
-      emsg("invalid seq-%c command #%04X\n",'A'+k,cmd);
+      dmsg("invalid seq-%c command #%04X\n",'A'+k,cmd);
       return E_PLA;
     } /* switch */
   } /* while !wait */
@@ -236,9 +237,10 @@ int zz_play_chan(play_t * const P, const int k)
 }
 
 /* ---------------------------------------------------------------------- */
-int zz_play_tick(play_t * const P)
+zz_err_t
+zz_tick(play_t * const P)
 {
-  int ecode = E_OK, k;
+  zz_err_t ecode = E_OK, k;
 
   ++P->tick;
   for (k=0; k<4; ++k)
@@ -254,28 +256,43 @@ int zz_play_tick(play_t * const P)
 
 /* ---------------------------------------------------------------------- */
 
-int zz_play(play_t * P)
+zz_err_t
+zz_push(play_t * P, int8_t * done)
 {
-  int ecode;
-  assert(P);
+  zz_err_t ecode;
+  zz_assert(P);
 
-  ecode = zz_play_init(P);
-  if (ecode == E_OK) {
-    for (;;) {
-      int n;
-      ecode = zz_play_tick(P);
-      if (ecode || P->done)
-        break;
-      ecode = E_MIX;
-      if (P->mixer->push(P))
-        break;
-      ecode = E_OUT;
-      n = P->pcm_per_tick << 1;
-      if (P->out->write(P->out, P->mix_buf, n) != n)
+  do {
+    int n;
+    if (!P->mix_ptr) {
+      assert( P->tick == 0 );
+      ecode = zz_play_init(P);
+      if (ecode)
         break;
     }
-  }
+    zz_assert( P->mix_ptr );
 
+    ecode = zz_tick(P);
+    if (ecode || P->done)
+      break;
+
+    ecode = E_MIX;
+    if (P->mixer->push(P))
+      break;
+    ecode = E_OUT;
+    n = P->pcm_per_tick << 1;
+
+    int read = P->out->write(P->out, P->mix_buf, n);
+    if (read != n) {
+      dmsg("%s: wrote only %d out of %d\n", P->out->name,
+           read,n);
+      break;
+    }
+    ecode = E_OK;
+  } while (0);
+
+  if (done)
+    *done = ecode ? -1 : P->done;
   return ecode;
 }
 
@@ -285,7 +302,7 @@ int16_t * zz_pull(play_t * P, int * ptr_n)
 {
   int16_t * ptr = 0;
   int n = *ptr_n;
-  int ecode;
+  zz_err_t ecode;
 
   if (!P->mix_ptr) {
     ecode = zz_play_init(P);
@@ -294,14 +311,14 @@ int16_t * zz_pull(play_t * P, int * ptr_n)
   }
 
   ecode = E_OK;
-  assert(P->mix_ptr);
+  zz_assert( P->mix_ptr );
   ptr = P->mix_ptr;
   if (n > 0) {
     int have = P->mix_buf + P->pcm_per_tick - P->mix_ptr;
 
     if (!have) {
       /* refill mix_buf[] */
-      ecode = zz_play_tick(P);
+      ecode = zz_tick(P);
       if (ecode != E_OK)
         goto error;
       ecode = E_MIX;
@@ -322,9 +339,10 @@ error:
   return ptr;
 }
 
-int zz_measure(play_t * P)
+zz_err_t
+zz_measure(play_t * P)
 {
-  int ecode = E_OK;
+  zz_err_t ecode = E_OK;
   mixer_t * const save_mixer = P->mixer;
 
   if (!P->vset.bin) {
@@ -344,7 +362,7 @@ int zz_measure(play_t * P)
     }
   }
 
-  P->mixer = &mixer_void;
+  P->mixer = 0;
   P->mix_ptr = 0;
   while(!P->done) {
     int n = P->pcm_per_tick;
@@ -374,9 +392,10 @@ int zz_measure(play_t * P)
 
 /* ---------------------------------------------------------------------- */
 
-int zz_init(play_t * P)
+zz_err_t
+zz_init(play_t * P)
 {
-  int ecode = E_OK;
+  zz_err_t ecode = E_OK;
 
   if (!P->rate) {
     P->rate = 200;
@@ -422,9 +441,45 @@ error:
 
 /* ---------------------------------------------------------------------- */
 
-int zz_kill(play_t * P)
+#ifndef PACKAGE_STRING
+#define PACKAGE_STRING PACKAGE_NAME " " PACKAGE_VERSION
+#endif
+
+const char * zz_version(void)
 {
-  int ecode = E_OK;
+  return PACKAGE_STRING;
+}
+
+unsigned int zz_position(zz_play_t P, unsigned int * ptick)
+{
+  unsigned int ms = 0;
+  if (P && P->rate) {
+    uint_t acu = ms = P->tick;
+    if (ptick)
+      *ptick = acu;
+    switch ( P->rate ) {
+    case 50:
+      ms <<= 2;                         /* 1000/50 = x20 */
+    case 200:
+      ms = (ms << 2) + acu;             /* 1000/200 = x5 */
+      break;
+    default:
+      acu = (ms <<= 3);                 /* x8 */
+      ms += acu;                        /* x1 */
+      ms += (acu <<= 2);                /* x5 */
+      ms += (acu += acu);               /* x13 */
+      ms += (acu += acu);               /* x29 */
+      ms += (acu += acu);               /* x61 */
+      ms += (acu += acu);               /* x125 x8 = 1000 */
+      ms = divu32(ms,P->rate);
+    }
+  }
+  return ms;
+}
+
+zz_err_t zz_close(zz_play_t P)
+{
+  zz_err_t ecode = E_OK;
 
   if (P->mixer) {
     P->mixer->free(P);
@@ -437,7 +492,7 @@ int zz_kill(play_t * P)
     P->out = 0;
   }
 
-  zz_free("pcm-buffer",&P->mix_buf);
+  zz_free("mix-buffer",&P->mix_buf);
   P->mix_ptr = 0;
 
   zz_strfree(&P->vseturi);
@@ -450,3 +505,36 @@ int zz_kill(play_t * P)
 
   return ecode;
 }
+
+zz_err_t zz_new(zz_play_t * play)
+{
+  return !(*play = zz_calloc("zz-player",sizeof(**play)))
+    ? E_SYS
+    : E_OK
+    ;
+}
+
+void zz_del(zz_play_t * play)
+{
+  if (*play) {
+    zz_play_t P = *play;
+    *play = 0;
+    zz_close(P);
+    zz_free("zz-player",P);
+  }
+}
+
+
+#ifndef NO_VFS
+
+zz_err_t zz_vfs_add(zz_vfs_dri_t dri)
+{
+  return vfs_register(dri);
+}
+
+zz_err_t zz_vfs_del(zz_vfs_dri_t dri)
+{
+  return vfs_unregister(dri);
+}
+
+#endif

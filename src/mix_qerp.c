@@ -62,8 +62,8 @@ static inline int lagrange(const int8_t * const pcm, uint_t idx)
   else if ( unlikely (r > 0x1fff) )
     return 0x1fff;
 #else
-  assert ( r >= -0x2000 );
-  assert ( r <   0x2000 );
+  zz_assert( r >= -0x2000 );
+  zz_assert( r <   0x2000 );
 #endif
 
   return r;
