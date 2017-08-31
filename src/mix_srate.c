@@ -71,14 +71,14 @@ emsg_srate(const mix_chan_t * const K, int err)
 }
 
 static inline double
-iorate(const uint_t fp16, const double irate, const double orate)
+iorate(const u32_t fp16, const double irate, const double orate)
 {
   /* return ldexp(fp16,-16) * irate / orate; */
   return (double)fp16 * irate / (65536.0*orate);
 }
 
 static inline double
-rate_of_fp16(const uint_t fp16, const double rate) {
+rate_of_fp16(const u32_t fp16, const double rate) {
   return (double)fp16 * rate;
 }
 
@@ -286,7 +286,7 @@ static int init_srate(play_t * const P, const int quality)
   int k, ecode = E_SYS;
   mix_data_t * M;
   const int N = P->pcm_per_tick;
-  const uint_t size = sizeof(mix_data_t) + sizeof(float)*N;
+  const u32_t size = sizeof(mix_data_t) + sizeof(float)*N;
   zz_assert(!P->mixer_data);
   zz_assert(N>0);
   zz_assert(sizeof(float) == 4);

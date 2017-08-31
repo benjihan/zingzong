@@ -17,7 +17,7 @@
 
 /* Linear Interpolation.
  */
-static inline int lerp(const int8_t * const pcm, uint_t idx)
+static inline int lerp(const int8_t * const pcm, u32_t idx)
 {
   const int i = idx >> FP;
   const int a = pcm[i+0];              /* f(0) */

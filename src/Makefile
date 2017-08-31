@@ -148,10 +148,10 @@ PACKAGE_CPPFLAGS  = \
  -DPACKAGE_NAME='"$(PACKAGE)"' \
  -DPACKAGE_VERSION='"$(VERSION)"'
 
-zz_CPPFLAGS  = $(org_CPPFLAGS) $(gb_CPPFLAGS)
-zz_CFLAGS    = $(org_CFLAGS) $(gb_CFLAGS)
-zz_LDLIBS    = $(org_LDLIBS) $(gb_LDLIBS)
-zz_LDFLAGS   = $(org_LDFLAGS) $(gb_LDFLAGS)
+zz_CPPFLAGS = $(org_CPPFLAGS) $(gb_CPPFLAGS)
+zz_CFLAGS   = $(org_CFLAGS) $(gb_CFLAGS)
+zz_LDLIBS   = $(org_LDLIBS) $(gb_LDLIBS)
+zz_LDFLAGS  = $(org_LDFLAGS) $(gb_LDFLAGS)
 
 # ----------------------------------------------------------------------
 #  Build
@@ -162,8 +162,8 @@ all: $(targets)
 
 $(zingzong_exe) $(zingzong_dll): override CPPFLAGS = $(zz_CPPFLAGS)
 $(zingzong_exe) $(zingzong_dll): override CFLAGS   = $(zz_CFLAGS)
-$(zingzong_exe): override LDLIBS   = $(zz_LDLIBS)
-$(zingzong_exe): override LDFLAGS  = $(zz_LDFLAGS)
+$(zingzong_exe): override LDLIBS  = $(zz_LDLIBS)
+$(zingzong_exe): override LDFLAGS = $(zz_LDFLAGS)
 
 zz_play.o: override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
 
@@ -191,7 +191,7 @@ vfs := vfs_file
 zzz := zz_load zz_init zz_play zz_bin zz_str zz_vfs zz_mixers zz_log
 
 sources = $(sort $(zingzong_exe_src) $(zingzong_lib_src) $(zingzong_dll_src))
-headers = zingzong.h zz_private.h mix_common.c
+headers = zingzong.h zz_private.h zz_def.h mix_common.c
 objects = $(sources:.c=.o)
 
 $(zingzong_dll): $(zingzong_lib_obj) $(zingzong_dll_obj)

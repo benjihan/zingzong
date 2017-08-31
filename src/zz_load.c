@@ -14,9 +14,13 @@ ZZ_EXTERN_C int vset_init_header(zz_vset_t const vset, const void * hd);
 ZZ_EXTERN_C int vset_init(zz_vset_t const vset);
 
 int
-song_parse(song_t *song, vfs_t vfs, uint8_t *hd, uint_t size)
+song_parse(song_t *song, vfs_t vfs, uint8_t *hd, u32_t size)
 {
   zz_err_t ecode;
+
+  zz_assert( sizeof(songhd_t) ==  16);
+  zz_assert( sizeof(sequ_t)   ==  12);
+
   if ( (ecode = song_init_header(song,hd)) ||
        (ecode = bin_load(&song->bin, vfs, size, 12, SONG_MAX_SIZE)) ||
        (ecode = song_init(song)) )
@@ -65,10 +69,10 @@ vset_guess(zz_play_t const P, const char * songuri)
   static const char pre_sep[] = "/\\.:-_([{";  /* prefix "4v" */
   static const char suf_sep[] = "/\\.:-_)]}";  /* suffix "4v" */
 
-  P->vseturi = zz_stralloc(songlen+32);
-  if (!P->vseturi)
+  P->vset.uri = zz_stralloc(songlen+32);
+  if (!P->vset.uri)
     return E_SYS;
-  s = ZZSTR(P->vseturi);
+  s = ZZSTR(P->vset.uri);
 #if defined(WIN32) || defined(SYMBIAN32)
   /* Detect and skip drive letter */
   if (isalpha((int)s[0]) && s[1] == ':') {
@@ -145,11 +149,11 @@ vset_guess(zz_play_t const P, const char * songuri)
     if (*s) {
       //msg_f msgsave = msgfunc;
       int res;
-      dmsg("Testing #%i voiceset \"%s\"\n", method, ZZSTR(P->vseturi));
+      dmsg("Testing #%i voiceset \"%s\"\n", method, ZZSTR(P->vset.uri));
       bin_free(&P->vset.bin);
       zz_memclr(&P->vset,sizeof(P->vset));
       //msgfunc = 0;
-      res = vset_load(&P->vset,ZZSTR(P->vseturi));
+      res = vset_load(&P->vset,ZZSTR(P->vset.uri));
       //msgfunc = msgsave;
       if (!res)
         return E_OK;
@@ -164,7 +168,7 @@ vset_guess(zz_play_t const P, const char * songuri)
 int (*zz_guess_vset)(zz_play_t const, const char *) = vset_guess;
 
 int
-vset_parse(vset_t *vset, vfs_t vfs, uint8_t *hd, uint_t size)
+vset_parse(vset_t *vset, vfs_t vfs, uint8_t *hd, u32_t size)
 {
   zz_err_t ecode;
   if (0
@@ -206,13 +210,13 @@ q4_load(vfs_t vfs, q4_t *q4)
 
   ecode = E_SNG;
   if (q4->songsz < 16 + 12*4) {
-    dmsg("invalid .4q song size (%u) -- %s", q4->songsz, vfs_uri(vfs));
+    dmsg("invalid .4q song size (%lu) -- %s", LU(q4->songsz), vfs_uri(vfs));
     goto error;
   }
 
   ecode = E_SET;
   if (q4->vset && q4->vsetsz < 222) {
-    dmsg("invalid .4q set size (%u) -- %s", q4->vsetsz, vfs_uri(vfs));
+    dmsg("invalid .4q set size (%lu) -- %s", LU(q4->vsetsz), vfs_uri(vfs));
     goto error;
   }
 
@@ -299,11 +303,12 @@ error:
 }
 
 zz_err_t
-zz_load(play_t * P, const char * songuri, const char * vseturi)
+zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
 {
   uint8_t hd[20];
   vfs_t inp = 0;
   zz_err_t ecode;
+  zz_u8_t format = ZZ_FORMAT_UNKNOWN;
 
   for (ecode = !P || !songuri ? E_ARG : 0; !ecode;) {
     ecode = E_SYS;
@@ -323,16 +328,16 @@ zz_load(play_t * P, const char * songuri, const char * vseturi)
       if (vfs_read_exact(inp, hd+16, 4))
         break;
 
-      P->format = ZZ_FORMAT_4Q;
+      format = ZZ_FORMAT_4Q;
       ecode = E_SYS;
-      P->songuri = P->infouri = P->vseturi = zz_strdup(songuri);
-      if (!P->songuri)
+      P->song.uri = P->info.uri = P->vset.uri = zz_strdup(songuri);
+      if (!P->song.uri)
         break;
       q4.song = &P->song; q4.songsz = u32(hd+8);
       q4.vset = &P->vset; q4.vsetsz = u32(hd+12);
       q4.info = &P->info; q4.infosz = u32(hd+16);
-      dmsg("QUARTET header [sng:%u set:%u inf:%u]\n",
-           q4.songsz, q4.vsetsz, q4.infosz);
+      dmsg("QUARTET header [sng:%lu set:%lu inf:%lu]\n",
+           LU(q4.songsz), LU(q4.vsetsz), LU(q4.infosz));
       ecode = q4_load(inp,&q4);
       vfs_del(&inp);
       break;
@@ -342,11 +347,11 @@ zz_load(play_t * P, const char * songuri, const char * vseturi)
     ecode = E_SNG;
     if (song_parse(&P->song, inp, hd, 0))
       break;
-    P->format = ZZ_FORMAT_4V;
+    format = ZZ_FORMAT_4V;
     vfs_del(&inp);
 
     ecode = E_SYS;
-    if (P->songuri = zz_strdup(songuri), !P->songuri)
+    if (P->song.uri = zz_strdup(songuri), !P->song.uri)
       break;
 
     zz_assert(inp == 0);
@@ -354,13 +359,15 @@ zz_load(play_t * P, const char * songuri, const char * vseturi)
       ecode = E_SYS;
       if (vset_load(&P->vset,vseturi))
         break;
-      if (P->vseturi = zz_strdup(vseturi), !P->vseturi)
+      if (P->vset.uri = zz_strdup(vseturi), !P->vset.uri)
         break;
       ecode = E_OK;
     } else if (ecode = vset_guess(P,songuri), ecode) {
       if (ecode < 0)
         ecode = E_SET;
     }
+
+    P->format = format;
     break;
   }
 
@@ -368,12 +375,15 @@ zz_load(play_t * P, const char * songuri, const char * vseturi)
   if (ecode) {
     bin_free(&P->song.bin);
     zz_memclr(&P->song,sizeof(P->song));
-    zz_strfree(&P->songuri);
+    zz_strfree(&P->song.uri);
 
     bin_free(&P->vset.bin);
     zz_memclr(&P->vset,sizeof(P->vset));
-    zz_strfree(&P->vseturi);
+    zz_strfree(&P->vset.uri);
   }
+
+  if (pfmt)
+    *pfmt = format;
 
   return ecode;
 }

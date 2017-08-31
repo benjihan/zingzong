@@ -21,9 +21,6 @@
 # error undefined of invalid FP define
 #endif
 
-/* #define LSH(V,S)      ( (S) >= 0 ? (V) << (S) : (V) >> -(S) ) */
-/* #define RSH(V,S)      ( (S) >= 0 ? (V) >> (S) : (V) << -(S) ) */
-
 #define xtr(X) str(X)
 #define str(X) #X
 
@@ -34,7 +31,7 @@ typedef struct mix_chan_s mix_chan_t;
 
 struct mix_chan_s {
   int8_t *pcm, *end;
-  uint_t  idx, lpl, len, xtp;
+  u32_t  idx, lpl, len, xtp;
 };
 
 struct mix_fp_s {
@@ -51,8 +48,8 @@ mix_gen(mix_fp_t * const M, const int k, int16_t * restrict b, int n)
   zz_assert(k >= 0 && k < 4);
 
   if (K->xtp) {
-    uint_t idx = K->idx;
-    const uint_t stp = K->xtp;
+    u32_t idx = K->idx;
+    const u32_t stp = K->xtp;
 
     zz_assert(K->pcm);
     zz_assert(K->end > K->pcm);
@@ -72,7 +69,7 @@ mix_gen(mix_fp_t * const M, const int k, int16_t * restrict b, int n)
         idx = K->xtp = 0;
       }
       else {
-        const uint_t ovf = (idx - K->len) % K->lpl;
+        const u32_t ovf = (idx - K->len) % K->lpl;
         idx = K->len - K->lpl + ovf;
         zz_assert( idx >= K->len-K->lpl && idx < K->len );
       }
@@ -95,18 +92,18 @@ static void mix_addN(mix_fp_t * const M, const int k, int16_t * b, const int n)
 }
 
 
-static uint_t xstep(uint_t stp, uint_t ikhz, uint_t ohz)
+static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
 {
   /* stp is fixed-point 16
    * res is fixed-point FP
    * 1000 = 2^3 * 5^3
    */
-  uint64_t tmp = (FP > 12)
-    ? (uint64_t) stp * ikhz * (1000u >> (16-FP)) / ohz
-    : (uint64_t) stp * ikhz * (1000u >> 3) / (ohz << (16-FP-3))
+  u64_t tmp = (FP > 12)
+    ? (u64_t) stp * ikhz * (1000u >> (16-FP)) / ohz
+    : (u64_t) stp * ikhz * (1000u >> 3) / (ohz << (16-FP-3))
     ;
-  uint_t res = tmp;
-  zz_assert( (uint64_t)res == tmp); /* check overflow */
+  u32_t res = tmp;
+  zz_assert( (u64_t)res == tmp); /* check overflow */
   zz_assert( res );
   return res;
 }

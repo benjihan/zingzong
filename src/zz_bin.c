@@ -15,7 +15,7 @@ bin_free(bin_t ** pbin)
 
 int
 bin_alloc(bin_t ** pbin, const char * path,
-          uint_t len, uint_t xlen)
+          u32_t len, u32_t xlen)
 {
   bin_t * bin;
   zz_assert(pbin); zz_assert(path);
@@ -27,7 +27,7 @@ bin_alloc(bin_t ** pbin, const char * path,
 }
 
 int
-bin_read(bin_t * bin, vfs_t vfs, uint_t off, uint_t len)
+bin_read(bin_t * bin, vfs_t vfs, u32_t off, u32_t len)
 {
   return vfs_read_exact(vfs, ZZOFF(bin,off), len)
     ? E_INP
@@ -36,7 +36,7 @@ bin_read(bin_t * bin, vfs_t vfs, uint_t off, uint_t len)
 }
 
 int
-bin_load(bin_t ** pbin, vfs_t vfs, uint_t len, uint_t xlen, uint_t max)
+bin_load(bin_t ** pbin, vfs_t vfs, u32_t len, u32_t xlen, u32_t max)
 {
   int ecode;
   const char * path = vfs_uri(vfs);
@@ -51,7 +51,7 @@ bin_load(bin_t ** pbin, vfs_t vfs, uint_t len, uint_t xlen, uint_t max)
     len -= pos;
   }
   if (max && len > max) {
-    dmsg("too large (load > %u) -- %s\n", max, path);
+    dmsg("too large (load > %lu) -- %s\n", LU(max), path);
     ecode = E_ERR;
     goto error;
   }

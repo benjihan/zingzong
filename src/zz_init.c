@@ -82,9 +82,9 @@ song_init(song_t * song)
        off += 12)
   {
     sequ_t * const seq = (sequ_t *)(ZZBUF(song->bin)+off-11);
-    uint_t   const cmd = u16(seq->cmd);
-    uint_t   const stp = u32(seq->stp);
-    uint_t   const par = u32(seq->par);
+    u16_t    const cmd = u16(seq->cmd);
+    u32_t    const stp = u32(seq->stp);
+    u32_t    const par = u32(seq->par);
 
     if (!song->seq[k])
       song->seq[k] = seq;               /* Sequence */
@@ -123,8 +123,8 @@ song_init(song_t * song)
   }
 
   if ( (off -= 11) != ZZLEN(song->bin)) {
-    dmsg("garbage data after voice sequences -- %u bytes\n",
-         ZZLEN(song->bin) - off);
+    dmsg("garbage data after voice sequences -- %lu bytes\n",
+         LU(ZZLEN(song->bin) - off));
   }
 
   for ( ;k<4; ++k) {
@@ -141,7 +141,7 @@ song_init(song_t * song)
     }
   }
 
-  dmsg("song steps: %08x .. %08x\n", song->stepmin, song->stepmax);
+  dmsg("song steps: %08lx .. %08lx\n", LU(song->stepmin), LU(song->stepmax));
   ecode = E_OK;
 
 error:
@@ -164,13 +164,14 @@ vset_init_header(zz_vset_t vset, const void * _hd)
   /* header */
   vset->khz = hd[0];
   vset->nbi = hd[1]-1;
-  dmsg("vset: spr:%ukHz, ins:%u/0x%x\n", vset->khz, vset->nbi, vset->iused);
+  dmsg("vset: spr:%hukHz, ins:%hu/0x%hx\n",
+       HU(vset->khz), HU(vset->nbi), HU(vset->iused));
 
   if (is_valid_khz(vset->khz) && is_valid_ins(vset->nbi)) {
-    int i;
+    i8_t i;
     for (i=0; i<20; ++i) {
       vset->inst[i].len = u32(&hd[142+4*i]);
-      dmsg("I#%02i [%7s] %08x\n", i+1, hd+2+7*i, vset->inst[i].len);
+      dmsg("I#%02i [%7s] %08lx\n", i+1, hd+2+7*i, LU(vset->inst[i].len));
     }
     ecode = E_OK;
   }
@@ -194,12 +195,12 @@ static void sort_inst(const inst_t inst[], uint8_t idx[], int nbi)
 int
 vset_init(zz_vset_t const vset)
 {
-  const short n = vset->nbi;
-  short nused;
+  const i8_t n = vset->nbi;
+  i8_t nused;
   uint8_t * const beg = ZZBUF(vset->bin);
   uint8_t * const end = beg+ZZMAX(vset->bin);
   uint8_t * e;
-  int tot,unroll,imask,i,j;
+  i32_t tot,unroll,imask,i,j;
   uint8_t idx[20];
   bin_t * restrict bin;
 
@@ -208,8 +209,8 @@ vset_init(zz_vset_t const vset)
   imask = vset->iused ? vset->iused : (1 << vset->nbi) - 1;
 
   for (i=vset->iused=0, bin=vset->bin; i<20; ++i) {
-    const int off = vset->inst[i].len - 222 + 8;
-    uint_t len, lpl;
+    const i32_t off = vset->inst[i].len - 222 + 8;
+    u32_t len, lpl;
     uint8_t * pcm;
 
     do {
@@ -239,10 +240,10 @@ vset_init(zz_vset_t const vset)
 
       vset->iused |= 1<<i;
       ++nused;
-      dmsg("I#%02u [$%05X:$%05X:$%05X] [$%05X:$%05X:$%05X]\n",
-           i+1,
-           0, len-lpl, len,
-           off, off+len-lpl, off+len);
+      dmsg("I#%02hu [$%05lX:$%05lX:$%05lX] [$%05lX:$%05lX:$%05lX]\n",
+           HU(i+1),
+           LU(0), LU(len-lpl), LU(len),
+           LU(off), LU(off+len-lpl), LU(off+len));
     } while (0);
 
     if ( ! ( vset->iused & (1<<i) ) )
@@ -263,9 +264,9 @@ vset_init(zz_vset_t const vset)
 
   /* -1- Re-order instruments in memory order. */
   for (i=tot=0; i<n; ++i) {
-    const uint_t len = vset->inst[i].len;
+    const u32_t len = vset->inst[i].len;
     if (len >= 0x10000)
-      dmsg("I%02u length > 64k -- %08x\n", i, len);
+      dmsg("I%02hu length > 64k -- 0x%08lx\n", HU(i), LU(len));
     zz_assert( len < 0x10000 );
     idx[i] = i;
     tot += (len+1)&-2;
@@ -275,16 +276,16 @@ vset_init(zz_vset_t const vset)
 
   /* -2- Compute the unroll size. */
   unroll = ( divu32(end-beg-tot,n) + 1 ) & -2;
-  dmsg("%u instrument using %u/%u bytes unroll:%i\n",
-       n, tot, (uint_t)(end-beg), unroll);
+  dmsg("%hu instrument using %lu/%lu bytes unroll:%lu\n",
+       HU(n), LU(tot), LU(end-beg), LU(unroll));
   if (unroll < VSET_UNROLL)
-    dmsg("Have less unroll space than expected -- %d\n", unroll-VSET_UNROLL);
+    dmsg("Have less unroll space than expected -- %lu\n", LU(unroll-VSET_UNROLL));
 
   /* -3- Unroll starting from bottom to top */
   for (i=0, e=end; i<n; ++i) {
     inst_t * const inst = vset->inst + idx[i];
-    const uint_t r_len = inst->len;
-    const uint_t a_len = (r_len + 1) & -2;
+    const u32_t r_len = inst->len;
+    const u32_t a_len = (r_len + 1) & -2;
     uint8_t * const pcm = (void *)((intptr_t) (e-unroll-a_len) & -2);
 
     if (!a_len) continue;

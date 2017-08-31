@@ -2,15 +2,19 @@
  * @file   out_raw.c
  * @author Benjamin Gerard AKA Ben/OVR
  * @date   2017-07-04
- * @brief  raw output (file/null/stdout/stderr) .
+ * @brief  Raw file output (files/null/stdout/stderr) .
  */
 
-#include "zz_private.h"
+#include "zingzong.h"
+#include "zz_def.h"
 
 #if defined NO_LIBC
 # error out_raw.c should not be compiled with NO_LIBC
 #endif
 
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
 #if defined WIN32 || defined _WIN32
 #include <io.h>
 #include <fcntl.h>
@@ -28,12 +32,12 @@
 typedef struct out_raw_s out_raw_t;
 
 struct out_raw_s {
-  out_t out;
-  FILE * fp;
+  zz_out_t out;
+  FILE    *fp;
 };
 
-static int xclose(out_t *);
-static int xwrite(out_t *, void *, int);
+static zz_err_t xclose(zz_out_t *);
+static zz_u16_t xwrite(zz_out_t *, void *, zz_u16_t);
 
 static out_raw_t raw = {
   { "raw", 0, 0, xclose, xwrite }
@@ -104,7 +108,7 @@ static int uri_is_stderr(const char * uri)
     ;
 }
 
-out_t * out_raw_open(int hz, const char * uri)
+zz_out_t * out_raw_open(zz_u32_t hz, const char * uri)
 {
   zz_assert( ! raw.fp );
 
@@ -138,7 +142,7 @@ out_t * out_raw_open(int hz, const char * uri)
   return &raw.out;
 }
 
-static int xclose(out_t * out)
+static zz_err_t xclose(zz_out_t * out)
 {
   if (out == &raw.out) {
     if (raw.fp == null_ptr)
@@ -148,16 +152,16 @@ static int xclose(out_t * out)
       raw.fp = 0;
       if ( (fflush(fp) | fclose(fp)) < 0 ) {
         emsg("close: (%d) %s -- %s\n", errno, strerror(errno), raw.out.uri);
-        return -1;
+        return ZZ_ESYS;
       }
     }
   }
-  return 0;
+  return ZZ_OK;
 }
 
-static int xwrite(out_t * out, void * ptr, int n)
+static zz_u16_t xwrite(zz_out_t * out, void * ptr, zz_u16_t n)
 {
-  int w = 0;
+  zz_u16_t w = 0;
 
   zz_assert(n >= 0);
   zz_assert(ptr);
@@ -168,10 +172,10 @@ static int xwrite(out_t * out, void * ptr, int n)
       w = n;
     else {
       w = fwrite(ptr,1,n,raw.fp);
-      if (w == -1)
+      if (w == (zz_u16_t)-1)
         emsg("write: (%d) %s -- %s\n", errno, strerror(errno),raw.out.uri);
       else if (w != n)
-        emsg("write truncated (%d) -- %s\n", n-w, raw.out.uri);
+        emsg("write truncated (%hu) -- %s\n", HU(n-w), raw.out.uri);
     }
   }
   return w;

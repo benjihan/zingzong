@@ -11,17 +11,17 @@
 
 /* ---------------------------------------------------------------------- */
 
-EXTERN_C mixer_t mixer_zz_none, mixer_zz_lerp, mixer_zz_qerp;
+ZZ_EXTERN_C mixer_t mixer_zz_none, mixer_zz_lerp, mixer_zz_qerp;
 
 #if WITH_SOXR == 1
-EXTERN_C mixer_t mixer_soxr_hq;
+ZZ_EXTERN_C mixer_t mixer_soxr_hq;
 # ifndef DEFAULT_MIXER
 #  define DEFAULT_MIXER mixer_soxr_hq
 # endif
 #endif
 
 #if WITH_SRATE == 1
-EXTERN_C mixer_t mixer_srate_best, mixer_srate_medium, mixer_srate_fast;
+ZZ_EXTERN_C mixer_t mixer_srate_best, mixer_srate_medium, mixer_srate_fast;
 # ifndef DEFAULT_MIXER
 #  define DEFAULT_MIXER mixer_srate_medium
 # endif
@@ -48,12 +48,12 @@ static mixer_t * const zz_mixers[] = {
 static mixer_t * default_mixer = &DEFAULT_MIXER;
 
 
-static mixer_t * get_mixer(int * const n)
+static mixer_t * get_mixer(zz_u8_t * const n)
 {
-  const int max = sizeof(zz_mixers)/sizeof(*zz_mixers) - 1;
+  const zz_u8_t max = sizeof(zz_mixers)/sizeof(*zz_mixers) - 1;
   mixer_t * mixer = 0;
   if (*n == ZZ_DEFAULT_MIXER) {
-    int i;
+    zz_u8_t i;
     mixer = default_mixer;
     for (i=0; i<max; ++i)
       if (mixer == zz_mixers[i]) {
@@ -62,12 +62,12 @@ static mixer_t * get_mixer(int * const n)
   } else if (*n < max) {
     mixer = zz_mixers[*n];
   } else {
-    *n = -1;
+    *n = ZZ_DEFAULT_MIXER;
   }
   return mixer;
 }
 
-int zz_mixer_enum(int n, const char ** pname, const char ** pdesc)
+zz_u8_t zz_mixer_enum(zz_u8_t n, const char ** pname, const char ** pdesc)
 {
   const mixer_t * mixer;
 
@@ -78,7 +78,7 @@ int zz_mixer_enum(int n, const char ** pname, const char ** pdesc)
   return n;
 }
 
-int zz_mixer_set(play_t * P, int n)
+zz_u8_t zz_mixer_set(play_t * P, zz_u8_t n)
 {
   mixer_t * mixer;
 

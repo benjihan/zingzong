@@ -14,7 +14,7 @@
 #ifdef NO_LIBC
 
 void (*zz_free_func)(void ** pptr);
-void * (*zz_alloc_func)(const uint_t size, int clear);
+void * (*zz_alloc_func)(const u32_t size, int clear);
 
 #else
 
@@ -28,7 +28,7 @@ zz_free_real(void ** pptr)
 }
 
 void *
-zz_alloc_real(const uint_t size, const int clear)
+zz_alloc_real(const u32_t size, const int clear)
 {
   void * ptr = clear ? calloc(1,size) : malloc(size);
   return ptr;
@@ -39,7 +39,7 @@ zz_alloc_real(const uint_t size, const int clear)
 str_t *
 zz_strset(str_t * str, const char * set)
 {
-  const uint_t len = strlen(set)+1;
+  const u32_t len = strlen(set)+1;
   if (!str)
     str = zz_strdup(set);
   else {
@@ -54,7 +54,7 @@ str_t *
 zz_stralloc(unsigned int size)
 {
   str_t * str;
-  const uint_t nalloc = size + (intptr_t)(((str_t*)0)->_b);
+  const u32_t nalloc = size + (intptr_t)(((str_t*)0)->_b);
 
   str = zz_malloc("string", nalloc);
   if (str) {
@@ -70,7 +70,7 @@ str_t *
 zz_strdup(const char * org)
 {
   str_t * str;
-  const uint_t len = strlen(org) + 1;
+  const u32_t len = strlen(org) + 1;
 
   str = zz_stralloc(len);
   if (str) {

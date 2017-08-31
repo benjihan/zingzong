@@ -38,7 +38,12 @@ static const char license[] = \
 static const char bugreport[] = \
   "Report bugs to <https://github.com/benjihan/zingzong/issues>";
 
-#include "zz_private.h"
+#include "zingzong.h"
+#include "zz_def.h"
+
+#ifndef MAX_DETECT
+# define MAX_DETECT 1800    /* maximum seconds for length detection */
+#endif
 
 /* ----------------------------------------------------------------------
  * Includes
@@ -55,24 +60,29 @@ static const char bugreport[] = \
 #include <errno.h>
 #include <limits.h>
 #include <getopt.h>
+
 #include <libgen.h>
+
 #ifdef WIN32
 #include <io.h>
 #include <fcntl.h>
 #endif
 
-/* libs */
-#ifndef NO_AO
-# include <ao/ao.h>                     /* Xiph ao */
-#endif
+typedef uint_fast32_t uint_t;
+
+/* /\* libs *\/ */
+/* #ifndef NO_AO */
+/* # include <ao/ao.h>                     /\* Xiph ao *\/ */
+/* #endif */
 
 /* ----------------------------------------------------------------------
  * Globals
  * ---------------------------------------------------------------------- */
 
-EXTERN_C zz_vfs_dri_t zz_file_vfs(void);
+ZZ_EXTERN_C
+zz_vfs_dri_t zz_file_vfs(void);         /* vfs_file.c */
 
-char me[] = "zingzong";
+static char me[] = "zingzong";
 
 enum {
   /* First (0) is default */
@@ -83,10 +93,10 @@ enum {
 };
 
 /* Options */
+
 static int opt_splrate=SPR_DEF, opt_mixerid=-1, opt_tickrate=200;
 static int8_t opt_mute, opt_help, opt_outtype;
 static char * opt_length, * opt_output;
-static play_t play;        /* $$$ GB: Bad ... need to used zz_new() */
 
 /* ----------------------------------------------------------------------
  * Message and logging
@@ -94,7 +104,7 @@ static play_t play;        /* $$$ GB: Bad ... need to used zz_new() */
  */
 
 static int8_t newline = 1;              /* newline tracker */
-EXTERN_C int8_t can_use_std;            /* out_raw.c */
+ZZ_EXTERN_C int8_t can_use_std;            /* out_raw.c */
 
 /* Very lazy and very wrong way to handle that. It won't work as soon
  * as stdout ans stderr are not the same file (or tty).
@@ -252,12 +262,12 @@ static const char * tickstr(uint_t ticks, uint_t rate)
     return "infinity";
   ms = ticks * 1000u / rate;
   if (ms >= 3600000u) {
-    i += snprintf(s+i,max-i,"%uh", ms/3600000u);
+    i += snprintf(s+i,max-i,"%hu", HU(ms/3600000u));
     ms %= 3600000u;
     l = 2;
   }
   if (i > 0 || ms >= 60000) {
-    i += snprintf(s+i,max-i,"%0*u'",l,ms/60000u);
+    i += snprintf(s+i,max-i,"%0*hu'",l,HU(ms/60000u));
     ms %= 60000u;
     l = 2;
   }
@@ -266,11 +276,11 @@ static const char * tickstr(uint_t ticks, uint_t rate)
     ms %= 1000u;
     if (ms)
       while (ms < 100) ms *= 10u;
-    i += snprintf(s+i,max-i,"%0*u,%03u\"", l, sec, ms);
+    i += snprintf(s+i,max-i,"%0*hu,%03hu\"", l, HU(sec), HU(ms));
 
   }
 
-  i += snprintf(s+i,max-i," (+%u ticks@%uhz)", ticks, rate);
+  i += snprintf(s+i,max-i," (+%lu ticks@%huhz)", LU(ticks), HU(rate));
   s[i] = 0;
   return s;
 }
@@ -291,18 +301,30 @@ static char * fileext(char * base)
 /**
  * Create .wav filename from another filename
  */
-static int wav_filename(str_t ** pwavname, char * sngname)
+static zz_err_t
+wav_filename(char ** pwavname, char * sngname)
 {
-  char *leaf=basename(sngname), *ext=fileext(leaf);
-  str_t * str;
+  char *leaf=basename(sngname), *ext=fileext(leaf), *str;
   int l = ext - leaf;
 
-  *pwavname = str = zz_stralloc(l+5);
-  if (!str)
-    return E_SYS;
-  zz_memcpy(ZZSTR(str),leaf,l);
-  zz_memcpy(ZZSTR(str)+l,".wav",5);
-  return E_OK;
+  *pwavname = str = malloc(l+5);
+  if (!str) {
+    emsg("(%d) %s -- %s\n",errno, strerror(errno),sngname);
+    return ZZ_ESYS;
+  }
+  memcpy(str,leaf,l);
+  memcpy(str+l,".wav",5);
+  return ZZ_OK;
+}
+
+static zz_err_t
+wav_dupname(char ** pwavname, char * outname)
+{
+  if ( ! ( *pwavname = strdup(outname) ) ) {
+    emsg("(%d) %s -- %s\n",errno, strerror(errno),outname);
+    return ZZ_ESYS;
+  }
+  return ZZ_OK;
 }
 
 #endif
@@ -386,10 +408,10 @@ static int time_parse(uint_t * pticks, char * time)
 done:
   if (*s) {
     emsg("invalid argument -- length=%s\n", time);
-    return E_ARG;
+    return ZZ_EARG;
   }
   *pticks = ticks;
-  return E_OK;
+  return ZZ_OK;
 }
 
 /**
@@ -564,13 +586,13 @@ static int uint_mute(char * arg, char * name)
 static zz_err_t too_few_arguments(void)
 {
   emsg("too few arguments. Try --help.\n");
-  return E_ARG;
+  return ZZ_EARG;
 }
 
 static zz_err_t too_many_arguments(void)
 {
   emsg("too many arguments. Try --help.\n");
-  return E_ARG;
+  return ZZ_EARG;
 }
 
 /* ----------------------------------------------------------------------
@@ -606,14 +628,14 @@ int main(int argc, char *argv[])
     { "mute=",   1, 0, 'm' },
     { 0 }
   };
-  int c, ecode=E_ERR, ecode2;
-  vfs_t inp = 0;
-  play_t * const P = &play;
-  str_t  * outuri = 0;
+  int c, ecode=ZZ_ERR, ecode2;
+//  zz_vfs_t inp = 0;
+  char * wavuri = 0;
   char * songuri = 0, * vseturi = 0;
-
-  zz_assert( sizeof(songhd_t) ==  16);
-  zz_assert( sizeof(sequ_t)   ==  12);
+  zz_play_t P = 0;
+  zz_u32_t max_ticks = 0;
+  zz_u8_t format;
+  zz_out_t * out = 0;
 
   /* Install logger */
   zz_log(mylog,0);
@@ -622,7 +644,7 @@ int main(int argc, char *argv[])
   while ((c = getopt_long (argc, argv, sopts, lopts, 0)) != -1) {
     switch (c) {
     case 'h': opt_help++; break;
-    case 'V': print_version(); return E_OK;
+    case 'V': print_version(); return ZZ_OK;
 #ifndef NO_AO
     case 'w': opt_outtype = OUT_IS_WAVE; break;
 #endif
@@ -632,15 +654,15 @@ int main(int argc, char *argv[])
     case 'l': opt_length = optarg; break;
     case 'r':
       if (-1 == uint_spr(optarg, "rate", &opt_splrate, &opt_mixerid))
-        RETURN (E_ARG);
+        RETURN (ZZ_EARG);
       break;
     case 't':
-      if (-1 == (opt_tickrate = uint_arg(optarg,"tick",200/4,200*4,0)))
-        RETURN (E_ARG);
+      if (-1 == (opt_tickrate = uint_arg(optarg,"tick",RATE_MIN,200*4,0)))
+        RETURN (ZZ_EARG);
       break;
     case 'm':
       if (-1 == (opt_mute = uint_mute(optarg,"mute")))
-        RETURN (E_ARG);
+        RETURN (ZZ_EARG);
       break;
     case 0: break;
     case '?':
@@ -653,24 +675,34 @@ int main(int argc, char *argv[])
         emsg("unknown option -- `%s'\n", argv[optind-1]+2);
 
       }
-      RETURN (E_ARG);
+      RETURN (ZZ_EARG);
     default:
       emsg("unexpected option -- `%c' (%d)\n",
            isgraph(c)?c:'.', c);
       zz_assert(!"should not happen");
-      RETURN (E_666);
+      RETURN (ZZ_666);
     }
   }
 
   if (opt_help) {
     print_usage(opt_help > 1);
-    return E_OK;
+    return ZZ_OK;
+  }
+
+  if (opt_length) {
+    ecode = time_parse(&max_ticks, opt_length);
+    if (ecode)
+      goto error_exit;
+  } else {
+    max_ticks = MAX_DETECT * opt_tickrate;
   }
 
   if (optind >= argc)
     RETURN (too_few_arguments());
 
-  zz_memclr(P,sizeof(*P));
+  songuri = argv[optind++];
+  if (optind < argc)
+    vseturi = argv[optind++];
 
   if (opt_mixerid < 0) {
     const char * name = "?", * desc;
@@ -682,31 +714,18 @@ int main(int argc, char *argv[])
   if (opt_mixerid < 0)
     opt_mixerid = 0;
 
-  zz_mixer_set(P,opt_mixerid);
-  P->spr        = opt_splrate;
-  P->rate       = opt_tickrate;
-  P->max_ticks  = MAX_DETECT * P->rate;
-  P->end_detect = !opt_length;
-  if (!P->end_detect) {
-    zz_assert(opt_length);
-    ecode = time_parse(&P->max_ticks, opt_length);
-    if (ecode)
-      goto error_exit;
-  }
-
-  songuri = argv[optind++];
-  if (optind<argc)
-    vseturi = argv[optind++];
-
-  if (zz_vfs_add(zz_file_vfs()))
-    RETURN(E_SYS);
-  ecode = zz_load(P, songuri, vseturi);
-  if (ecode == E_ARG)
-    RETURN (too_many_arguments());
+  ecode = zz_vfs_add(zz_file_vfs());
   if (ecode)
     goto error_exit;
 
-  optind -= vseturi && P->songuri == P->vseturi;
+  ecode = zz_new(&P);
+  if (ecode)
+    goto error_exit;
+
+  ecode = zz_load(P, songuri, vseturi, &format);
+  if (ecode)
+    goto error_exit;
+  optind -= vseturi && format >= ZZ_FORMAT_BUNDLE;
   if (optind < argc)
     RETURN(too_many_arguments());       /* or we could just warn */
 
@@ -719,92 +738,117 @@ int main(int argc, char *argv[])
 #ifndef NO_AO
   case OUT_IS_WAVE:
     ecode = !opt_output
-      ? wav_filename(&outuri, ZZSTR(P->songuri))
-      : ! zz_strset(outuri,opt_output) ? E_SYS : E_OK
+      ? wav_filename(&wavuri, songuri)
+      : wav_dupname(&wavuri,opt_output)
       ;
     if (ecode)
       goto error_exit;
   case OUT_IS_LIVE:
-    P->out = out_ao_open(opt_splrate, outuri ? ZZSTR(outuri) : 0);
+    out = out_ao_open(opt_splrate, wavuri);
     break;
 #endif
 
   case OUT_IS_STDOUT:
-    P->out = out_raw_open(opt_splrate, opt_output ? opt_output : "stdout:");
+    out = out_raw_open(opt_splrate, opt_output ? opt_output : "stdout:");
     break;
 
   default:
     zz_assert(!"unexpected output type");
 
   case OUT_IS_NULL:
-    P->out = out_raw_open(opt_splrate,"null:");
+    out = out_raw_open(opt_splrate,"null:");
     break;
   }
 
-  if (!P->out)
-    RETURN (E_OUT);
+  if (!out)
+    RETURN (ZZ_EOUT);
 
-  dmsg("Output via %s to \"%s\"\n", P->out->name, P->out->uri);
-  P->spr = P->out->hz;
-  P->muted_voices = opt_mute;
+  ecode = zz_setup(P, opt_mixerid,
+                   opt_splrate, opt_tickrate,
+                   max_ticks, !opt_length);
+  if (ecode)
+    goto error_exit;
 
+  dmsg("Output via %s to \"%s\"\n", out->name, out->uri);
+
+  /*
   imsg("Zing that zong\n"
        " with the \"%s\" mixer at %uhz\n"
        " for %s%s\n"
        " via \"%s\"\n"
        "vset: \"%s\" (%ukHz, %u sound)\n"
        "song: \"%s\" (%ukHz, %u, %u, %u:%u)\n",
-       P->mixer->name,
-       P->spr,
+       mixer_name,
+       out->hz,
        P->end_detect ? "max " : "",
        tickstr(P->max_ticks, P->rate), P->out->uri,
        basename(ZZSTR(P->vseturi)), P->vset.khz, P->vset.nbi,
        basename(ZZSTR(P->songuri)), P->song.khz, P->song.barm,
        P->song.tempo, P->song.sigm, P->song.sigd);
-
   if (P->info.comment && *P->info.comment)
     imsg("Comment:\n~~~~~\n%s\n~~~~~\n",P->info.comment);
+  */
 
 #ifndef NO_AO
-  if (outuri)
-    imsg("wave: \"%s\"\n", ZZSTR(outuri));
+  if (wavuri)
+    imsg("wave: \"%s\"\n", wavuri);
 #endif
 
   if (!ecode)
     ecode = zz_init(P);
 
-  if (P->max_ticks) {
-    ecode = zz_measure(P);
-    if (!ecode && P->end_detect)
-      imsg("duration: %s\n", tickstr(P->max_ticks, P->rate));
+  if (max_ticks) {
+    zz_u32_t ticks = max_ticks, ms = 0;
+    ecode = zz_measure(P, &ticks, &ms);
+    if (ecode)
+      goto error_exit;
+    dmsg("measured: %lu ticks, %lu ms\n", LU(ticks), LU(ms));
+    if (ticks)
+      imsg("duration: %s\n", tickstr(ticks, opt_tickrate));
   }
 
   if (!ecode) {
     uint_t sec = (uint_t) -1;
-    int8_t done = 0;
+    zz_u16_t n = 0;
     do {
-      ecode = zz_push(P,&done);
-      if (!ecode) {
-        uint_t s = zz_position(P,0) / 1000u;
-        if (s != sec) {
-          sec = s;
+      int16_t * pcm;
+
+      pcm = zz_play(P,&n);
+      if (!pcm) {
+        ecode = n;
+        break;
+      }
+      if (!n)
+        break;
+
+      n <<= 1;
+      if (n != out->write(out,pcm,n))
+        ecode = ZZ_EOUT;
+      else {
+        zz_u32_t pos;
+        zz_position(P,&pos);
+        pos /= 1000u;
+        if (pos != sec) {
+          sec = pos;
           imsg("\n |> %02u:%02u\r"+newline,
                sec / 60u, sec % 60u );
           newline = 1;
         }
       }
-    } while (!done);
+    } while (!ecode);
+
     if (ecode) {
-      emsg("(%d) prematured end (tick: %u) -- %s\n",
-           ecode, P->tick, ZZSTR(P->songuri));
+      emsg("(%d) prematured end (tick: %lu) -- %s\n",
+           ecode, LU(zz_position(P,0)), songuri);
     }
   }
 
 error_exit:
   /* clean exit */
-  zz_strfree(&outuri);
-  vfs_del(&inp);
+  free(wavuri);
 
+  if (out && out->close(out) && !ecode)
+    ecode = ZZ_EOUT;
   if (ecode2 = zz_close(P), (ecode2 && !ecode))
     ecode = ecode2;
   log_newline(ZZ_LOG_INF);

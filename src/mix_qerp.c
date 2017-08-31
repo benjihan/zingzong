@@ -30,7 +30,7 @@
  *     For down-sampling we need anti-aliasing filter usually some
  *     kind of low-pass filter prior to a simple decimation process.
  */
-static inline int lagrange(const int8_t * const pcm, uint_t idx)
+static inline int lagrange(const int8_t * const pcm, u32_t idx)
 {
   const int i = idx >> FP;
   const int j = (idx >> (FP-7u)) & 0x7F; /* the mid point is f(.5)  */

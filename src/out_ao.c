@@ -7,29 +7,30 @@
 
 #ifndef NO_AO
 
-#include "zz_private.h"
+#include "zingzong.h"
+#include "zz_def.h"
 #include <ao/ao.h>
 
 typedef struct aoout_s aoout_t;
 struct aoout_s {
-  out_t             out;
+  zz_out_t          out;
   int               id;
   ao_device        *dev;
   ao_info          *info;
   ao_sample_format  fmt;
 };
 
-static int close(out_t *);
-static int write(out_t *, void *, int);
+static zz_err_t close(zz_out_t *);
+static zz_u16_t write(zz_out_t *, void *, zz_u16_t);
 
 static aoout_t aoo = {
   { "<ao>", 0, 0, close, write }
 };
 
-static int
-close(out_t * out)
+static zz_err_t
+close(zz_out_t * out)
 {
-  int ret = 0;
+  int ret = ZZ_OK;
   zz_assert(out == &aoo.out);
 
   if (aoo.dev) {
@@ -40,8 +41,8 @@ close(out_t * out)
   return ret;
 }
 
-out_t *
-out_ao_open(int hz, const char * uri)
+zz_out_t *
+out_ao_open(zz_u32_t hz, const char * uri)
 {
   zz_assert(!aoo.dev);
   if (aoo.dev) {
@@ -74,13 +75,13 @@ out_ao_open(int hz, const char * uri)
       if (aoo.info->type == AO_TYPE_LIVE) {
         aoo.out.name = "<ao>";
         aoo.out.uri  = aoo.info->short_name;
-        dmsg("ao live device#%i \"%s\" is open at %uhz\n",
-             aoo.id, aoo.out.uri, aoo.out.hz);
+        dmsg("ao live device#%i \"%s\" is open at %luhz\n",
+             aoo.id, aoo.out.uri, LU(aoo.out.hz));
       } else  {
         aoo.out.name = aoo.info->short_name;
         aoo.out.uri  = uri;
-        dmsg("ao file device#%i %s:\"%s\" is open at %uhz\n",
-             aoo.id, aoo.out.name, aoo.out.uri, aoo.out.hz);
+        dmsg("ao file device#%i %s:\"%s\" is open at %luhz\n",
+             aoo.id, aoo.out.name, aoo.out.uri, LU(aoo.out.hz));
       }
     }
   }
@@ -93,8 +94,8 @@ out_ao_open(int hz, const char * uri)
   return &aoo.out;
 }
 
-static int
-write(out_t * out, void * const pcm, int bytes)
+static zz_u16_t
+write(zz_out_t * out, void * const pcm, zz_u16_t bytes)
 {
   zz_assert(out == &aoo.out);
 

@@ -2,7 +2,7 @@
  * @file   zz_log.c
  * @author Benjamin Gerard AKA Ben/OVR
  * @date   2017-07-04
- * @brief  messages logging.
+ * @brief  Messages logging functions.
  */
 
 #include "zz_private.h"

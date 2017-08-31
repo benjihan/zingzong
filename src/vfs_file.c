@@ -13,18 +13,18 @@
 
 /* ---------------------------------------------------------------------- */
 
-static int x_reg(zz_vfs_dri_t);
-static int x_unreg(zz_vfs_dri_t);
-static int x_ismine(const char *);
+static zz_err_t x_reg(zz_vfs_dri_t);
+static zz_err_t x_unreg(zz_vfs_dri_t);
+static zz_u16_t x_ismine(const char *);
 static zz_vfs_t x_new(const char *, va_list);
 static void x_del(vfs_t);
 static const char *x_uri(vfs_t);
-static int x_open(vfs_t);
-static int x_close(vfs_t);
-static int x_read(vfs_t, void *, int);
-static int x_tell(vfs_t);
-static int x_size(vfs_t);
-static int x_seek(vfs_t,int,int);
+static zz_err_t x_open(vfs_t);
+static zz_err_t x_close(vfs_t);
+static zz_u32_t x_read(vfs_t, void *, zz_u32_t);
+static zz_u32_t x_tell(vfs_t);
+static zz_u32_t x_size(vfs_t);
+static zz_err_t x_seek(vfs_t,zz_u32_t,zz_u8_t);
 
 /* ---------------------------------------------------------------------- */
 
@@ -51,11 +51,10 @@ struct vfs_file_s {
 
 /* ---------------------------------------------------------------------- */
 
-static int regcnt;
-static int x_reg(zz_vfs_dri_t dri) { return ++regcnt; }
-static int x_unreg(zz_vfs_dri_t dri) { return regcnt>0?--regcnt:-1; }
+static zz_err_t x_reg(zz_vfs_dri_t dri)   { return E_OK; }
+static zz_err_t x_unreg(zz_vfs_dri_t dri) { return E_OK; }
 
-static int
+static zz_u16_t
 x_ismine(const char * uri)
 {
   zz_assert(uri);
@@ -89,21 +88,20 @@ x_del(vfs_t vfs)
     vfs->err = errno;
 }
 
-static int
+static zz_err_t
 x_close(vfs_t const _vfs)
 {
   int ret;
   vfs_file_t const fs = (vfs_file_t) _vfs;
 
-  ret = fclose(fs->fp);
-  if (!ret) {
+  if (ret = fclose(fs->fp), !ret)
     fs->fp = 0;
-  }
   fs->X.err = errno;
-  return ret;
+  zz_assert( ret == 0 || ret == -1 );
+  return E_SYS & ret;
 }
 
-static int
+static zz_err_t
 x_open(vfs_t const _vfs)
 {
   vfs_file_t const fs = (vfs_file_t) _vfs;
@@ -111,33 +109,33 @@ x_open(vfs_t const _vfs)
     return -1;
   fs->fp = fopen(fs->uri,"rb");
   fs->X.err = errno;
-  return -!fs->fp;
+  return E_SYS & -!fs->fp;
 }
 
-static int
-x_read(vfs_t const _vfs, void * ptr, int n)
+static zz_u32_t
+x_read(vfs_t const _vfs, void * ptr, zz_u32_t n)
 {
   vfs_file_t const fs = (vfs_file_t) _vfs;
-  int ret = fread(ptr,1,n,fs->fp);
+  size_t ret = fread(ptr,1,n,fs->fp);
   fs->X.err = errno;
   return ret;
 }
 
-static int
+static zz_u32_t
 x_tell(vfs_t const _vfs)
 {
   vfs_file_t const fs = (vfs_file_t) _vfs;
-  int ret = ftell(fs->fp);
+  size_t ret = ftell(fs->fp);
   fs->X.err = errno;
   return ret;
 }
 
-static int
+static zz_u32_t
 x_size(vfs_t const _vfs)
 {
   vfs_file_t const fs = (vfs_file_t) _vfs;
   size_t tell, size;
-  int ret =
+  size_t ret =
     (-1 == (tell = ftell(fs->fp))    || /* save position    */
      -1 == fseek(fs->fp,0,SEEK_END)  || /* go to end        */
      -1 == (size = ftell(fs->fp))    || /* size = position  */
@@ -147,11 +145,12 @@ x_size(vfs_t const _vfs)
   return ret;
 }
 
-static int
-x_seek(vfs_t const _vfs, int offset, int whence)
+static zz_err_t
+x_seek(vfs_t const _vfs, zz_u32_t offset, zz_u8_t whence)
 {
   vfs_file_t const fs = (vfs_file_t) _vfs;
   int ret = fseek(fs->fp,offset,whence);
   fs->X.err = errno;
-  return ret;
+  zz_assert ( ret == 0 || ret == -1 );
+  return E_SYS & ret;
 }

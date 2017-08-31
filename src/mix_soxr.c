@@ -140,14 +140,14 @@ restart_chan(mix_chan_t * const K)
 }
 
 static inline double
-iorate(const uint_t fp16, const double irate, const double orate)
+iorate(const u32_t fp16, const double irate, const double orate)
 {
   /* return ldexp(fp16,-16) * irate / orate; */
   return (double)fp16 * irate / (65536.0*orate);
 }
 
 static inline double
-rate_of_fp16(const uint_t fp16, const double rate) {
+rate_of_fp16(const u32_t fp16, const double rate) {
   return (double)fp16 * rate;
 }
 
@@ -271,14 +271,14 @@ push_cb(play_t * const P)
       if (idone+odone != 0) {
         zero = 0;
       } else {
-        dmsg("mix(%c(%u) need:%u i:%u/%u/%u o:%u/%u/%u) -> %s\n",
-             K->id, P->tick,
-             (uint_t) need,
-             (uint_t) idone, (uint_t) K->ilen, (uint_t) K->imax,
-             (uint_t) odone, (uint_t) want, (uint_t) K->omax,
+        dmsg("mix(%c(%lu) need:%lu i:%lu/%lu/%lu o:%lu/%lu/%lu) -> %s\n",
+             K->id, LU(P->tick),
+             LU(need),
+             LU(idone), LU(K->ilen), LU(K->imax),
+             LU(odone), LU(want), LU(K->omax),
              soxr_strerror(err));
         if (++zero > 7) {
-          emsg("%c: too many loop without data -- %u\n",K->id, zero);
+          emsg("%c: too many loop without data -- %hu\n",K->id, HU(zero));
           return E_MIX;
         }
       }
@@ -329,7 +329,7 @@ static int init_soxr(play_t * const P, const int quality)
   const int N = P->pcm_per_tick;
   soxr_error_t err;
   mix_data_t * M;
-  const uint_t size = sizeof(mix_data_t) + sizeof(float)*N;
+  const u32_t size = sizeof(mix_data_t) + sizeof(float)*N;
   zz_assert(!P->mixer_data);
   zz_assert(N > 0);
   zz_assert(sizeof(float) == 4);

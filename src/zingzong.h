@@ -11,6 +11,16 @@
 #include <stdarg.h>
 #include <stdint.h>
 
+/**
+ * Integer types the platform prefers matching our requirements.
+ */
+typedef  int_fast8_t  zz_i8_t;
+typedef uint_fast8_t  zz_u8_t;
+typedef  int_fast16_t zz_i16_t;
+typedef uint_fast16_t zz_u16_t;
+typedef  int_fast32_t zz_i32_t;
+typedef uint_fast32_t zz_u32_t;
+
 #ifndef ZINGZONG_API
 
 # ifndef ZZ_EXTERN_C
@@ -42,8 +52,9 @@
  * Zingzong error codes.
  */
 enum {
-  E_OK, E_ERR, E_ARG, E_SYS, E_INP, E_OUT, E_SET, E_SNG, E_PLA, E_MIX,
-  E_666 = 66
+  ZZ_OK, ZZ_ERR,
+  ZZ_EARG, ZZ_ESYS, ZZ_EINP, ZZ_EOUT, ZZ_ESET, ZZ_ESNG, ZZ_EPLA, ZZ_EMIX,
+  ZZ_666 = 66
 };
 
 /**
@@ -52,21 +63,23 @@ enum {
 enum zz_format_e {
   ZZ_FORMAT_UNKNOWN,            /**< Not yet determined.            */
   ZZ_FORMAT_4V,                 /**< Original Atari ST song.        */
+
+  ZZ_FORMAT_BUNDLE = 64,        /**< Next formats are bundkes.      */
   ZZ_FORMAT_4Q,                 /**< Single song bundle (MUG UK ?). */
   ZZ_FORMAT_QUAR,               /**< Multi song bundle (sc68).      */
 };
 
 enum {
-  ZZ_DEFAULT_MIXER = -1         /**< Default mixer id.              */
+  ZZ_DEFAULT_MIXER = 255        /**< Default mixer id.              */
 };
 
+typedef zz_i8_t zz_err_t;
 typedef struct vfs_s  * restrict zz_vfs_t;
 typedef struct vset_s * restrict zz_vset_t;
 typedef struct song_s * restrict zz_song_t;
 typedef struct play_s * restrict zz_play_t;
 typedef const struct zz_vfs_dri_s * zz_vfs_dri_t;
-typedef int (*zz_guess_t)(zz_play_t const, const char *);
-typedef int8_t zz_err_t;
+typedef zz_err_t (*zz_guess_t)(zz_play_t const, const char *);
 
 /**
  * Log level (first parameter of zz_log_t function).
@@ -111,8 +124,17 @@ ZINGZONG_API( zz_err_t , zz_new )
 ZINGZONG_API( void , zz_del )
         (zz_play_t * play)
         ;
+
+ZINGZONG_API( zz_err_t , zz_setup )
+	(zz_play_t play, zz_u8_t mixerid,
+         zz_u32_t spr, zz_u16_t rate,
+         zz_u32_t max_ticks, zz_u8_t end_detect)
+	;
+
 ZINGZONG_API( zz_err_t , zz_load )
-        (zz_play_t const play,const char * song, const char * vset)
+	(zz_play_t const play,
+         const char * song, const char * vset,
+         zz_u8_t * pfmt)
         ;
 ZINGZONG_API( zz_err_t , zz_close)
         (zz_play_t const play)
@@ -125,48 +147,44 @@ ZINGZONG_API( zz_err_t , zz_init)
         (zz_play_t P)
         ;
 ZINGZONG_API( zz_err_t , zz_measure )
-        (zz_play_t P)
+	(zz_play_t P, zz_u32_t * pticks, zz_u32_t * pms)
         ;
 ZINGZONG_API( zz_err_t , zz_tick )
         (zz_play_t play)
         ;
-ZINGZONG_API( zz_err_t , zz_push )
-        (zz_play_t play, int8_t * done)
+ZINGZONG_API( int16_t * , zz_play )
+        (zz_play_t play, zz_u16_t * ptr_n)
         ;
-ZINGZONG_API( int16_t * , zz_pull )
-        (zz_play_t play, int * ptr_n)
-        ;
-ZINGZONG_API( unsigned int , zz_position )
-        (zz_play_t P, unsigned int * ptick)
+ZINGZONG_API( zz_u32_t , zz_position )
+        (zz_play_t P, zz_u32_t * const pms)
         ;
 
-ZINGZONG_API( int , zz_mixer_enum )
-        (int id, const char **pname, const char **pdesc)
+ZINGZONG_API( zz_u8_t , zz_mixer_enum )
+        (zz_u8_t id, const char **pname, const char **pdesc)
         ;
-ZINGZONG_API( int , zz_mixer_set)
-        (zz_play_t P, int id)
+ZINGZONG_API( zz_u8_t , zz_mixer_set)
+        (zz_play_t P, zz_u8_t id)
         ;
-
-#ifdef ZZ_VFS_DRI
 
 enum {
   ZZ_SEEK_SET, ZZ_SEEK_CUR, ZZ_SEEK_END
 };
 
 struct zz_vfs_dri_s {
-  const char * name;                      /**< friendly name.     */
-  int (*reg)(zz_vfs_dri_t);               /**< register driver.   */
-  int (*unreg)(zz_vfs_dri_t);             /**< unregister driver. */
-  int (*ismine)(const char *);            /**< is mine.           */
-  zz_vfs_t (*new)(const char *, va_list); /**< create VFS.        */
-  void (*del)(zz_vfs_t);                  /**< destroy VFS.       */
-  const char * (*uri)(zz_vfs_t);          /**< get URI.           */
-  int (*open)(zz_vfs_t);                  /**< open.              */
-  int (*close)(zz_vfs_t);                 /**< close.             */
-  int (*read)(zz_vfs_t, void *, int);     /**< read.              */
-  int (*tell)(zz_vfs_t);                  /**< get position.      */
-  int (*size)(zz_vfs_t);                  /**< get size.          */
-  int (*seek)(zz_vfs_t,int,int);          /**< offset,whence.     */
+  const char * name;                       /**< friendly name. */
+  zz_err_t (*reg)(zz_vfs_dri_t);           /**< register driver. */
+  zz_err_t (*unreg)(zz_vfs_dri_t);         /**< un-register driver. */
+  zz_u16_t (*ismine)(const char *);        /**< is mine. */
+  zz_vfs_t (*new)(const char *, va_list); /**< create VFS. */
+  void     (*del)(zz_vfs_t);                  /**< destroy VFS. */
+  const
+  char *   (*uri)(zz_vfs_t);          /**< get URI. */
+  zz_err_t (*open)(zz_vfs_t);                  /**< open. */
+  zz_err_t (*close)(zz_vfs_t);                 /**< close. */
+  zz_u32_t (*read)(zz_vfs_t, void *, zz_u32_t); /**< read. */
+  zz_u32_t (*tell)(zz_vfs_t);                   /**< get position. */
+  zz_u32_t (*size)(zz_vfs_t);                   /**< get size. */
+  zz_err_t (*seek)(zz_vfs_t,zz_u32_t,zz_u8_t);  /**< offset,whence. */
 };
 
 /**
@@ -196,8 +214,5 @@ ZINGZONG_API( zz_err_t , zz_vfs_add )
 ZINGZONG_API( zz_err_t , zz_vfs_del )
         (zz_vfs_dri_t dri)
         ;
-
-
-#endif /* ZZ_VFS_DRI */
 
 #endif /* #ifndef ZINGZONG_H */

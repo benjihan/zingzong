@@ -169,7 +169,7 @@ vfs_read(zz_vfs_t vfs, void * ptr, int size)
 int
 vfs_read_exact(vfs_t vfs, void * ptr, int size)
 {
-  uint_t n;
+  u32_t n;
   if (!size || size == -1)
     return size;
   if (!ptr) vfs = 0;
@@ -179,8 +179,8 @@ vfs_read_exact(vfs_t vfs, void * ptr, int size)
   if (n == -1)
     n = vfs_emsg(vfs->dri->name, vfs->err,"read_exact", 0, vfs_uri(vfs));
   else if (n != size) {
-    emsg("%s: read too short by %u\n",
-             vfs->dri->uri(vfs), size-n);
+    emsg("%s: read too short by %lu\n",
+         vfs->dri->uri(vfs), LU(size-n));
     n = -1;
   }
   else
@@ -247,8 +247,8 @@ vfs_seek(vfs_t vfs, int pos, int set)
       tell += n;
     }
 
-    dmsg("seek[%s]: tell=%d\n",
-         vfs->dri->name, vfs->dri->tell(vfs));
+    dmsg("seek[%s]: tell=%lu\n",
+         vfs->dri->name, LU(vfs->dri->tell(vfs)));
 
     zz_assert( tell == pos );
     zz_assert( pos == vfs->dri->tell(vfs) );
