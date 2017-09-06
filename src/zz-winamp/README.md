@@ -1,1 +1,1 @@
-### Zingzong for winamp
+### Zingzong for Winamp 5

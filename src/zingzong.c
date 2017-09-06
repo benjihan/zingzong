@@ -38,6 +38,7 @@ static const char license[] = \
 static const char bugreport[] = \
   "Report bugs to <https://github.com/benjihan/zingzong/issues>";
 
+#define ZZ_DBG_PREFIX "(cli) "
 #include "zingzong.h"
 #include "zz_def.h"
 
@@ -61,9 +62,11 @@ static const char bugreport[] = \
 #include <limits.h>
 #include <getopt.h>
 
-#include <libgen.h>
 
 #ifdef WIN32
+#ifdef __MINGW32__
+# include <libgen.h>     /* no GNU version of basename() with mingw */
+#endif
 #include <io.h>
 #include <fcntl.h>
 #endif
@@ -94,7 +97,8 @@ enum {
 
 /* Options */
 
-static int opt_splrate=SPR_DEF, opt_mixerid=-1, opt_tickrate=200;
+static int opt_splrate = SPR_DEF, opt_tickrate=200;
+static int opt_mixerid = ZZ_DEFAULT_MIXER;
 static int8_t opt_mute, opt_help, opt_outtype;
 static char * opt_length, * opt_output;
 
@@ -135,9 +139,14 @@ static void log_newline(int log)
   }
 }
 
-static void mylog(int log, void * user, const char * fmt, va_list list)
+static int errcnt;
+
+static void mylog(zz_u8_t log, void * user, const char * fmt, va_list list)
 {
   FILE * out = log_file(log);
+
+  errcnt += log == ZZ_LOG_ERR;
+
   if (out) {
     if (log <= ZZ_LOG_WRN) {
       fprintf(out, "\n%s: "+newline, me);
@@ -167,8 +176,13 @@ static void print_usage(int level)
     "Usage: zingzong [OPTIONS] <song.4v> [<inst.set>]" "\n"
     "       zingzong [OPTIONS] <music.4q>"  "\n"
     "\n"
-    "  A makeMicrodeal quartet music file player\n"
+    "  A Microdeal quartet music file player\n"
     "\n"
+#ifndef NDEBUG
+    "  -------> /!\\ DEBUG BUILD /!\\ <-------\n"
+    "\n"
+#endif
+
     "OPTIONS:\n"
     " -h --help --usage  Print this message and exit.\n"
     " -V --version       Print version and copyright and exit.\n"
@@ -239,11 +253,14 @@ static void print_usage(int level)
  */
 static void print_version(void)
 {
+#ifndef NDEBUG
+  printf("%s (DEBUG BUILD)\n",zz_version());
+#else
   printf("%s\n",zz_version());
+#endif
   puts(copyright);
   puts(license);
 }
-
 
 /* ----------------------------------------------------------------------
  * Argument parsing functions
@@ -289,13 +306,13 @@ static const char * tickstr(uint_t ticks, uint_t rate)
 
 #ifndef NO_AO
 
-static char * fileext(char * base)
+static char * fileext(char * s)
 {
-  char * ext = strrchr(base,'.');
-  return ext && ext != base
-    ? ext
-    : base + strlen(base)
-    ;
+  int i, l = strlen(s);
+  for ( i=l-2; i>=1; --i )
+    if (s[i] == '.') { l = i; break; }
+  dmsg("extension of \"%s\" is \"%s\"\n", s, s+l);
+  return s+l;
 }
 
 /**
@@ -304,17 +321,20 @@ static char * fileext(char * base)
 static zz_err_t
 wav_filename(char ** pwavname, char * sngname)
 {
-  char *leaf=basename(sngname), *ext=fileext(leaf), *str;
-  int l = ext - leaf;
+  zz_err_t ecode;
+  char *leaf = basename(sngname), *ext = fileext(leaf);
+  const int l = ext - leaf;
 
-  *pwavname = str = malloc(l+5);
-  if (!str) {
-    emsg("(%d) %s -- %s\n",errno, strerror(errno),sngname);
-    return ZZ_ESYS;
+  ecode = zz_malloc(pwavname, l+8);
+  if (ecode == ZZ_OK) {
+    char *str  = *pwavname;
+    memcpy(str,leaf,l);
+    memcpy(str+l,".wav",5);
+    dmsg("wav path: \"%s\"\n",str);
+  } else {
+    emsg("(%d) %s -- %s\n", errno, strerror(errno),sngname);
   }
-  memcpy(str,leaf,l);
-  memcpy(str+l,".wav",5);
-  return ZZ_OK;
+  return ecode;
 }
 
 static zz_err_t
@@ -504,18 +524,28 @@ static int find_mixer(char * arg, char ** pend)
 {
   int i,f;
 
-  const char * name, * desc;
-
   /* Get re-sampling mode */
-  for (i=0, f=-1; i == zz_mixer_enum(i,&name,&desc); ++i) {
-    int res = modecmp(name, arg, pend);
+  for (i=0, f=-1; ; ++i) {
+    const char * name, * desc;
+    int res, id = zz_mixer_enum(i,&name,&desc);
+
+    if (id == ZZ_DEFAULT_MIXER) {
+      i = ZZ_DEFAULT_MIXER;
+      break;
+    }
+
+    res = modecmp(name, arg, pend);
+    dmsg("testing mixer#%i(%i) => (%i) \"%s\" == \"%s\"\n",
+         i, id, res, name, arg);
 
     if (res == 1) {
       /* prefect match */
       f = i; i = ZZ_DEFAULT_MIXER;
+      dmsg("perfect match: %i \"%s\" == \"%s\"\n",f,name,arg);
       break;
     } else if (res) {
       /* partial match */
+      dmsg("partial match: %i \"%s\" == \"%s\"\n",f,name,arg);
       if (f != -1)
         break;
       f = i;
@@ -529,8 +559,6 @@ static int find_mixer(char * arg, char ** pend)
   else
     f = f+1;                            /* found */
 
-  dmsg("Find mixer -- %d -- [%s]\n",f, pend ? *pend : "(nil)");
-
   return f;
 }
 
@@ -540,23 +568,32 @@ static int find_mixer(char * arg, char ** pend)
  */
 static int uint_spr(char * arg, const char * name, int * prate, int * pmixer)
 {
-  int rate=SPR_DEF;
+  int rate = SPR_DEF;
   char * end = arg;
 
   if (isalpha(arg[0])) {
-    int f;
-    if (f = find_mixer(arg, &end), f <= 0) {
+    int f = f = find_mixer(arg, &end);
+    dmsg("find mixer in \"%s\" -> %i \"%s\"\n", arg, f, end);
+    if (f <= 0) {
       emsg("%s sampling method -- %s=%s\n",
            !f?"invalid":"ambiguous", name, arg);
     } else {
+      dmsg("set mixer id --  %i\n", f-1);
       *pmixer = f-1;
     }
   }
 
-  if (end && *end)
+  if (end && *end) {
     rate = uint_arg(end, name, SPR_MIN, SPR_MAX, 10);
+    dmsg("set sampling rate -- %i\n", rate);
+  }
   if (rate != -1)
     *prate = rate;
+
+  zz_assert( *pmixer >= 0 );
+  zz_assert( *prate  >= SPR_MIN );
+  zz_assert( *prate  <= SPR_MAX );
+
   return rate;
 }
 
@@ -629,7 +666,6 @@ int main(int argc, char *argv[])
     { 0 }
   };
   int c, ecode=ZZ_ERR, ecode2;
-//  zz_vfs_t inp = 0;
   char * wavuri = 0;
   char * songuri = 0, * vseturi = 0;
   zz_play_t P = 0;
@@ -638,7 +674,7 @@ int main(int argc, char *argv[])
   zz_out_t * out = 0;
 
   /* Install logger */
-  zz_log(mylog,0);
+  zz_log_fun(mylog,0);
 
   opterr = 0;
   while ((c = getopt_long (argc, argv, sopts, lopts, 0)) != -1) {
@@ -704,15 +740,12 @@ int main(int argc, char *argv[])
   if (optind < argc)
     vseturi = argv[optind++];
 
-  if (opt_mixerid < 0) {
+  if (1) {
     const char * name = "?", * desc;
-    zz_mixer_enum(ZZ_DEFAULT_MIXER,&name,&desc);
-    opt_mixerid = find_mixer((char *)name,0) - 1;
-    dmsg("Default mixer is %d:%s (%s)\n", opt_mixerid, name, desc);
+    opt_mixerid = zz_mixer_enum( opt_mixerid,&name,&desc);
+    dmsg("requested mixer -- %d:%s (%s)\n", opt_mixerid, name, desc);
     zz_assert( opt_mixerid >= 0 );
   }
-  if (opt_mixerid < 0)
-    opt_mixerid = 0;
 
   ecode = zz_vfs_add(zz_file_vfs());
   if (ecode)
@@ -844,13 +877,35 @@ int main(int argc, char *argv[])
   }
 
 error_exit:
+  zz_mem_check_close();
+
   /* clean exit */
-  free(wavuri);
+  zz_free(&wavuri);
+  zz_assert(!wavuri);
 
   if (out && out->close(out) && !ecode)
     ecode = ZZ_EOUT;
+
   if (ecode2 = zz_close(P), (ecode2 && !ecode))
     ecode = ecode2;
+
+  zz_del(&P);
+
+  if (ecode && !errcnt)
+    emsg("unknown error (%i)\n", ecode);
+
   log_newline(ZZ_LOG_INF);
+
+#ifndef NDEBUG
+  dmsg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+  dmsg("!!! Checking memory allocation on exit !!!\n");
+  dmsg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+  if (ZZ_OK == zz_mem_check_close())
+    dmsg("-->  Everything looks fine on my side  <--\n");
+  else if (ecode == ZZ_OK)
+    ecode = ZZ_666;
+  dmsg("exit with -- *%d*\n", ecode);
+#endif
+
   return ecode;
 }

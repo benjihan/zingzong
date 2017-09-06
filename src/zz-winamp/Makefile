@@ -2,20 +2,19 @@
 #
 # ----------------------------------------------------------------------
 #
-# Makefile for zinzong winamp plugin (for GNU/make)
+# GNU/Makefile for zinzong - winamp plugin
 #
 # by Benjamin Gerard AKA Ben/OVR
 #
 
-SHELL      = /bin/sh
+PACKAGE   := zingzong
 srcdir    := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
 topdir    := $(realpath $(srcdir)/../..)
-PKGCONFIG  = pkg-config
-PACKAGE   := zingzong-winamp
 VERSION   := $(shell $(topdir)/vcversion.sh || echo ERROR)
 ifeq ($(VERSION),ERROR)
 $(error vcversion.sh failed)
 endif
+PKGCONFIG  = pkg-config
 pkgconfig  = $(shell $(PKGCONFIG) $(1) || echo n/a)
 
 # ----------------------------------------------------------------------
@@ -24,15 +23,28 @@ vpath %.c $(srcdir) $(srcdir)/..
 
 # ----------------------------------------------------------------------
 
-target     = in_zingzong.dll
-targets    = $(target)
+targets    = in_zingzong.dll
 
 # ----------------------------------------------------------------------
+#   Toolchain
+# ----------------------------------------------------------------------
 
-CC      = i686-w64-mingw32-gcc
-STRIP	= $(CC:-gcc=-strip)
+ifeq ($(origin CC),default)
+CC = i686-w64-mingw32-gcc
+endif
 
-override NO_AO = 1
+ifndef STRIP
+$(info $(CC:%gcc=gcc))
+ifeq ($(CC:%gcc=gcc),gcc)
+STRIP = $(CC:%gcc=%strip)
+else
+STRIP = strip
+endif
+endif
+
+# ----------------------------------------------------------------------
+#  Setup some default CFLAGS
+# ----------------------------------------------------------------------
 
 ifndef CFLAGS
 CFLAGS	:= -Wall # -std=c99
@@ -67,6 +79,10 @@ ifndef WPSDK
 WPSDK = $(error WPSDK is undefined)
 endif
 
+l_patterns := -l% -Wl,-l%
+filter-L    = $(strip $(filter-out $(l_patterns),$1))
+filter-l    = $(strip $(filter     $(l_patterns),$1))
+
 # ----------------------------------------------------------------------
 #  samplerate (NO_SRATE=0 to enable)
 # ----------------------------------------------------------------------
@@ -91,8 +107,9 @@ endif
 endif
 endif
 
-override gb_CFLAGS += $(SRATE_CFLAGS)
-override gb_LDLIBS += $(SRATE_LIBS)
+override gb_CFLAGS  += $(SRATE_CFLAGS)
+override gb_LDFLAGS += $(call filter-L,$(SRATE_LIBS))
+override gb_LDLIBS  += $(call filter-l,$(SRATE_LIBS))
 
 # ----------------------------------------------------------------------
 #  soxr (NO_SOXR=0 to enable)
@@ -118,8 +135,9 @@ endif
 endif
 endif
 
-override gb_CFLAGS += $(SOXR_CFLAGS)
-override gb_LDLIBS += $(SOXR_LIBS)
+override gb_CFLAGS  += $(SOXR_CFLAGS)
+override gb_LDFLAGS += $(call filter-L,$(SOXR_LIBS))
+override gb_LDLIBS  += $(call filter-l,$(SOXR_LIBS))
 
 # ----------------------------------------------------------------------
 
@@ -138,21 +156,24 @@ zz_LDFLAGS  := $(LDFLAGS) $(gb_LDFLAGS)
 #  Build
 # ----------------------------------------------------------------------
 
-all: $(target)
+all: $(targets)
 .PHONY: all
 
-$(target): override NAME	   = zingzong (winamp)
-$(target): override CPPFLAGS = $(zz_CPPFLAGS)
-$(target): override CFLAGS   = $(dll_CFLAGS) $(zz_CFLAGS)
-$(target): override LDLIBS   = $(zz_LDLIBS)
-$(target): override LDFLAGS  = $(zz_LDFLAGS)
+
+#in_zingzong.o: override NAME	   = zingzong (winamp)
+
+%.o: override CPPFLAGS = $(zz_CPPFLAGS)
+%.o: override CFLAGS   = $(dll_CFLAGS) $(zz_CFLAGS)
+$(targets): override LDLIBS   = $(zz_LDLIBS)
+$(targets): override LDFLAGS  = $(zz_LDFLAGS)
 
 in_zingzong.o: override CPPFLAGS = $(WAINC) $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
+zz_play.o: override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
 
-mix := mix_void mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
+mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
 out := 
 vfs := vfs_file
-zz  := zz_load zz_init zz_play zz_bin zz_str zz_vfs zz_mixers zz_msg
+zz  := zz_load zz_init zz_play zz_bin zz_str zz_vfs zz_mixers zz_log zz_mem
 src := in_zingzong
 
 sources := $(addsuffix .c,$(zz) $(vfs) $(mix) $(out) $(src))
@@ -160,13 +181,11 @@ objects := $(sources:.c=.o)
 depends := $(sources:.c=.d)
 headers := zingzong.h zz_private.h mix_common.c
 
-zingzong: $(objects)
-
 # ----------------------------------------------------------------------
 #  Link plugin dll
 # ----------------------------------------------------------------------
 
-$(target): $(objects)
+$(targets): $(objects)
 	$(CC) -mdll -o $@ $^ -static-libgcc -static $(LDFLAGS) $(LDLIBS)
 
 # ----------------------------------------------------------------------
@@ -199,12 +218,12 @@ UNINSTALL_PLUG = \
 
 install-strip: INSTALL_OPT = --strip-program=$(STRIP) -s
 install-strip: install
-install: $(target)
+install: $(targets)
 	@$(call INSTALL_PLUG,$^)
 	@echo $^ installed in "$(DESTDIR)$(WADLL)"
 
 uninstall:
-	@$(call UNINSTALL_PLUG,$(target))
+	@$(call UNINSTALL_PLUG,$(targets))
 	@echo zingzong removed from "$(DESTDIR)$(WADLL)"
 
 .PHONY: install-strip install uninstall

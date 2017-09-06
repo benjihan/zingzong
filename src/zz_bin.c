@@ -2,44 +2,74 @@
  * @file   zz_bin.c
  * @author Benjamin Gerard AKA Ben/OVR
  * @date   2017-07-04
- * @brief  binary containers.
+ * @brief  Binary containers.
  */
 
+#define ZZ_DBG_PREFIX "(bin) "
 #include "zz_private.h"
 
 void
 bin_free(bin_t ** pbin)
 {
-  zz_strfree(pbin);
+  if (pbin && *pbin)
+    dmsg("free <%p>:%lu:%lu\n",
+         (*pbin), LU((*pbin)->len), LU((*pbin)->max));
+  zz_free(pbin);
 }
 
-int
-bin_alloc(bin_t ** pbin, const char * path,
-          u32_t len, u32_t xlen)
+zz_err_t
+bin_alloc(bin_t ** pbin, u32_t len, u32_t xlen)
 {
-  bin_t * bin;
-  zz_assert(pbin); zz_assert(path);
-  *pbin = bin = zz_stralloc(len + xlen);
-  if (!bin)
-    return E_SYS;
-  bin->_l = len;
-  return E_OK;
+  zz_err_t ecode;
+  const u32_t size   = len + xlen;
+  const u32_t nalloc = size + (intptr_t)(((bin_t*)0)->buf);
+  bin_t * bin = 0;
+  zz_assert(pbin);
+  zz_assert(len);
+
+  do {
+    ecode = E_ARG;
+    if (!pbin)
+      break;
+    ecode = zz_mem_malloc(pbin, nalloc);
+    if (ecode)
+      break;
+    bin = *pbin;
+    zz_assert(bin);
+    bin->max = size;
+    bin->len = len;
+  } while (0);
+
+  dmsg("<%p..%p> %lu/%lu/%lu\n",
+       bin, bin->buf+bin->max,
+       LU(len), LU(xlen), LU(nalloc));
+
+  return ecode;
 }
 
-int
+zz_err_t
 bin_read(bin_t * bin, vfs_t vfs, u32_t off, u32_t len)
 {
-  return vfs_read_exact(vfs, ZZOFF(bin,off), len)
-    ? E_INP
+  return vfs_read_exact(vfs, bin->buf+off, len)
+    ? E_SYS
     : E_OK
     ;
 }
 
-int
+zz_err_t
 bin_load(bin_t ** pbin, vfs_t vfs, u32_t len, u32_t xlen, u32_t max)
 {
   int ecode;
-  const char * path = vfs_uri(vfs);
+
+  ecode = E_ARG;
+  if (!vfs || ! pbin)
+    goto error;
+
+  if (*pbin) {
+    wmsg("deleting a previous voice set");
+    bin_free(pbin);
+  }
+  zz_assert( !*pbin );
 
   if (!len) {
     int pos;
@@ -51,11 +81,12 @@ bin_load(bin_t ** pbin, vfs_t vfs, u32_t len, u32_t xlen, u32_t max)
     len -= pos;
   }
   if (max && len > max) {
-    dmsg("too large (load > %lu) -- %s\n", LU(max), path);
+    dmsg("too large (load > %lu) -- %s\n", LU(max), vfs_uri(vfs));
     ecode = E_ERR;
     goto error;
   }
-  ecode = bin_alloc(pbin, path, len, xlen);
+
+  ecode = bin_alloc(pbin, len, xlen);
   if (ecode)
     goto error;
   ecode = bin_read(*pbin, vfs, 0, len);

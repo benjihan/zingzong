@@ -5,6 +5,7 @@
  * @brief  Convertion between float and integer PCM.
  */
 
+#define ZZ_DBG_PREFIX "(flt) "
 #include "zz_private.h"
 
 #ifndef NO_FLOAT_SUPPORT

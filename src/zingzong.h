@@ -63,7 +63,6 @@ enum {
 enum zz_format_e {
   ZZ_FORMAT_UNKNOWN,            /**< Not yet determined.            */
   ZZ_FORMAT_4V,                 /**< Original Atari ST song.        */
-
   ZZ_FORMAT_BUNDLE = 64,        /**< Next formats are bundkes.      */
   ZZ_FORMAT_4Q,                 /**< Single song bundle (MUG UK ?). */
   ZZ_FORMAT_QUAR,               /**< Multi song bundle (sc68).      */
@@ -75,6 +74,7 @@ enum {
 
 typedef zz_i8_t zz_err_t;
 typedef struct vfs_s  * restrict zz_vfs_t;
+typedef struct info_s * restrict zz_info_t;
 typedef struct vset_s * restrict zz_vset_t;
 typedef struct song_s * restrict zz_song_t;
 typedef struct play_s * restrict zz_play_t;
@@ -96,7 +96,18 @@ enum zz_log_e {
  * Zingzong log function type (printf-like).
  */
 
-typedef void (*zz_log_t)(int,void *,const char *,va_list);
+typedef void (*zz_log_t)(zz_u8_t,void *,const char *,va_list);
+
+/**
+ * Get/Set zingzong active logging channels.
+ *
+ * @param  clr  bit mask of channels to disable).
+ * @param  set  bit mask of channels to en able).
+ * @return previous active logging channel mask.
+ */
+ZINGZONG_API( zz_u8_t, zz_log_bit)
+        (const zz_u8_t clr, const zz_u8_t set)
+        ;
 
 /**
  * Set Zingzong log function.
@@ -105,10 +116,26 @@ typedef void (*zz_log_t)(int,void *,const char *,va_list);
  * @param user  pointer user private data (parameter #2 of func).
  */
 
-ZINGZONG_API( void , zz_log )
+ZINGZONG_API( void , zz_log_fun )
         (zz_log_t func, void * user)
         ;
 
+/**
+ * Memory allocation function types.
+ */
+typedef void * (*zz_new_t)(zz_u32_t);
+typedef void   (*zz_del_t)(void *);
+
+/**
+ * Set Zingzong memory management function.
+ *
+ * @param  newf pointer to the memory allocation function.
+ * @param  delf pointer to the memory free function.
+ */
+
+ZINGZONG_API( void , zz_mem )
+        (zz_new_t newf, zz_del_t delf)
+        ;
 
 /**
  * Get zingzong version string.
@@ -119,20 +146,20 @@ ZINGZONG_API( const char * , zz_version )
         ;
 
 ZINGZONG_API( zz_err_t , zz_new )
-        (zz_play_t * play)
+        (zz_play_t * pplay)
         ;
 ZINGZONG_API( void , zz_del )
-        (zz_play_t * play)
+        (zz_play_t * pplay)
         ;
 
 ZINGZONG_API( zz_err_t , zz_setup )
-	(zz_play_t play, zz_u8_t mixerid,
+        (zz_play_t play, zz_u8_t mixerid,
          zz_u32_t spr, zz_u16_t rate,
          zz_u32_t max_ticks, zz_u8_t end_detect)
-	;
+        ;
 
 ZINGZONG_API( zz_err_t , zz_load )
-	(zz_play_t const play,
+        (zz_play_t const play,
          const char * song, const char * vset,
          zz_u8_t * pfmt)
         ;
@@ -147,7 +174,7 @@ ZINGZONG_API( zz_err_t , zz_init)
         (zz_play_t P)
         ;
 ZINGZONG_API( zz_err_t , zz_measure )
-	(zz_play_t P, zz_u32_t * pticks, zz_u32_t * pms)
+        (zz_play_t P, zz_u32_t * pticks, zz_u32_t * pms)
         ;
 ZINGZONG_API( zz_err_t , zz_tick )
         (zz_play_t play)
@@ -169,6 +196,8 @@ ZINGZONG_API( zz_u8_t , zz_mixer_set)
 enum {
   ZZ_SEEK_SET, ZZ_SEEK_CUR, ZZ_SEEK_END
 };
+
+#define ZZ_EOF ((zz_u32_t)-1)
 
 struct zz_vfs_dri_s {
   const char * name;                       /**< friendly name. */

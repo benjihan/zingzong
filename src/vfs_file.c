@@ -5,6 +5,7 @@
  * @brief  standard libc FILE VFS.
  */
 
+#define ZZ_DBG_PREFIX "(vfs-file) "
 #include "zz_private.h"
 
 #if defined NO_LIBC || defined NO_VFS
@@ -70,9 +71,12 @@ x_uri(vfs_t _vfs)
 static zz_vfs_t
 x_new(const char * uri, va_list list)
 {
+  zz_err_t ecode;
   int len = strlen(uri);
-  vfs_file_t const fs = zz_malloc("vfs-file",sizeof(*fs)+len);
-  if (fs) {
+  vfs_file_t fs = 0;
+  ecode = zz_mem_malloc(&fs, sizeof(*fs)+len);
+  if (likely(E_OK == ecode)) {
+    zz_assert(fs);
     fs->X.dri = &file_dri;
     fs->fp = 0;
     zz_memcpy(fs->uri, uri, len+1);
@@ -83,9 +87,9 @@ x_new(const char * uri, va_list list)
 static void
 x_del(vfs_t vfs)
 {
-  zz_free("vfs-file", (void *)&vfs);
-  if (vfs)
-    vfs->err = errno;
+  zz_assert( vfs );
+  zz_mem_free(&vfs);
+  zz_assert( !vfs );
 }
 
 static zz_err_t
@@ -93,20 +97,21 @@ x_close(vfs_t const _vfs)
 {
   int ret;
   vfs_file_t const fs = (vfs_file_t) _vfs;
-
   if (ret = fclose(fs->fp), !ret)
     fs->fp = 0;
   fs->X.err = errno;
-  zz_assert( ret == 0 || ret == -1 );
-  return E_SYS & ret;
+  return E_SYS & -!!ret;
 }
 
 static zz_err_t
 x_open(vfs_t const _vfs)
 {
   vfs_file_t const fs = (vfs_file_t) _vfs;
-  if (fs->fp)
-    return -1;
+  if (fs->fp) {
+    dmsg("file pointer is not nil. Already opened ?\n");
+    fs->X.err = EINVAL;
+    return E_SYS;
+  }
   fs->fp = fopen(fs->uri,"rb");
   fs->X.err = errno;
   return E_SYS & -!fs->fp;
@@ -140,7 +145,7 @@ x_size(vfs_t const _vfs)
      -1 == fseek(fs->fp,0,SEEK_END)  || /* go to end        */
      -1 == (size = ftell(fs->fp))    || /* size = position  */
      -1 == fseek(fs->fp,tell,SEEK_SET)) /* restore position */
-    ? -1 : size;
+    ? ZZ_EOF : size;
   fs->X.err = errno;
   return ret;
 }

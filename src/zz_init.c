@@ -5,6 +5,7 @@
  * @brief  quartet song and voice-set parser.
  */
 
+#define ZZ_DBG_PREFIX "(ini) "
 #include "zz_private.h"
 #include <ctype.h>
 
@@ -38,7 +39,7 @@ static int is_valid_ins(const uint8_t ins) {
  * ----------------------------------------------------------------------
  */
 
-int
+zz_err_t
 song_init_header(song_t * song, const void *_hd)
 {
   const uint8_t * hd = _hd;
@@ -59,7 +60,7 @@ song_init_header(song_t * song, const void *_hd)
                      is_valid_sig(song->sigm,song->sigd) );
 }
 
-int
+zz_err_t
 song_init(song_t * song)
 {
   uint8_t ins, has_note, k, ecode=E_SNG;
@@ -77,11 +78,11 @@ song_init(song_t * song)
    * empty sequences by something that won't loop endlessly and won't
    * disrupt the end of music detection.
    */
-  for (k=has_note=ins=0, off=11, size=ZZLEN(song->bin), song->iused=0;
+  for (k=has_note=ins=0, off=11, size=song->bin->len, song->iused=0;
        k<4 && off<size;
        off += 12)
   {
-    sequ_t * const seq = (sequ_t *)(ZZBUF(song->bin)+off-11);
+    sequ_t * const seq = (sequ_t *)(song->bin->buf+off-11);
     u16_t    const cmd = u16(seq->cmd);
     u32_t    const stp = u32(seq->stp);
     u32_t    const par = u32(seq->par);
@@ -122,15 +123,15 @@ song_init(song_t * song)
     }
   }
 
-  if ( (off -= 11) != ZZLEN(song->bin)) {
+  if ( (off -= 11) != song->bin->len) {
     dmsg("garbage data after voice sequences -- %lu bytes\n",
-         LU(ZZLEN(song->bin) - off));
+         LU(song->bin->len) - off);
   }
 
   for ( ;k<4; ++k) {
     if (has_note) {
       /* Add 'F'inish mark */
-      sequ_t * const seq = (sequ_t *) ZZOFF(song->bin,off);
+      sequ_t * const seq = (sequ_t *) (song->bin->buf+off);
       seq->cmd[0] = 0; seq->cmd[1] = 'F';
       off += 12;
       has_note = 0;
@@ -155,7 +156,7 @@ error:
  * ----------------------------------------------------------------------
  */
 
-int
+zz_err_t
 vset_init_header(zz_vset_t vset, const void * _hd)
 {
   const uint8_t *hd = _hd;
@@ -192,51 +193,56 @@ static void sort_inst(const inst_t inst[], uint8_t idx[], int nbi)
       }
 }
 
-int
+zz_err_t
 vset_init(zz_vset_t const vset)
 {
-  const i8_t n = vset->nbi;
-  i8_t nused;
-  uint8_t * const beg = ZZBUF(vset->bin);
-  uint8_t * const end = beg+ZZMAX(vset->bin);
+  const u8_t nbi = vset->nbi;
+  bin_t * const bin = vset->bin;
+  uint8_t * const beg = bin->buf;
+  uint8_t * const end = beg + bin->max;
   uint8_t * e;
-  i32_t tot,unroll,imask,i,j;
+  i32_t tot, unroll, j, imask;
+  u8_t nused, i;
   uint8_t idx[20];
-  bin_t * restrict bin;
 
-  zz_assert(n>0 && n<=20);
+  zz_assert( nbi > 0 && nbi <= 20 );
 
-  imask = vset->iused ? vset->iused : (1 << vset->nbi) - 1;
+  /* imask is best set before when possible so that unused (but valid)
+   * instruments can be ignored. This give a little more space to
+   * unroll loops.
+   *
+   * Unfortunately the way the loader work at the moment does not
+   * really help with that.
+   */
+  imask = vset->iused ? vset->iused : (1 << nbi) - 1;
 
-  for (i=vset->iused=0, bin=vset->bin; i<20; ++i) {
+  for (i=nused=vset->iused=0; i<20; ++i) {
     const i32_t off = vset->inst[i].len - 222 + 8;
-    u32_t len, lpl;
-    uint8_t * pcm;
+    u32_t len = 0, lpl = 0;
+    uint8_t * pcm = 0;
 
     do {
-      pcm = 0; len = lpl = 0;           /* no compiler whining */
-
       /* Sanity tests */
       if (!(imask & (1<<i))) break;     /* Used ? */
-      if (off < 8) break;               /* inside ?  */
-      if (off >= ZZLEN(bin)) break;     /* inside ?  */
+      if (off < 8)           break;     /* inside ?  */
+      if (off >= bin->len)   break;     /* inside ?  */
 
-      /* get sample info */
-      pcm = ZZOFF(bin,off);
+      /* Get sample info */
+      pcm = bin->buf + off;
       len = u32(pcm-4);
       lpl = u32(pcm-8);
       if (lpl == 0xFFFFFFFF) lpl = 0;
 
-      /* Some of these tests might be a little conservative but as the
+      /* Some of these tests might be a tad conservative but as the
        * format is not very robust It might be a nice safety net.
        * Currently I haven't found a music file that is valid and does
        * not pass them.
        */
-      if (len & 0xFFFF) break;
-      if (lpl & 0xFFFF) break;
-      if ((len >>= 16) == 0) break;
+      if (len & 0xFFFF)       break;
+      if (lpl & 0xFFFF)       break;
+      if ((len >>= 16) == 0)  break;
       if ((lpl >>= 16) > len) break;
-      if (off+len > ZZLEN(bin)) break;
+      if (off+len > bin->len) break;
 
       vset->iused |= 1<<i;
       ++nused;
@@ -248,57 +254,84 @@ vset_init(zz_vset_t const vset)
 
     if ( ! ( vset->iused & (1<<i) ) )
       pcm = 0, len = lpl = 0;           /* If not used mark dirty */
+
+    zz_assert( (!!len) == !!( vset->iused & (1<<i) ) );
+    zz_assert( len < 0x10000 );
+    zz_assert( lpl <= len );
+
     vset->inst[i].end = len;
     vset->inst[i].len = len;
     vset->inst[i].lpl = lpl;
     vset->inst[i].pcm = pcm;
   }
+  dmsg("Instruments: used:%hu/%hu ($%06lX/$%06lX)\n",
+       HU(nused), HU(nbi), LU(vset->iused), LU(imask) );
 
   /* That's very conservative. we should definitively warn in case any
    * instrument got dismissed but an error might be a little to rough
    */
-  if (vset->iused != imask)
+  if (vset->iused != imask) {
+    emsg("(instrument) instrument(s) got dismissed $%06lX != %06lX\n",
+         LU(vset->iused), LU(imask));
     return E_SET;
+  }
 
   /* Loops unroll */
 
   /* -1- Re-order instruments in memory order. */
-  for (i=tot=0; i<n; ++i) {
+  for (i=tot=0; i<nbi; ++i) {
     const u32_t len = vset->inst[i].len;
-    if (len >= 0x10000)
-      dmsg("I%02hu length > 64k -- 0x%08lx\n", HU(i), LU(len));
-    zz_assert( len < 0x10000 );
     idx[i] = i;
-    tot += (len+1)&-2;
+    tot += (len+1) & -2;
   }
   zz_assert( tot <= end-beg );
-  sort_inst(vset->inst, idx, n);
+  sort_inst(vset->inst, idx, nbi);
 
   /* -2- Compute the unroll size. */
-  unroll = ( divu32(end-beg-tot,n) + 1 ) & -2;
-  dmsg("%hu instrument using %lu/%lu bytes unroll:%lu\n",
-       HU(n), LU(tot), LU(end-beg), LU(unroll));
+  unroll = ( divu32(end-beg-tot,nused) - 1 ) & -2;
+  dmsg("%hu/%hu instrument using %lu/%lu bytes unroll:%lu\n",
+       HU(nused), HU(nbi), LU(tot), LU(end-beg), LU(unroll));
   if (unroll < VSET_UNROLL)
-    dmsg("Have less unroll space than expected -- %lu\n", LU(unroll-VSET_UNROLL));
+    wmsg("Have less unroll space than expected -- %lu\n", LU(unroll-VSET_UNROLL));
 
   /* -3- Unroll starting from bottom to top */
-  for (i=0, e=end; i<n; ++i) {
+  for (i=0, e=end; i<nbi; ++i) {
     inst_t * const inst = vset->inst + idx[i];
-    const u32_t r_len = inst->len;
-    const u32_t a_len = (r_len + 1) & -2;
-    uint8_t * const pcm = (void *)((intptr_t) (e-unroll-a_len) & -2);
+    const u32_t r_len = inst->len;        /* real length */
+    const u32_t a_len = (r_len + 1) & -2; /* aligned length */
+    uint8_t * const pcm = (void *)( (intptr_t) (e-unroll-a_len) & -2);
 
-    if (!a_len) continue;
+    /*
+    dmsg("[%02hu] I#%02hu rlen=%5lu alen:%5lu pcm<%p>%s..<%p>%s inst:<%p>%s\n",
+         HU(i), HU(idx[i]), LU(r_len), LU(a_len),
+         pcm,       pcm       <  beg ? " < beg" : "",
+         pcm+a_len, pcm+a_len <= end ? "" : " > end",
+         inst->pcm, pcm <= inst->pcm ? "fwd":"bwd"
+      );
+    */
+
+    if (!a_len)
+      continue;
+    zz_assert( (vset->iused & (1<<idx[i])) );
+    zz_assert( a_len < 0x10000 );
+    zz_assert( pcm >= beg );
+    zz_assert( pcm+a_len <= end  );
 
     inst->end = a_len+unroll;
 
     /* Copy and sign PCMs */
     if (pcm <= inst->pcm)
-      for (j=0; j<r_len; ++j)
+      for (j=0; j<r_len; ++j) {
+        zz_assert( pcm+j >= beg );
+        zz_assert( pcm+j < end );
         pcm[j] = 0x80 ^ inst->pcm[j];
+      }
     else
-      for (j=r_len-1; j>=0; --j)
+      for (j=r_len-1; j>=0; --j) {
+        zz_assert( pcm+j >= beg );
+        zz_assert( pcm+j < end );
         pcm[j] = 0x80 ^ inst->pcm[j];
+      }
     inst->pcm = pcm;
 
     if (!inst->lpl) {

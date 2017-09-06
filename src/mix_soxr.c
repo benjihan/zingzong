@@ -7,6 +7,8 @@
 
 #if WITH_SOXR == 1
 
+#define ZZ_DBG_PREFIX "(mix-soxr) "
+#define ZZ_ERR_PREFIX "(mix-soxr) "
 #include "zz_private.h"
 #include <string.h>
 #include <soxr.h>
@@ -64,26 +66,26 @@ static void
 chan_flread(float * const d, mix_chan_t * const K, const int n)
 {
   if (!n) return;
-  zz_assert(n > 0);
-  zz_assert(n < VSET_UNROLL);
+  zz_assert( n > 0 );
+  zz_assert( n < VSET_UNROLL );
 
   if (!K->ptr)
     zz_memclr(d,n*sizeof(*d));
   else {
-    zz_assert(K->ptr < K->pte);
+    zz_assert( K->ptr < K->pte );
     i8tofl(d, K->ptr, n);
 
     if ( (K->ptr += n) >= K->pte ) {
       if (!K->ptl) {
         K->ptr = 0;
       } else {
-        zz_assert(K->ptl < K->pte);
+        zz_assert( K->ptl < K->pte );
         K->ptr = &K->ptl[ ( K->ptr - K->pte ) % ( K->pte - K->ptl ) ];
-        zz_assert(K->ptr >= K->ptl);
-        zz_assert(K->ptr <  K->pte);
+        zz_assert( K->ptr >= K->ptl );
+        zz_assert( K->ptr <  K->pte );
       }
     }
-    zz_assert(K->ptr < K->pte);
+    zz_assert( K->ptr < K->pte );
   }
 }
 
@@ -108,8 +110,8 @@ fill_cb(void * _K, soxr_in_t * data, size_t reqlen)
   mix_chan_t * const K = _K;
   int len = reqlen;
 
-  zz_assert(len <= K->imax);              /* Limited by set_input_fb() */
-  zz_assert(K->imax == FLIMAX);           /* For now keep it simple */
+  zz_assert( len <= K->imax );         /* Limited by set_input_fb() */
+  zz_assert( K->imax == FLIMAX );      /* For now keep it simple */
   if (len > K->imax)
     len = K->imax;
   *data = K->iflt;
@@ -157,7 +159,7 @@ rate_of_fp16(const u32_t fp16, const double rate) {
 
    ---------------------------------------------------------------------- */
 
-static int
+static zz_err_t
 push_cb(play_t * const P)
 {
   soxr_error_t err;
@@ -165,8 +167,8 @@ push_cb(play_t * const P)
   const int N = P->pcm_per_tick;
   int k;
 
-  zz_assert(P);
-  zz_assert(M);
+  zz_assert( P );
+  zz_assert( M );
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -178,7 +180,7 @@ push_cb(play_t * const P)
     switch (C->trig) {
 
     case TRIG_NOTE:
-      zz_assert(C->note.ins);
+      zz_assert( C->note.ins );
 
       K->ptr = C->note.ins->pcm;
       K->pte = K->ptr + C->note.ins->len;
@@ -191,8 +193,18 @@ push_cb(play_t * const P)
 
     case TRIG_SLIDE:
       K->rate = rate_of_fp16(C->note.cur, M->rate);
-      zz_assert(K->rate >= M->rate_min);
-      zz_assert(K->rate <= M->rate_max);
+
+      /* if ( K->rate < M->rate_min || K->rate > M->rate_max ) */
+      /*   dmsg("rate out of range ! %f < %f < %f\n", */
+      /*        M->rate_min, K->rate, M->rate_max); */
+
+      /* GB: Add/Sub a small amount because these asserts are
+       *     sometimes triggered (eg. i686-mingw) by rounding errors
+       *     of sort. Weirdly enough adding the conditional debug
+       *     message above removed the assert triggering !
+       */
+      zz_assert( K->rate >= M->rate_min-1E6 );
+      zz_assert( K->rate <= M->rate_max+1E6 );
       err = soxr_set_io_ratio(K->soxr, K->rate, slew+slew_val);
 
       /* dmsg("%c: trig=%d stp=%08X %.3lf\n", */
@@ -205,7 +217,7 @@ push_cb(play_t * const P)
     case TRIG_NOP:  break;
     default:
       emsg("INTERNAL ERROR: %c: invalid trigger -- %d\n", 'A'+k, C->trig);
-      zz_assert(!"wtf");
+      zz_assert( !"wtf" );
       return E_MIX;
     }
   }
@@ -308,7 +320,7 @@ static void free_cb(play_t * const P)
   mix_data_t * const M = (mix_data_t *) P->mixer_data;
   if (M) {
     int k;
-    zz_assert(M == P->mixer_data);
+    zz_assert( M == P->mixer_data );
     for (k=0; k<4; ++k) {
       mix_chan_t * const K = M->chan+k;
       if (K->soxr) {
@@ -316,25 +328,28 @@ static void free_cb(play_t * const P)
         K->soxr = 0;
       }
     }
-
-    zz_free("soxr-data",&P->mixer_data);
+    zz_free(&P->mixer_data);
   }
 }
 
 /* ---------------------------------------------------------------------- */
 
-static int init_soxr(play_t * const P, const int quality)
+static zz_err_t init_soxr(play_t * const P, const int quality)
 {
-  int k, ecode = E_SYS;
+  zz_err_t ecode = E_SYS;
+  int k;
   const int N = P->pcm_per_tick;
   soxr_error_t err;
-  mix_data_t * M;
   const u32_t size = sizeof(mix_data_t) + sizeof(float)*N;
-  zz_assert(!P->mixer_data);
-  zz_assert(N > 0);
-  zz_assert(sizeof(float) == 4);
-  P->mixer_data = M = zz_calloc("soxr-data", size);
-  if (M) {
+
+  zz_assert( !P->mixer_data );
+  zz_assert( N > 0 );
+  zz_assert( sizeof(float) == 4 );
+
+  ecode = zz_calloc(&P->mixer_data,size);
+  if (likely(E_OK == ecode)) {
+    mix_data_t * M = P->mixer_data;
+    zz_assert( M );
     M->qspec    = soxr_quality_spec(quality, SOXR_VR);
     M->ispec    = soxr_io_spec(SOXR_FLOAT32_I,SOXR_FLOAT32_I);
     M->irate    = (double) P->song.khz * 1000.0;
@@ -391,7 +406,7 @@ static int init_soxr(play_t * const P, const int quality)
 #define STR(A) XTR(A)
 
 #define DECL_SOXR_MIXER(Q,QQ, D) \
-  static int init_##Q(play_t * const P)\
+  static zz_err_t init_##Q(play_t * const P)\
   {\
     return init_soxr(P, SOXR_##QQ);\
   }\

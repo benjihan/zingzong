@@ -29,7 +29,6 @@
 #define RATE_MAX 800
 #define RATE_DEF 200
 
-
 #ifndef zz_void
 # define zz_void ((void)0)
 #endif
@@ -79,6 +78,10 @@
 #  endif
 # endif
 
+/**
+ * Message logging (zz_log.c)
+ * @{
+ */
 ZZ_EXTERN_C FMT12 void
 zz_log_err(const char * fmt,...);
 ZZ_EXTERN_C FMT12 void
@@ -89,14 +92,73 @@ ZZ_EXTERN_C FMT12 void
 zz_log_dbg(const char * fmt,...);
 #endif /* NO_LOG */
 
-#define emsg(FMT,...) zz_log_err(FMT,##__VA_ARGS__)
-#define wmsg(FMT,...) zz_log_wrn(FMT,##__VA_ARGS__)
-#define imsg(FMT,...) zz_log_inf(FMT,##__VA_ARGS__)
+#ifndef ZZ_ERR_PREFIX
+# define ZZ_ERR_PREFIX ""
+#endif
+#define emsg(FMT,...) zz_log_err(ZZ_ERR_PREFIX FMT,##__VA_ARGS__)
+
+#ifndef ZZ_WRN_PREFIX
+# define ZZ_WRN_PREFIX "/!\\ "
+#endif
+#define wmsg(FMT,...) zz_log_wrn(ZZ_WRN_PREFIX FMT,##__VA_ARGS__)
+
+#ifndef ZZ_INF_PREFIX
+# define ZZ_INF_PREFIX ""
+#endif
+#define imsg(FMT,...) zz_log_inf(ZZ_INF_PREFIX FMT,##__VA_ARGS__)
+
 #ifdef DEBUG_LOG
-# define dmsg(FMT,...) zz_log_dbg(FMT,##__VA_ARGS__)
+#ifndef ZZ_DBG_PREFIX
+# define ZZ_DBG_PREFIX ""
+#endif
+# define dmsg(FMT,...) zz_log_dbg(ZZ_DBG_PREFIX FMT,##__VA_ARGS__)
 #else
 # define dmsg(FMT,...) zz_void
 #endif
+/**
+ * @}
+ */
+
+#define FCC_EQ(A,B) (0[A]==0[B]&&1[A]==1[B]&&2[A]==2[B]&&3[A]==3[B])
+
+
+/**
+ * memory functions (zz_mem.c).
+ */
+#define zz_malloc(P,N) zz_mem_malloc( (void * restrict) (P), (N) )
+#define zz_calloc(P,N) zz_mem_calloc( (void * restrict) (P), (N) )
+#define zz_free(P)     zz_mem_free( (void * restrict) (P)  )
+ZZ_EXTERN_C
+zz_err_t zz_mem_malloc(void * restrict pmem, zz_u32_t size);
+ZZ_EXTERN_C
+zz_err_t zz_mem_calloc(void * restrict pmem, zz_u32_t size);
+ZZ_EXTERN_C
+void zz_mem_free(void * restrict pmem);
+ZZ_EXTERN_C
+zz_err_t zz_mem_check_close(void);
+ZZ_EXTERN_C
+zz_err_t zz_mem_check_block(const void *);
+/**
+ * @}
+ */
+
+/**
+ * Managed strings (zz_str.c)
+ * @{
+ */
+typedef struct str_s * str_t;
+ZZ_EXTERN_C str_t zz_strnew(zz_u16_t len);
+ZZ_EXTERN_C str_t zz_strset(str_t str, const char * sta);
+ZZ_EXTERN_C str_t zz_strdup(str_t str);
+ZZ_EXTERN_C void  zz_strdel(str_t * pstr);
+ZZ_EXTERN_C zz_u16_t zz_strlen(str_t const str);
+/**
+ * @}
+ */
+
+/**
+ * Audio output interface (out_ao.c and out_raw.c).
+ */
 
 typedef struct zz_out_s zz_out_t;       /**< output. */
 
@@ -106,21 +168,13 @@ struct zz_out_s {
   const char * uri;                     /**< uri/path. */
   zz_u32_t     hz;                      /**< sampling rate. */
 
-  /**
-     Close and free function.
-  */
+  /** Close and free function. */
   zz_err_t (*close)(zz_out_t *);
 
-  /**
-     write PCM data function.
-  */
+  /** Write PCM data function. */
   zz_u16_t (*write)(zz_out_t *, void *, zz_u16_t);
 };
 
-/**
- * Output functions
- * @{
- */
 ZZ_EXTERN_C
 zz_out_t * out_ao_open(zz_u32_t hz, const char * uri);
 ZZ_EXTERN_C
@@ -130,7 +184,6 @@ zz_out_t * out_raw_open(zz_u32_t hz, const char * uri);
  */
 
 /* ---------------------------------------------------------------------- */
-
 
 /**
  * @}

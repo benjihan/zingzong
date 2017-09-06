@@ -2,9 +2,10 @@
  * @file   zz_play.c
  * @author Benjamin Gerard AKA Ben/OVR
  * @date   2017-07-04
- * @brief  quartet player.
+ * @brief  Quartet player.
  */
 
+#define ZZ_DBG_PREFIX "(pla) "
 #include "zz_private.h"
 
 zz_err_t zz_setup(zz_play_t play, zz_u8_t mixerid,
@@ -205,7 +206,7 @@ int zz_play_chan(play_t * const P, const int k)
         l->cnt = 0;
       } else {
         dmsg("%c off:%lu tick:%lu -- loop stack overflow\n",
-             'A'+k, (u32_t)(seq-C->seq-1), P->tick);
+             C->id, LU(seq-C->seq-1), LU(P->tick));
         return E_PLA;
       }
       break;
@@ -290,12 +291,19 @@ int16_t * zz_play(play_t * P, zz_u16_t * ptr_n)
   zz_u16_t n = *ptr_n;
   zz_err_t ecode;
 
-  if (!P->mix_ptr) {
+  zz_assert(P);
+  zz_assert(ptr_n);
 
-    dmsg("play: rate:%hu-hz spr:%lu-hz pcm:%hu max-ticks:%lu end:%hu mute:%hX\n",
+  if (!P->mix_buf) {
+    emsg("play: not initialized\n");
+    *ptr_n = E_PLA;
+    return 0;
+  }
+
+  if (!P->mix_ptr) {
+    dmsg("play: rate:%huhz spr:%luhz pcm:%hu ticks:%lu end:%hu mute:%hX\n",
          HU(P->rate), LU(P->spr), HU(P->pcm_per_tick),
          LU(P->max_ticks),HU(P->end_detect), HU(P->muted_voices));
-
     ecode = zz_play_init(P);
     if (ecode)
       goto error;
@@ -473,11 +481,11 @@ zz_measure(play_t * P, zz_u32_t * restrict pticks, zz_u32_t * restrict pms)
   P->mix_ptr = 0;
   P->mixer = save_mixer;
   if (!P->vset.bin)
-    zz_memclr(&P->vset,sizeof(P->vset));
+    P->vset.nbi = 0;
 
-  if (*pticks)
+  if (pticks)
     *pticks = ticks;
-  if (*pms)
+  if (pms)
     *pms = tick_to_ms(ticks, P->rate);
 
   dmsg("measure -> ticks:%lu ms:%lu\n", LU(ticks), LU(pms?*pms:0));
@@ -491,14 +499,19 @@ zz_init(play_t * P)
 {
   zz_err_t ecode = E_OK;
 
+  zz_assert ( ! P->mix_buf );
+  zz_assert ( ! P->mixer_data );
+  zz_assert ( P->mixer );
+
+
   if (!P->rate) {
     P->rate = 200;
-    dmsg("replay rate not set -- default to %lu\n", P->rate);
+    dmsg("replay rate not set -- default to %hu\n", HU(P->rate));
   }
 
   if (!P->spr) {
     P->spr = P->song.khz * 1000u;
-    dmsg("sampling rate not set -- default to %lu\n", P->spr);
+    dmsg("sampling rate not set -- default to %lu\n", LU(P->spr));
   }
 
   /* ----------------------------------------
@@ -524,10 +537,7 @@ zz_init(play_t * P)
     goto error;
 
   P->mix_ptr = 0;
-  P->mix_buf = (int16_t *) zz_malloc("mix-buf",2*P->pcm_per_tick);
-  if (!P->mix_buf) {
-    ecode = E_SYS; goto error;
-  }
+  ecode = zz_mem_malloc(&P->mix_buf, 2*P->pcm_per_tick);
 
 error:
   return ecode;
@@ -569,16 +579,23 @@ zz_err_t zz_close(zz_play_t P)
       P->mixer->free(P);
       P->mixer = 0;
     }
+    zz_assert ( ! P->mixer_data ); /* miser::free() should have clean that */
+    P->mixer_data = 0;
 
-    zz_free("mix-buffer",&P->mix_buf);
     P->mix_ptr = 0;
+    zz_mem_free(&P->mix_buf);
+    zz_assert( !P->mix_buf );
 
-    zz_strfree(&P->vset.uri);
-    zz_strfree(&P->song.uri);
-    zz_strfree(&P->info.uri);
-    bin_free(&P->vset.bin);
-    bin_free(&P->song.bin);
-    bin_free(&P->info.bin);
+    zz_song_wipe(&P->song);
+    zz_vset_wipe(&P->vset);
+    zz_info_wipe(&P->info);
+
+    zz_strdel(&P->songuri);
+    zz_strdel(&P->vseturi);
+    zz_strdel(&P->infouri);
+
+    P->st_idx = 0;
+
     ecode = E_OK;
   }
   return ecode;
@@ -586,24 +603,17 @@ zz_err_t zz_close(zz_play_t P)
 
 zz_err_t zz_new(zz_play_t * pP)
 {
-  return !pP
-    ? E_ARG
-    : !(*pP = zz_calloc("zz-player",sizeof(**pP)))
-    ? E_SYS
-    : E_OK
-    ;
+  return zz_calloc(pP,sizeof(**pP));
 }
 
 void zz_del(zz_play_t * pP)
 {
+  zz_assert( pP );
   if (pP && *pP) {
-    zz_play_t P = *pP;
-    *pP = 0;
-    zz_close(P);
-    zz_free("zz-player",P);
+    zz_close(*pP);
+    zz_free(pP);
   }
 }
-
 
 #ifndef NO_VFS
 

@@ -2,18 +2,19 @@
  * @file   mix_lerp.c
  * @author Benjamin Gerard AKA Ben/OVR
  * @date   2017-07-04
- * @brief  Lagrange polynomial quadratic interpolation.
+ * @brief  Linear interpolation.
  */
-
-#include "zz_private.h"
-
-#define SETPCM() *b  = lerp(pcm,idx); ++b; idx += stp
-#define ADDPCM() *b += lerp(pcm,idx); ++b; idx += stp
 
 #define NAME "int"
 #define METH "lerp"
 #define SYMB mixer_zz_lerp
 #define DESC "linear interpolation (very fast)"
+
+#define ZZ_DBG_PREFIX "(mix-" METH  ") "
+#include "zz_private.h"
+
+#define SETPCM() *b  = lerp(pcm,idx); ++b; idx += stp
+#define ADDPCM() *b += lerp(pcm,idx); ++b; idx += stp
 
 /* Linear Interpolation.
  */

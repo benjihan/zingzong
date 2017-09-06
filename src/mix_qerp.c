@@ -5,15 +5,17 @@
  * @brief  Lagrange polynomial quadratic interpolation.
  */
 
+#define NAME "int"
+#define METH "qerp"
+#define SYMB mixer_zz_qerp
+#define DESC "lagrange quadratic interpolation (fast,MQ)"
+
+#define ZZ_DBG_PREFIX "(mix-" METH  ") "
 #include "zz_private.h"
 
 #define SETPCM() *b  = lagrange(pcm,idx); ++b; idx += stp
 #define ADDPCM() *b += lagrange(pcm,idx); ++b; idx += stp
 
-#define NAME "int"
-#define METH "qerp"
-#define SYMB mixer_zz_qerp
-#define DESC "lagrange quadratic interpolation (fast,MQ)"
 
 /* Lagrange Polynomial Quadratic interpolation.
  *

@@ -37,6 +37,8 @@
 #include "config.h"
 #endif
 
+#define ZZ_DBG_PREFIX "(amp) "
+
 /* windows */
 #include "in_zingzong.h"
 
@@ -47,6 +49,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <assert.h>
+#include <malloc.h>                     /* malloca */
 
 /* winamp 2 */
 #include "winamp/in2.h"
@@ -58,6 +61,10 @@
 /*****************************************************************************
  * Plugin private data.
  ****************************************************************************/
+
+typedef unsigned int uint_t;
+ZZ_EXTERN_C
+zz_vfs_dri_t zz_file_vfs(void);
 
 const char me[] = "in_zingzong";
 
@@ -86,7 +93,7 @@ static volatile LONG g_playing;         /* true while playing     */
 static volatile LONG g_stopreq;         /* stop requested         */
 static volatile LONG g_paused;          /* pause status           */
 static int16_t g_pcm[576*2];            /* buffer for DSP filters */
-
+static zz_u8_t g_mixerid = ZZ_DEFAULT_MIXER;
 /*****************************************************************************
  * Declaration
  ****************************************************************************/
@@ -219,8 +226,12 @@ void about(HWND hwnd)
   char temp[512];
   snprintf(temp,sizeof(temp),
            "ZingZong for Winamp\n"
-           "\na Quartet music player\n"
-           "\nVersion " PACKAGE_VERSION "\n"
+           "\na Microdeal Quartet music player\n"
+           "\n"
+#ifdef DEBUG
+           "!!! DEBUG !!! "
+#endif
+           "Version " PACKAGE_VERSION "\n"
            "\n(c) 2017 Benjamin Gerard AKA Ben/OVR");
 
   MessageBox(hwnd,
@@ -341,7 +352,7 @@ static void clean_close(void)
     g_thdl = 0;
   }
   atomic_set(&g_playing,0);
-  zz_kill(&g_play);
+  zz_close(&g_play);
 
   g_mod.outMod->Close();                /* Close output system */
   g_mod.SAVSADeInit();                  /* Shutdown visualization */
@@ -377,35 +388,23 @@ static int load(play_t * const P, const char * uri, int measure)
   int ecode = E_INP;
 
   zz_memclr(P,sizeof(*P));
-  ecode = zz_load(P,uri,0);
+  ecode = zz_load(P, uri, measure == MEASURE_ONLY ? "" : 0, 0);
 
   if (!ecode) {
-    P->rate       = 200;
-    P->spr        = g_spr;
-    P->mixer      = zz_default_mixer;
-    P->end_detect = 1;
-    P->max_ticks  = DEFAULT_SEC * P->rate;
-    ecode = zz_init(P);
-    dmsg("zz-winamp: inited song:%ukhz vset:%ukhz\n",
+    ecode = zz_setup(P,g_mixerid,g_spr,200,DEFAULT_SEC*P->rate,1);
+    if (!ecode)
+      ecode = zz_init(P);
+    dmsg("inited song:%ukhz vset:%ukhz\n",
          P->song.khz, P->vset.khz);
   }
 
-  if (!ecode && measure) {
-    const uint_t save_ticks = P->max_ticks;
-    P->max_ticks = 12u * 60u * 200u;   /* 12' */
-    dmsg("zz-winamp: measuring for max %u ticks ...\n", P->max_ticks);
-    ecode = zz_measure(P);
-    if (!ecode && P->tick) {
-      P->max_ticks  = P->tick;
-      P->end_detect = 0;
-      dmsg("zz-winamp: measured %u ticks\n", P->max_ticks);
-    } else {
-      P->max_ticks  = save_ticks;
-      P->end_detect = 0;
-    }
+  if (!ecode && measure != NO_MEASURE) {
+    zz_u32_t max_ticks = 12u * 60u * 200u;
+    dmsg("measuring for max %u ticks ...\n", max_ticks);
+    ecode = zz_measure(P,&max_ticks,0);
   }
 
-  dmsg("zz-winamp: load -- '%s' => %d\n", uri, ecode);
+  dmsg("load -- '%s' => %d\n", uri, ecode);
   return ecode;
 }
 
@@ -424,7 +423,7 @@ int play(const char * uri)
   if (!uri || !*uri)
     return -1;
 
-  dmsg("zz-winamp: play -- '%s'\n", uri);
+  dmsg("play -- '%s'\n", uri);
 
   if (!lock_noblock(g_lock))
     goto cantlock;
@@ -439,7 +438,7 @@ int play(const char * uri)
   g_paused     = 0;
 
   err = -1;
-  if (load(&g_play,uri,1))
+  if (load(&g_play,uri,MEASURE))
     goto exit;
 
   /* Init output module */
@@ -505,11 +504,11 @@ void getfileinfo(const in_char *uri, in_char *title, int *msptr)
   if (P) {
     if (msptr && P->end_detect && P->max_ticks) {
       *msptr = P->max_ticks * (1000u / P->rate);
-      dmsg("zz-winamp: '%s' ms=%u\n", uri?uri:"<current>", *msptr);
+      dmsg("'%s' ms=%u\n", uri?uri:"<current>", *msptr);
     }
     if (title && P->info.comment) {
       int i,j;
-      dmsg("zz-winamp: '%s' comment=\n%s\n",
+      dmsg("'%s' comment=\n%s\n",
            uri?uri:"<current>", P->info.comment);
       for (j=0; isspace(P->info.comment[j]); ++j)
         ;
@@ -535,20 +534,22 @@ static
  ****************************************************************************/
 DWORD WINAPI playloop(LPVOID cookie)
 {
-  int filling = 1, npcm = 0, n;
+  zz_u8_t filling = 1;
+  zz_u16_t npcm = 0, n;
   int16_t * pcm;
 
   for (;;) {
 
-    if (g_play.done || atomic_get(&g_stopreq))
+    if (atomic_get(&g_stopreq))
       break;
 
     if (filling) {
       /* filling */
       n = 576 - npcm;
       if (n < 0) break;
-      pcm = zz_pull(&g_play, &n);
-      if (!pcm) break;
+      pcm = zz_play(&g_play, &n);
+      if (!pcm || !n) break;
+
       memcpy(g_pcm+npcm, pcm, n*2);
       npcm += n;
       if (npcm >= 576) {
@@ -581,7 +582,7 @@ DWORD WINAPI playloop(LPVOID cookie)
   }
   atomic_set(&g_playing,0);
 
-  dmsg("zz-winamp: end of playloop\n");
+  dmsg("end of playloop\n");
   /* Wait buffered output to be processed */
   while (!atomic_get(&g_stopreq)) {
     g_mod.outMod->CanWrite();           /* needed by some out mod */
@@ -593,21 +594,50 @@ DWORD WINAPI playloop(LPVOID cookie)
       Sleep(15);
     }
   }
-  dmsg("zz-winamp: end of waitloop\n");
+  dmsg("end of waitloop\n");
 
 
   return 0;
 }
 
-static int nomsg(FILE *f, const char *fmt, va_list list)
+#ifndef NDEBUG
+/* My nice message handler that prints on STDERROR if the program was
+ * launch from a console else use windows debug facilities. */
+static void msg_handler(zz_u8_t chan, void * user,
+                        const char * fmt , va_list list)
 {
-#if DEBUG == 1
-  return 0;
-#endif
-  /* ignore f and write to stdout as winamp seems to redirect
-   * stderr */
-  return vprintf(fmt,list);
+  static const char chans[][4] = { "ERR","WRN","INF","DBG","???" };
+  static const char pref[] = "";
+  char  * s;
+  DWORD i, len;
+  HANDLE hdl;
+  va_list list_bis;
+
+  if (chan >= 4 || ! fmt) return;       /* safety first */
+
+  /* Copy the va_list and runs snprintf to measure the string length */
+  va_copy(list_bis, list);
+  len = vsnprintf(NULL, 0, fmt,list_bis);
+  va_end(list_bis);
+  if (len <= 0)
+    return;
+  len += 4 + sizeof(pref) + sizeof(chans[0]);
+  s = _malloca(len);
+  if (!s) return;
+  i  = 0;
+  i += snprintf(s+i,len-i,"%s%s:",pref,chans[chan]);
+  i += vsnprintf(s+i,len-i,fmt,list);
+  s[len-1] = 0;
+  if (hdl = GetStdHandle(STD_ERROR_HANDLE),
+      (hdl != NULL && hdl != INVALID_HANDLE_VALUE)) {
+    WriteFile(hdl,s,i,&i,NULL);
+    FlushFileBuffers(hdl);
+  }
+  else
+    OutputDebugStringA(s);
+  _freea(s);
 }
+#endif /* NDEBUG */
 
 static
 /*****************************************************************************
@@ -615,8 +645,13 @@ static
  ****************************************************************************/
 void init()
 {
-  msgfunc = nomsg;
-  dmsg("zz-winamp: init\n");
+#ifdef NDEBUG
+  zz_log_fun(0,0);
+#else
+  zz_log_fun(msg_handler,0);
+#endif
+  zz_vfs_add(zz_file_vfs());
+  dmsg("init\n");
   /* clear and init private */
 #ifdef USE_LOCK
   g_lock = CreateMutex(NULL, FALSE, NULL);
@@ -634,7 +669,7 @@ void quit()
   CloseHandle(g_lock); g_lock = 0;
 #endif
   CloseHandle(g_info.lock); g_info.lock = 0;
-  dmsg("zz-winamp: quit\n");
+  dmsg("quit\n");
 }
 
 
@@ -664,13 +699,13 @@ EXPORT
 intptr_t winampGetExtendedRead_open(
   const char *uri,int *siz, int *bps, int *nch, int *spr)
 {
-  struct transcon * trc;
+  struct transcon * trc = 0;
 
-  dmsg("zz-winamp: transcode -- '%s'\n", uri);
-  trc = zz_calloc("trancoder",sizeof(struct transcon));
+  dmsg("transcode -- '%s'\n", uri);
+  zz_calloc(&trc,sizeof(struct transcon));
   if (!trc)
     goto error_no_free;
-  if (load(&trc->play,uri,1))
+  if (load(&trc->play,uri,MEASURE))
     goto error;
   trc->duration = trc->play.end_detect ? trc->play.max_ticks : 0;
 
@@ -679,12 +714,12 @@ intptr_t winampGetExtendedRead_open(
   *bps = 16;
   *siz = trc->duration * trc->play.pcm_per_tick * 2;
 
-  dmsg("zz-winamp: transcode -- %u ticks, %u bytes\n", trc->duration, *siz);
+  dmsg("transcode -- %u ticks, %u bytes\n", trc->duration, *siz);
 
   return (intptr_t)trc;
 
 error:
-  zz_free("transcoder",&trc);
+  zz_free(&trc);
 error_no_free:
   return 0;
 }
@@ -712,22 +747,22 @@ intptr_t winampGetExtendedRead_getData(
 
   for (cnt = 0; len >= 2; ) {
     int16_t * pcm;
-    int n;
+    zz_u16_t n;
 
     if (*end || trc->done) {
-      dmsg("zz-winamp: transcoder -- notify end\n");
+      dmsg("transcoder -- notify end\n");
       cnt = 0; break;
     }
     if (trc->play.done) {
-      dmsg("zz-winamp: transcoder -- play done\n");
+      dmsg("transcoder -- play done\n");
       trc->done = 1; break;
     }
 
     n = trc->play.pcm_per_tick;
     if (n > (len>>1) ) n = len>>1;
-    pcm = zz_pull(&trc->play, &n);
+    pcm = zz_play(&trc->play, &n);
     if (!pcm) {
-      dmsg("zz-winamp: transcoder -- notify failure :(\n");
+      dmsg("transcoder -- notify failure :(\n");
       trc->done = -1; break;
     }
     n <<= 1;                            /* in bytes */
@@ -749,12 +784,13 @@ void winampGetExtendedRead_close(intptr_t hdl)
   struct transcon * trc = (struct transcon *) hdl;
 
   if (trc) {
-    zz_kill(&trc->play);
-    zz_free("transcoder", &trc);
+    zz_close(&trc->play);
+    zz_free(&trc);
   }
 }
 
 
+#if 0
 EXPORT
 /**
  * Provides the extended meta tag support of winamp.
@@ -771,11 +807,11 @@ int winampGetExtendedFileInfo(const char *uri, const char *data,
                               char *dest, size_t max)
 {
   if (!uri)
-    dmsg("zz-winamp: winampGetExtendedFileInfo '%s' (null)\n", data);
+    dmsg("winampGetExtendedFileInfo '%s' (null)\n", data);
   else if (!*uri)
-    dmsg("zz-winamp: winampGetExtendedFileInfo '%s' (empty)\n", data);
+    dmsg("winampGetExtendedFileInfo '%s' (empty)\n", data);
   else
-    dmsg("zz-winamp: winampGetExtendedFileInfo '%s' (%s)\n", data, uri);
+    dmsg("winampGetExtendedFileInfo '%s' (%s)\n", data, uri);
 
   /* play_t * P; */
 
@@ -795,6 +831,8 @@ int winampGetExtendedFileInfo(const char *uri, const char *data,
 
   return 0;
 }
+
+#endif
 
 EXPORT
 /**

@@ -14,7 +14,7 @@
 # include "config.h"
 #else
 # define _DEFAULT_SOURCE
-# define _GNU_SOURCE
+# define _GNU_SOURCE                    /* for GNU basename() */
 #endif
 
 #ifdef ZZ_MINIMAL
@@ -35,6 +35,7 @@
 #define E_666 ZZ_666
 #define E_ARG ZZ_EARG
 #define E_SYS ZZ_ESYS
+#define E_MEM ZZ_ESYS
 #define E_INP ZZ_EINP
 #define E_OUT ZZ_EOUT
 #define E_SET ZZ_ESET
@@ -48,10 +49,9 @@
 
 #ifndef NO_LIBC
 
-# include <stdint.h>
 # include <stdio.h>
 # include <ctype.h>
-# include <string.h>                     /* memset ... */
+# include <string.h>                     /* memset, basename */
 
 # include <errno.h>
 # define ZZ_EIO    EIO
@@ -135,15 +135,14 @@ enum {
 /* Don't need for the exact size but at least this size. */
 typedef uint_fast64_t  u64_t;
 typedef int_fast64_t   i64_t;
-typedef uint_fast32_t  u32_t;
-typedef int_fast32_t   i32_t;
-typedef uint_fast16_t  u16_t;
-typedef int_fast16_t   i16_t;
-typedef uint_fast8_t   u8_t;
-typedef int_fast8_t    i8_t;
+typedef zz_u32_t       u32_t;
+typedef zz_i32_t       i32_t;
+typedef zz_u16_t       u16_t;
+typedef zz_i16_t       i16_t;
+typedef zz_u8_t        u8_t;
+typedef zz_i8_t        i8_t;
 
-typedef struct str_s   str_t;     /**< strings (static or dynamic) */
-typedef struct str_s   bin_t;     /**< binary data container. */
+typedef struct bin_s   bin_t;     /**< binary data container. */
 typedef struct q4_s    q4_t;      /**< 4q header */
 typedef struct info_s  info_t;    /**< song info. */
 typedef struct vset_s  vset_t;    /**< voice set (.set file). */
@@ -159,19 +158,35 @@ typedef struct vfs_s * vfs_t;
 typedef struct zz_vfs_dri_s vfs_dri_t;
 
 struct str_s {
-  void  *_s;                  /**< string pointer. */
-  u32_t  _l;                  /**< length including ending zero */
-  u32_t  _n;                  /**< maximum allocated string */
-  int8_t _b[1];               /**< string buffer for dynamic string */
+  /**
+   * Pointer to the actual string.
+   * @notice  ALWAYS FIRST
+   */
+  char * ptr;                /**< buf: dynamic else: static. */
+  char fcc[4];               /**< "ZSTR". */
+  zz_u16_t ref;              /**< number of reference. */
+  zz_u16_t max;              /**< 0: const static else buffer size. */
+  zz_u16_t len;              /**< 0: ndef else len+1. */
+  /**
+   * buffer when dynamic.
+   * @notice  ALWAYS LAST
+   */
+  char buf[4];
+};
+
+struct bin_s {
+  u32_t   max;                       /**< maximum allocated string. */
+  u32_t   len;                       /**< length including.         */
+  uint8_t buf[1];                    /**< buffer (always last).     */
 };
 
 /** Channels re-sampler and mixer interface. */
 struct mixer_s {
-  const char * name;                   /**< friendly name and method. */
-  const char * desc;                   /**< mixer brief description.  */
-  int   (*init)(play_t * const);       /**< init mixer function.      */
-  void  (*free)(play_t * const);       /**< release mixer function.   */
-  int   (*push)(play_t * const);       /**< push PCM function.        */
+  const char * name;                 /**< friendly name and method. */
+  const char * desc;                 /**< mixer brief description.  */
+  zz_err_t (*init)(play_t * const);  /**< init mixer function.      */
+  void     (*free)(play_t * const);  /**< release mixer function.   */
+  zz_err_t (*push)(play_t * const);  /**< push PCM function.        */
 };
 
 /** Prepared instrument (sample). */
@@ -184,7 +199,6 @@ struct inst_s {
 
 /** Prepared instrument set. */
 struct vset_s {
-  str_t *uri;                  /**< voiceset uri.                   */
   bin_t *bin;                  /**< voiceset data container.        */
   u8_t   khz;                  /**< sampling rate from .set.        */
   u8_t   nbi;                  /**< number of instrument [1..20].   */
@@ -197,9 +211,12 @@ struct sequ_s {
   uint8_t cmd[2],len[2],stp[4],par[4];
 };
 
+struct memb_s {
+  bin_t  *bin;                          /**< data container. */
+};
+
 /** Prepared song. */
 struct song_s {
-  str_t  *uri;                   /**< song URI.                     */
   bin_t  *bin;                   /**< song data container.          */
   u8_t    khz;                   /**< header sampling rate (kHz).   */
   u8_t    barm;                  /**< header bar measure.           */
@@ -215,7 +232,6 @@ struct song_s {
 
 /** Song meta info. */
 struct info_s {
-  str_t *uri;                          /**< info URI.            */
   bin_t *bin;                          /**< info data container. */
   char  *comment;                      /**< decoded comment.     */
   char  *title;                        /**< decoded title.       */
@@ -224,10 +240,10 @@ struct info_s {
 
 /** Played note. */
 struct note_s {
-  i32_t cur;                            /**< current note.            */
-  i32_t aim;                            /**< current note slide goal. */
-  i32_t   stp;                            /**< note slide speed (step). */
-  inst_t *ins;                         /**< Current instrument.      */
+  i32_t   cur;                        /**< current note.            */
+  i32_t   aim;                        /**< current note slide goal. */
+  i32_t   stp;                        /**< note slide speed (step). */
+  inst_t *ins;                        /**< Current instrument.      */
 };
 
 /** Played channel. */
@@ -262,12 +278,22 @@ struct q4_s {
   song_t * song;
   vset_t * vset;
   info_t * info;
+
   u32_t songsz;
   u32_t vsetsz;
   u32_t infosz;
 };
 
+#include "zz_def.h"
+
 struct play_s {
+  volatile u8_t st_idx;
+  struct str_s st_strings[4];
+
+  str_t songuri;
+  str_t vseturi;
+  str_t infouri;
+
   song_t song;
   vset_t vset;
   info_t info;
@@ -302,7 +328,6 @@ struct songhd {
   uint8_t reserved[2*4];
 };
 
-#include "zz_def.h"
 
 /* ---------------------------------------------------------------------- */
 
@@ -311,7 +336,7 @@ struct songhd {
  * @{
  */
 
-#if defined __m68k__
+#ifdef __m68k__
 
 static inline u16_t u16(const uint8_t * const v) {
   return *(const uint16_t *)v;
@@ -386,7 +411,7 @@ static inline uint32_t always_inline divu32(uint32_t v, uint16_t d)
   return v;
 }
 
-#else
+#else /* __m68k__ */
 
 static inline u16_t u16(const uint8_t * const v) {
   return ((u16_t)v[0]<<8) | v[1];
@@ -421,7 +446,7 @@ static inline u32_t always_inline divu32(u32_t n, u16_t d)
   return n / d;
 }
 
-#endif
+#endif /* __m68k__ */
 
 /**
  * @}
@@ -441,7 +466,7 @@ void i8tofl(float * const d, const uint8_t * const s, const int n);
 ZZ_EXTERN_C
 void fltoi16(int16_t * const d, const float * const s, const int n);
 
-#endif
+#endif /* NO_FLOAT_SUPPORT */
 /**
  * @}
  */
@@ -452,35 +477,25 @@ void fltoi16(int16_t * const d, const float * const s, const int n);
  * Memory, string and binary container functions.
  * @{
  */
-#define ZZBUF(X)   ((uint8_t *)((X)->_s))
-#define ZZOFF(X,Y) (ZZBUF(X)+(Y))
-#define ZZSTR(X)   ((char *)((X)->_s))
-#define ZZLEN(X)   (X)->_l
-#define ZZMAX(X)   (X)->_n
-
-# ifndef zz_memmove
-#  define zz_memmove(D,S,N) *(const char *)(D) = (char)(N)
-# endif
-
-# ifndef zz_memset
-#  define zz_memset(D,S,N) *(const char *)(D) = (char)(S)
-# endif
-
 #ifndef NO_LIBC
 
 # ifndef zz_memcmp
-#  define zz_memcmp(D,S,N) memcmp(D,S,N)
+#  define zz_memcmp(D,S,N) memcmp((D),(S),(N))
 # endif
 
 # ifndef zz_memcpy
-#  define zz_memcpy(D,S,N) memcpy(D,S,N)
+#  define zz_memcpy(D,S,N) memcpy((D),(S),(N))
 # endif
 
-#ifndef zz_memclr
-#define zz_memclr(D,N) memset(D,0,N)
-#endif
+# ifndef zz_memclr
+#  define zz_memclr(D,N) memset((D),0,(N))
+# endif
 
-#else
+# ifndef zz_memset
+#  define zz_memset(D,V,N) memset((D),(V),(N))
+# endif
+
+#else /* NO_LIBC */
 
 ZZ_EXTERN_C
 void zz_memcpy(void * restrict _d, const void * _s, int n);
@@ -489,53 +504,25 @@ void zz_memclr(void * restrict _d, int n);
 ZZ_EXTERN_C
 int zz_memcmp(const void *_a, const void *_b, int n);
 
-#endif
+#endif /* NO_LIBC */
+/**
+ * @}
+ */
 
+/* ---------------------------------------------------------------------- */
 
-#if 0 && defined NO_LIBC
-
-ZZ_EXTERN_C
-void (*zz_free_func)(void ** pptr);
-ZZ_EXTERN_C
-void * (*zz_alloc_func)(const u32_t size, int clear);
-
-#define zz_malloc(OBJ,SIZE) (zz_alloc_func ? zz_alloc_func((SIZE),0) : 0)
-#define zz_calloc(OBJ,SIZE) (zz_alloc_func ? zz_alloc_func((SIZE),1) : 0)
-#define zz_free(OBJ,PTR) \
-  if (zz_free_func) { zz_free_func( (void**)(PTR) ); } else
-
-#else
-
-ZZ_EXTERN_C
-void zz_free_real(void ** pptr);
-ZZ_EXTERN_C
-void *zz_alloc_real(const u32_t size, const int clear);
-
-#define zz_malloc(OBJ,SIZE) zz_alloc_real((SIZE),0)
-#define zz_calloc(OBJ,SIZE) zz_alloc_real((SIZE),1)
-#define zz_free(OBJ,PTR) zz_free_real( (void **) (PTR) )
-
-#endif
-
-
-ZZ_EXTERN_C
-str_t * zz_strset(str_t * str, const char * set);
-ZZ_EXTERN_C
-str_t * zz_stralloc(unsigned int size);
-ZZ_EXTERN_C
-str_t * zz_strdup(const char * org);
-ZZ_EXTERN_C
-void zz_strfree(str_t ** pstr);
-ZZ_EXTERN_C
-int zz_strlen(str_t * str);
+/**
+ * Binary container.
+ * @{
+ */
 ZZ_EXTERN_C
 void bin_free(bin_t ** pbin);
 ZZ_EXTERN_C
-int bin_alloc(bin_t ** pbin, const char * uri, u32_t len, u32_t xlen);
+zz_err_t bin_alloc(bin_t ** pbin, u32_t len, u32_t xlen);
 ZZ_EXTERN_C
-int bin_read(bin_t * bin, vfs_t vfs, u32_t off, u32_t len);
+zz_err_t bin_read(bin_t * bin, vfs_t vfs, u32_t off, u32_t len);
 ZZ_EXTERN_C
-int bin_load(bin_t ** pbin, vfs_t vfs, u32_t len, u32_t xlen, u32_t max);
+zz_err_t bin_load(bin_t ** pbin, vfs_t vfs, u32_t len, u32_t xlen, u32_t max);
 /**
  * @}
  */
@@ -547,9 +534,9 @@ int bin_load(bin_t ** pbin, vfs_t vfs, u32_t len, u32_t xlen, u32_t max);
  * @{
  */
 ZZ_EXTERN_C
-int vfs_register(const vfs_dri_t * dri);
+zz_err_t vfs_register(const vfs_dri_t * dri);
 ZZ_EXTERN_C
-int vfs_unregister(const vfs_dri_t * dri);
+zz_err_t vfs_unregister(const vfs_dri_t * dri);
 ZZ_EXTERN_C
 const char * vfs_uri(vfs_t vfs);
 ZZ_EXTERN_C
@@ -557,19 +544,20 @@ void vfs_del(vfs_t * pvfs);
 ZZ_EXTERN_C
 vfs_t vfs_new(const char * uri, ...);
 ZZ_EXTERN_C
-int vfs_open_uri(vfs_t * pvfs, const char * uri);
+zz_err_t vfs_open_uri(vfs_t * pvfs, const char * uri);
 ZZ_EXTERN_C
-int vfs_open(vfs_t vfs);
+zz_err_t vfs_open(vfs_t vfs);
 ZZ_EXTERN_C
-int vfs_read(vfs_t vfs, void *b, int n);
+zz_u32_t vfs_read(vfs_t vfs, void *b, zz_u32_t n);
 ZZ_EXTERN_C
-int vfs_read_exact(vfs_t vfs, void *b, int n);
+zz_err_t vfs_read_exact(vfs_t vfs, void *b, zz_u32_t n);
 ZZ_EXTERN_C
-int vfs_tell(vfs_t vfs);
+zz_u32_t vfs_tell(vfs_t vfs);
 ZZ_EXTERN_C
-int vfs_size(vfs_t vfs);
+zz_u32_t vfs_size(vfs_t vfs);
 ZZ_EXTERN_C
-int vfs_seek(vfs_t vfs, int pos, int set);
+zz_err_t vfs_seek(vfs_t vfs, zz_u32_t pos, zz_u8_t set);
+
 /**
  * @}
  */
@@ -580,17 +568,24 @@ int vfs_seek(vfs_t vfs, int pos, int set);
  * voiceset and song file loader.
  * @{
  */
+ZZ_EXTERN_C
+zz_err_t song_parse(song_t *song, vfs_t vfs, uint8_t *hd, u32_t size);
+ZZ_EXTERN_C
+zz_err_t song_load(song_t *song, const char *uri);
+ZZ_EXTERN_C
+zz_err_t vset_parse(vset_t *vset, vfs_t vfs, uint8_t *hd, u32_t size);
+ZZ_EXTERN_C
+zz_err_t vset_load(vset_t *vset, const char *uri);
+ZZ_EXTERN_C
+zz_err_t q4_load(vfs_t vfs, q4_t *q4);
 
 ZZ_EXTERN_C
-int song_parse(song_t *song, vfs_t vfs, uint8_t *hd, u32_t size);
+void zz_song_wipe(zz_song_t song);
 ZZ_EXTERN_C
-int song_load(song_t *song, const char *uri);
+void zz_vset_wipe(zz_vset_t vset);
 ZZ_EXTERN_C
-int vset_parse(vset_t *vset, vfs_t vfs, uint8_t *hd, u32_t size);
-ZZ_EXTERN_C
-int vset_load(vset_t *vset, const char *uri);
-ZZ_EXTERN_C
-int q4_load(vfs_t vfs, q4_t *q4);
+void zz_info_wipe(zz_info_t info);
 /**
  * @}
  */
+

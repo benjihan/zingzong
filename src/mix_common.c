@@ -108,7 +108,7 @@ static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
   return res;
 }
 
-static int
+static zz_err_t
 push_cb(play_t * const P)
 {
   mix_fp_t * const M = (mix_fp_t *)P->mixer_data;
@@ -162,21 +162,29 @@ push_cb(play_t * const P)
   return E_OK;
 }
 
-static int init_cb(play_t * const P)
-{
-  int ecode = E_SYS;
-  mix_fp_t * const M = zz_calloc("mixer",sizeof(mix_fp_t));
 
-  if (M) {
+static void * local_calloc(u32_t size, zz_err_t * err)
+{
+  void * ptr = 0;
+  *err =  zz_mem_calloc(&ptr,size);
+  return ptr;
+}
+
+static zz_err_t init_cb(play_t * const P)
+{
+  zz_err_t ecode = E_OK;
+  mix_fp_t * M = local_calloc(sizeof(mix_fp_t), &ecode);
+
+  if (likely(M)) {
+    zz_assert(!P->mixer_data);
     P->mixer_data = M;
-    ecode = E_OK;
   }
   return ecode;
 }
 
 static void free_cb(play_t * const P)
 {
-  zz_free("mixer",&P->mixer_data);
+  zz_mem_free(&P->mixer_data);
 }
 
 mixer_t SYMB =

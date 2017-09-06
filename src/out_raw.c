@@ -5,6 +5,7 @@
  * @brief  Raw file output (files/null/stdout/stderr) .
  */
 
+#define ZZ_DBG_PREFIX "(raw) "
 #include "zingzong.h"
 #include "zz_def.h"
 

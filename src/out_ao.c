@@ -7,6 +7,7 @@
 
 #ifndef NO_AO
 
+#define ZZ_DBG_PREFIX "(aud) "
 #include "zingzong.h"
 #include "zz_def.h"
 #include <ao/ao.h>
