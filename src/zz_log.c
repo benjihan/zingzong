@@ -9,14 +9,36 @@
 
 #ifdef NO_LOG
 
-void zz_log(zz_log_t func, void * user) {}
+zz_u8_t zz_log_channels(const zz_u8_t clr, const zz_u8_t set) { return 0; }
+void zz_log_function(zz_log_t func, void * user) {}
 /* # error zz_log.c should not be compiled with NO_LOG defined */
 #else
 
-static zz_log_t log_func;
-static void * log_user;
+#ifndef ZZ_LOG_CHANNELS
+# ifdef NDEBUG
+#  define ZZ_LOG_CHANNELS ~ZZ_LOG_DBG
+# else
+#  define ZZ_LOG_CHANNELS ~0
+# endif
+#endif
 
-void zz_log(zz_log_t func, void * user)
+static zz_u8_t  log_mask = (zz_u8_t) ZZ_LOG_CHANNELS;
+static zz_log_t log_func;
+static void    *log_user;
+
+static inline zz_u8_t can_log(const zz_u8_t channel)
+{
+  return log_func && ( log_mask & ( 1 << channel ) );
+}
+
+zz_u8_t zz_log_bit(const zz_u8_t clr, const zz_u8_t set)
+{
+  uint8_t old_mask = log_mask;          /* uint8_t is truly 8-bit */
+  log_mask = ( log_mask & ~clr ) | set;
+  return old_mask;
+}
+
+void zz_log_fun(zz_log_t func, void * user)
 {
   log_func = func;
   log_user = user;
@@ -25,7 +47,7 @@ void zz_log(zz_log_t func, void * user)
 void zz_log_err(const char * fmt,...)
 {
   va_list list;
-  if (log_func) {
+  if (can_log(ZZ_LOG_ERR)) {
     va_start(list,fmt);
     log_func(ZZ_LOG_ERR, log_user, fmt, list);
     va_end(list);
@@ -35,7 +57,7 @@ void zz_log_err(const char * fmt,...)
 void zz_log_wrn(const char * fmt,...)
 {
   va_list list;
-  if (log_func) {
+  if (can_log(ZZ_LOG_WRN)) {
     va_start(list,fmt);
     log_func(ZZ_LOG_WRN, log_user, fmt, list);
     va_end(list);
@@ -45,7 +67,7 @@ void zz_log_wrn(const char * fmt,...)
 void zz_log_inf(const char * fmt,...)
 {
   va_list list;
-  if (log_func) {
+  if (can_log(ZZ_LOG_INF)) {
     va_start(list,fmt);
     log_func(ZZ_LOG_INF, log_user, fmt, list);
     va_end(list);
@@ -55,7 +77,7 @@ void zz_log_inf(const char * fmt,...)
 void zz_log_dbg(const char * fmt,...)
 {
   va_list list;
-  if (log_func) {
+  if (can_log(ZZ_LOG_DBG)) {
     va_start(list,fmt);
     log_func(ZZ_LOG_DBG, log_user, fmt, list);
     va_end(list);
