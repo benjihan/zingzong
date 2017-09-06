@@ -2,7 +2,7 @@
 #
 # ----------------------------------------------------------------------
 #
-# Makefile for zinzong (for GNU/make)
+# GNU/Makefile for zinzong - library and cli
 #
 # by Benjamin Gerard AKA Ben/OVR
 #
@@ -16,7 +16,10 @@ $(error vcversion.sh failed)
 endif
 PKGCONFIG  = pkg-config
 pkgconfig  = $(shell $(PKGCONFIG) $(1) || echo n/a)
-STRIP      = strip
+
+# ----------------------------------------------------------------------
+
+vpath %.c $(srcdir)
 
 # ----------------------------------------------------------------------
 
@@ -33,12 +36,21 @@ zingzong_lib = $(call libname,zingzong)
 zingzong_dll = $(call dllname,zingzong)
 
 # ----------------------------------------------------------------------
+#  Toolchain
+# ----------------------------------------------------------------------
 
-vpath %.c $(srcdir)
+ifndef STRIP
+ifeq ($(CC:%gcc=gcc),gcc)
+STRIP = $(CC:%gcc=%strip)
+else
+STRIP = strip
+endif
+endif
 
 # ----------------------------------------------------------------------
 #  Setup some default CFLAGS
-#
+# ----------------------------------------------------------------------
+
 ifndef CFLAGS
 CFLAGS := -Wall -fvisibility=hidden
 ifdef DEBUG
@@ -62,13 +74,18 @@ override org_CFLAGS   := $(CFLAGS)
 override org_LDLIBS   := $(LDLIBS)
 override org_LDFLAGS  := $(LDFLAGS)
 
+l_patterns := -l% -Wl,-l%
+L_patterns := -L%
+filter-L = $(strip $(filter     $(L_patterns),$1))
+filter-l = $(strip $(filter-out $(L_patterns),$1))
+
 # ----------------------------------------------------------------------
 #  libao (NO_AO=1 to disable)
 # ----------------------------------------------------------------------
 
 ifeq ($(NO_AO),1)
-override AO_CFLAGS=-DNO_AO=1
-override AO_LIBS=
+override undefine AO_CFLAGS
+override undefine AO_LIBS
 else
 ifeq ($(origin AO_CFLAGS)/$(origin AO_LIBS),undefined/undefined)
 
@@ -85,16 +102,21 @@ endif
 endif
 endif
 
-override gb_CFLAGS += $(AO_CFLAGS)
-override gb_LDLIBS += $(AO_LIBS)
+ifeq ($(AO_LIBS),)
+override gb_CPPFLAGS += -DNO_AO=1
+endif
+
+override gb_CFLAGS  += $(AO_CFLAGS)
+override gb_LDFLAGS += $(call filter-L,$(AO_LIBS))
+override gb_LDLIBS  += $(call filter-l,$(AO_LIBS))
 
 # ----------------------------------------------------------------------
 #  samplerate (NO_SRATE=0 to enable)
 # ----------------------------------------------------------------------
 
 ifneq ($(NO_SRATE),0)
-override SRATE_CFLAGS=
-override SRATE_LIBS=
+override undefine SRATE_CFLAGS
+override undefine SRATE_LIBS
 else
 ifeq ($(origin SRATE_CFLAGS)/$(origin SRATE_LIBS),undefined/undefined)
 
@@ -102,7 +124,6 @@ SRATE_CFLAGS := $(call pkgconfig,--cflags samplerate)
 ifeq ($(SRATE_CFLAGS),n/a)
 $(error pkg-config failed -- samplerate --cflags)
 endif
-SRATE_CFLAGS += -DWITH_SRATE=1
 
 SRATE_LIBS := $(call pkgconfig,--libs samplerate)
 ifeq ($(SRATE_LIBS),n/a)
@@ -112,16 +133,23 @@ endif
 endif
 endif
 
-override gb_CFLAGS += $(SRATE_CFLAGS)
-override gb_LDLIBS += $(SRATE_LIBS)
+ifneq ($(SRATE_LIBS),)
+override gb_CPPFLAGS += -DWITH_SRATE=1
+endif
+override gb_CFLAGS  += $(SRATE_CFLAGS)
+override gb_LDFLAGS += $(call filter-L,$(SRATE_LIBS))
+override gb_LDLIBS  += $(call filter-l,$(SRATE_LIBS))
+
 
 # ----------------------------------------------------------------------
 #  soxr (NO_SOXR=0 to enable)
 # ----------------------------------------------------------------------
 
+$(call with-module,SOXR,soxr)
+
 ifneq ($(NO_SOXR),0)
-override SOXR_CFLAGS=
-override SOXR_LIBS=
+override undefine SOXR_CFLAGS
+override undefine SOXR_LIBS
 else
 ifeq ($(origin SOXR_CFLAGS)/$(origin SOXR_LIBS),undefined/undefined)
 
@@ -129,7 +157,6 @@ SOXR_CFLAGS := $(call pkgconfig,--cflags soxr)
 ifeq ($(SOXR_CFLAGS),n/a)
 $(error pkg-config failed -- soxr --cflags)
 endif
-SOXR_CFLAGS += -DWITH_SOXR=1
 
 SOXR_LIBS := $(call pkgconfig,--libs soxr)
 ifeq ($(SOXR_LIBS),n/a)
@@ -139,8 +166,12 @@ endif
 endif
 endif
 
-override gb_CFLAGS += $(SOXR_CFLAGS)
-override gb_LDLIBS += $(SOXR_LIBS)
+ifneq ($(SOXR_LIBS),)
+override gb_CPPFLAGS += -DWITH_SOXR=1
+endif
+override gb_CFLAGS  += $(SOXR_CFLAGS)
+override gb_LDFLAGS += $(call filter-L,$(SOXR_LIBS))
+override gb_LDLIBS  += $(call filter-l,$(SOXR_LIBS))
 
 # ----------------------------------------------------------------------
 
@@ -169,7 +200,7 @@ zz_play.o: override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
 
 zingzong_dll_src = $(zingzong_vfs_src)
 zingzong_exe_src = $(zingzong_out_src) $(zingzong_vfs_src)
-zingzong_lib_src = $(zingzong_mix_src) $(zingzong_zzz_src)
+zingzong_lib_src = $(zingzong_mix_src) $(zingzong_pla_src) $(zingzong_zzz_src)
 
 zingzong_dll_obj = $(zingzong_dll_src:.c=.o)
 zingzong_exe_obj = $(zingzong_exe_src:.c=.o)
@@ -178,17 +209,20 @@ zingzong_lib_obj = $(zingzong_lib_src:.c=.o)
 zingzong_mix_src = $(addsuffix .c,$(mix))
 zingzong_out_src = $(addsuffix .c,$(out))
 zingzong_vfs_src = $(addsuffix .c,$(vfs))
+zingzong_pla_src = $(addsuffix .c,$(pla))
 zingzong_zzz_src = $(addsuffix .c,$(zzz))
 
 zingzong_mix_obj = $(zingzong_mix_src:.c=.o)
 zingzong_out_obj = $(zingzong_out_src:.c=.o)
 zingzong_vfs_obj = $(zingzong_vfs_src:.c=.o)
+zingzong_pla_obj = $(zingzong_pla_src:.c=.o)
 zingzong_zzz_obj = $(zingzong_zzz_src:.c=.o)
 
 mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
 out := out_ao out_raw
 vfs := vfs_file
-zzz := zz_load zz_init zz_play zz_bin zz_str zz_vfs zz_mixers zz_log
+pla := zz_init zz_play zz_log
+zzz := zz_load zz_bin zz_mem zz_str zz_vfs zz_mixers
 
 sources = $(sort $(zingzong_exe_src) $(zingzong_lib_src) $(zingzong_dll_src))
 headers = zingzong.h zz_private.h zz_def.h mix_common.c
@@ -238,6 +272,10 @@ include $(topdir)/src/make.dist
 #  Install / Uninstall
 # ----------------------------------------------------------------------
 
+ifndef bin_targets
+bin_targets = $(targets)
+endif
+
 ifndef prefix
 PREFIX = $(error 'prefix' must be set to install)
 else
@@ -247,34 +285,40 @@ endif
 bindir  = $(call PREFIX)/bin
 INSTALL = install $(INSTALL_OPT)
 
-INSTALL_EXEC   = $(INSTALL) -t "$(DESTDIR)$(bindir)" "$(1)"
+INSTALL_EXEC   = \
+mkdir -p -- "$(DESTDIR)$(1)" && \
+$(INSTALL) -t "$(DESTDIR)$(1)" $(foreach f,$(2),"$(f)")
+UNINSTALL_EXEC = rm -f -- $(foreach f,$(2),"$(DESTDIR)$(1)/$(f)")
 INSTALL_DATA   =
-UNINSTALL_EXEC = \
-[ ! -e "$(DESTDIR)$(bindir)/$(notdir $(1))" ] \
-|| rm -- "$(DESTDIR)$(bindir)/$(notdir $(1))"
 UNINSTALL_DATA =
 
 install-strip: INSTALL_OPT = --strip-program=$(STRIP) -s
 install-strip: install
 install: install-exec install-data 
+	@echo $@ done
 
-install-exec: $(target)
-	@$(call INSTALL_EXEC,$^)
-	@echo "$^ installed in $(DESTDIR)$(bindir)"
+install-exec: $(bin_targets)
+	$(call INSTALL_EXEC,$(bindir),$^)
+	@echo $@ done
 
 install-data:
-	@$(call INSTALL_DATA)
+	$(call INSTALL_DATA)
+	@echo $@ done
 
 .PHONY: install-strip install install-exec install-data
 
+
 uninstall-exec:
-	@$(call UNINSTALL_EXEC,$(target))
-	@echo "zingzong removed from $(DESTDIR)$(bindir)"
+	$(call UNINSTALL_EXEC,$(bindir),$(bin_targets))
+	@echo $@ done
 
 uninstall-data:
-	@$(call UNINSTALL_DATA)
+	$(call UNINSTALL_DATA)
+	@echo $@ done
 
 uninstall: uninstall-exec uninstall-data
+	@echo $@ done
+
 
 .PHONY: uninstall uninstall-exec uninstall-data
 
