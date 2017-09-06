@@ -1,4 +1,4 @@
-#! /bin/bash -ufe
+#! /bin/bash -ue
 #
 # ----------------------------------------------------------------------
 #
@@ -20,20 +20,20 @@ prog=$(basename "$0" .sh)
 case "$arch" in
 
     in_zingzong)
-	#########################
-	# Winamp plugin special #
-	#########################
-	export WADIR="`regtool -W get /user/Software/Winamp/`" "$@"
-	export NO_SRATE=1 NO_SOXR=0
-	export arch=i686-w64-mingw32
-	export ZZ_MAKEFILE=../src/zz-winamp/Makefile
-	;;
+        #########################
+        # Winamp plugin special #
+        #########################
+        export WADIR="`regtool -W get /user/Software/Winamp/`"
+        set -- "$@" NO_AO=1 NO_SRATE=1
+        export arch=i686-w64-mingw32
+        export ZZ_MAKEFILE=../src/zz-winamp/Makefile
+        ;;
 
     *-*-mingw*)
-	######################
-	# Only support mingw #
-	######################
-	;;
+        ######################
+        # Only support mingw #
+        ######################
+        ;;
 
     *) echo "$prog: not a valid host triplet -- $arch" >&2
        exit 1 ;;
@@ -41,35 +41,48 @@ esac
 
 # You can always set this variable if you are trying to impersonate me
 # :)
-is_benovr=${is_benovr-no}
 
 # Determine if that's me using my gpg footprint
 if gpg -K | grep -c 52D4145B; then
-    is_benovr=yes
+    benovr="${HOME}/_Arch"     # that's where I store my builds
 fi >/dev/null 2>/dev/null
 
-# For my eyes only (not really): that's where I store my build of soxr
-# for Windows
-if [ $is_benovr = yes ] && [ s${SOXR+et} != set ]; then
-    SOXR=${SOXR-${HOME}/_Arch/${arch}/soxr-0.1.2.22}
+# Looking for soxr in here. For some reason my soxr build does not
+# have a .pc so I have to set the SOXR_ variables manually.  This will
+# set SOXR to the prefix where soxr has installed for this architecture.
+
+if [ "${benovr}" ] && [ s${SOXR+et} != set ]; then
+    set +f; shopt -s nullglob
+    for dir in "${benovr}/${arch}"/soxr* "${benovr}/${arch}"/.; do
+        if [ -r "${dir}"/include/soxr.h ]; then
+            echo " * Found soxr.h in \"$dir\""
+            SOXR="$dir"
+        fi
+    done
 fi
 
-# Set SOXR_LIBS if not already set
-if [ s${SOXR_LIBS+et} != set ]; then
-    SOXR_LIBS="-L${SOXR}/lib -lsoxr"
+if [ s${SOXR+et} = set ]; then
+
+    # Set SOXR_LIBS if not already set
+    if [ s${SOXR_LIBS+et} != set ]; then
+        SOXR_LIBS="-L${SOXR}/lib -lsoxr"
+    fi
+
+    # Set SOXR_CFLAGS if not already set
+    if [ s${SOXR_CFLAGS+et} != set ]; then
+        SOXR_CFLAGS="-I${SOXR}/include"
+    fi
+
 fi
 
-# Set SOXR_CFLAGS if not already set
-if [ s${SOXR_CFLAGS+et} != set ]; then
-    SOXR_CFLAGS="-I${SOXR}/include -DWITH_SOXR=1"
+if [ "${SOXR_LIBS-}" ]; then
+    NO_SOXR=0
+    set -- \
+        SOXR_CFLAGS="${SOXR_CFLAGS-}" \
+        SOXR_LIBS="${SOXR_LIBS}" \
+        NO_SOXR=0 \
+        "$@"
 fi
-
-set -- \
-    NO_SRATE=${NO_SRATE:-0} \
-    NO_SOXR=${NO_SOXR:-0} \
-    SOXR_LIBS="${SOXR_LIBS}" \
-    SOXR_CFLAGS="${SOXR_CFLAGS}" \
-    "$@"
 
 # Let s build
 set -x

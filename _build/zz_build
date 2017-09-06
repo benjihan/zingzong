@@ -1,4 +1,4 @@
-#! /bin/bash -fe
+#! /bin/bash -e
 #
 # ----------------------------------------------------------------------
 #
@@ -12,18 +12,18 @@ me=${0##*/}
 error() { echo "$me: $*" >&2; return 2; }
 
 top=$(realpath $(dirname "$0")) # Where this script is located.
-[ -n "${arch}" ] ||		# Host triplet
-    arch="${PWD##*/}"		# - Default to current dir name
+[ -n "${arch}" ] ||             # Host triplet
+    arch="${PWD##*/}"           # - Default to current dir name
 
-[ -n "${ZZ_MAKEFILE}" ] ||	# Sub project makefile
-    ZZ_MAKEFILE=../src/Makefile	# - Default to zingzong cli program
+[ -n "${ZZ_MAKEFILE}" ] ||      # Sub project makefile
+    ZZ_MAKEFILE=../src/Makefile # - Default to zingzong cli program
 #echo ZZ_MAKEFILE=$ZZ_MAKEFILE
 
 DEPLIBS="AO SRATE SOXR"
 vars1=( CC LD STRIP PKGCONFIG INSTALL DEBUG PROFILE MAKERULES )
 vars3=( CPPFLAGS CFLAGS LDFLAGS LDLIBS gb_CFLAGS gb_LDLIBS gb_LDFLAGS
-	prefix )
-vars2=( "${var3[@]}" )
+        prefix )
+vars2=( "${vars3[@]}" )
 for dep in $DEPLIBS; do
     vars2+=( NO_${dep} ${dep}_CFLAGS ${dep}_LIBS )
 done
@@ -49,12 +49,12 @@ Usage() {
 EOF
     x='  '
     for var in "${vars1[@]}" "${vars3[@]}"; do
-	y="${x}${x:+ }${var}"
-	if [ ${#y} -gt 78 ]; then
-	    echo "$x"; x="   ${var}"
-	else
-	    x="$y"
-	fi
+        y="${x}${x:+ }${var}"
+        if [ ${#y} -gt 78 ]; then
+            echo "$x"; x="   ${var}"
+        else
+            x="$y"
+        fi
     done
     echo "$x"
 
@@ -81,29 +81,29 @@ EOF
 unset first
 for arg in "$@"; do
     if [ s${first+et} != set ]; then
-	first=x; set --
+        first=x; set --
     fi
-    
+
     case "$arg" in
-	-h | --help | --usage)
-	    Usage
-	    ;;
-	--no-env)
-	    unset ${vars1[@]} ${vars2[@]}
-	    for dep in $DEPLIBS; do
-		eval unset NO_${dep} ${dep}_CFLAGS ${dep}_LIBS
-	    done
-	    ;;
-	
-	*)
-	    if expr "$arg" : '[[:alpha:]][_[:alnum:]]\+=.*'; then
-		var="${arg%%=*}"
-		val="${arg#*=}"
-		eval $var='"$val"'
-	    else
-		set -- "$@" "$arg"
-	    fi >/dev/null
-	    ;;
+        -h | --help | --usage)
+            Usage
+            ;;
+        --no-env)
+            unset ${vars1[@]} ${vars2[@]}
+            for dep in $DEPLIBS; do
+                eval unset NO_${dep} ${dep}_CFLAGS ${dep}_LIBS
+            done
+            ;;
+
+        *)
+            if expr "$arg" : '[[:alpha:]][_[:alnum:]]\+=.*'; then
+                var="${arg%%=*}"
+                val="${arg#*=}"
+                eval $var='"$val"'
+            else
+                set -- "$@" "$arg"
+            fi >/dev/null
+            ;;
     esac
 done
 
@@ -121,45 +121,45 @@ fi
 crosscompile=no
 gccarch=`gcc -dumpmachine`
 test "${gccarch}" = "${arch}" || crosscompile=yes
-echo "cross-compiling: ${crosscompile}"
+echo " * Cross-Compiling: ${crosscompile}"
 
 if [ ${crosscompile} = yes ]; then
     ## ---------------------------------------------------
     ## By default setup a somewhat standard gnu/toolchain
     ## cross-compile environment
     ## ---------------------------------------------------
-    
+
     ## CC
     if [ -z "${CC-}" ]; then
-	CC="${arch}"-gcc
-	xx=`which "$CC"`
-	echo "CC=\"$xx\""
+        CC="${arch}"-gcc
+        xx=`which "$CC"`
+        echo " * CC: \"$xx\""
     fi
 
     ## LD
     if [ -z "${LD-}" ]; then
-	LD="${arch}"-ld
-	xx=`which "$LD"`
-	echo "LD=\"$xx\""
+        LD="${arch}"-ld
+        xx=`which "$LD"`
+        echo " * LD: \"$xx\""
     fi
 
     ## STRIP
     if [ -z "${STRIP-}" ]; then
-	STRIP="${arch}"-strip;
-	xx=`which "$STRIP"`
-	echo "STRIP=\"$xx\""
+        STRIP="${arch}"-strip;
+        xx=`which "$STRIP"`
+        echo " * STRIP: \"$xx\""
     fi
-    
+
     ## PKGCONFIG
     if [ -z "${PKGCONFIG-}" ]; then
-	PKGCONFIG="${arch}"-pkg-config
-	xx=`which "$PKGCONFIG"`
-	echo "PKGCONFIG=\"$xx\""
+        PKGCONFIG="${arch}"-pkg-config
+        xx=`which "$PKGCONFIG"`
+        echo " * PKGCONFIG: \"$xx\""
     fi
-    
+
 fi
 
-pkgconfig="${PKGCONFIG:-pkg-config}"	# pkg-config to use in here
+pkgconfig="${PKGCONFIG:-pkg-config}"    # pkg-config to use in here
 pkgconfig+=' --short-errors'
 
 # ----------------------------------------------------------------------
@@ -172,53 +172,65 @@ pkgconfig+=' --short-errors'
 
 if [ -z "${gb_CFLAGS+set}${gb_LDFLAGS+set}${gb_LDLIBS+set}" ]; then
     case "$arch" in
-	*-w64-mingw32)
-	    # For win32 platform try to build fully static (even for dlls)
-	    gb_CFLAGS="-static"
-	    gb_LDFLAGS="-static -static-libgcc"
-	    pkgconfig+=' --static'
-	    ;;
-	*-*-*)
-	    true ;;
-	*)
-	    error "WTH ??? -- $arch" ;;
+        *-w64-mingw32)
+            # For win32 platform try to build fully static (even for dlls)
+            gb_CFLAGS="-static"
+            gb_LDFLAGS="-static -static-libgcc"
+            pkgconfig+=' --static'
+            echo " *******************************${arch//?/*}*"
+            echo " * Forcing all static mode for $arch *"
+            echo " *******************************${arch//?/*}*"
+            ;;
+        *-*-*)
+            true ;;
+        *)
+            error "WTH ??? -- $arch" ;;
     esac
+else
+    echo " * At least one of the gb_* flags is set."
 fi
 
 # ----------------------------------------------------------------------
 # Dependency libraries
 #
 for var in $DEPLIBS; do
-    if eval test s\${NO_${var}+et} = set
+    if eval test -n '"${NO_'${var}'}"'
     then
-	# NO_${DEP} is set
-	if  eval test x\"\$NO_${var}\" != x0; then
-	    eval unset ${var}_CFLAGS ${var}_LIBS
-	    eval NO_${var}=1
-	fi
+        # NO_${DEP} is *NOT* empty
+        if eval test x\"\$NO_${var}\" != x0; then
+           eval unset ${var}_CFLAGS ${var}_LIBS
+           eval NO_${var}=1
+        fi
     else
-	# NO_DEP is not set
-	add=yes
-	case $var in
-	    AO) mod=ao; add=must ;;
-	    SOXR) mod=soxr ;;
-	    SRATE) mod=samplerate; add=no ;;
-	    *) error "WTH ??? -- $var"
-	esac
+        # NO_${DEP} is not set or empty
+        unset add
+        if eval test s'${'NO_${var}'+et}' = set; then
+            add=yes
+        fi
 
-	if modversion=`$pkgconfig $mod --modversion`; then
-	    echo "Found $mod $modversion"
-	    case "$add" in
-		yes | must)
-		    eval NO_$var=0 ;;
-		no)
-		    echo " * Use \"NO_$var=0\" for zingzong to support $mod" ;;
-		*) error "WTH ??? $var $mod $add" ;;
-	    esac
-	elif [ $add = must ]; then
-	    echo " * Use \"NO_$var=1\" for really build without $mod"
-	    error "bailing out due to previous message" 
-	fi
+        case $var in
+            AO) mod=ao; add=${add-must} ;;
+            SOXR) mod=soxr; add=${add-yes} ;;
+            SRATE) mod=samplerate; add=${add-no} ;;
+            *) error "WTH ??? -- $var"
+        esac
+
+        if modversion=`$pkgconfig $mod --modversion`; then
+            echo " * Found $mod $modversion"
+            case "$add" in
+                yes | must)
+                    eval NO_$var=0 ;;
+                no)
+                    echo " * Use \"NO_$var=0\" for zingzong to support $mod"
+                    eval unset NO_$var
+                    ;;
+
+                *) error "WTH ??? $var $mod $add" ;;
+            esac
+        elif [ $add = must ]; then
+            echo " * Use \"NO_$var=1\" for really build without $mod"
+            error "bailing out due to previous message"
+        fi
     fi
 done
 
@@ -227,7 +239,7 @@ done
 #
 for var in ${vars1[@]}; do
     if eval test -n \"\${$var-}\"; then
-	eval set -- '"$@"' \"$var=\${$var}\"
+        eval set -- '"$@"' \"$var=\${$var}\"
     fi
 done
 
@@ -236,7 +248,7 @@ done
 #
 for var in ${vars2[@]}; do
     if eval test s\${$var+et} = set; then
-	eval set -- '"$@"' \"$var=\${$var}\"
+        eval set -- '"$@"' \"$var=\${$var}\"
     fi
 done
 
@@ -249,13 +261,13 @@ set --\
 
 echo "> make"
 for arg in "$@"; do
-    echo "+ \"$arg\""
+    echo "  \"$arg\""
 done
 echo
 make "$@"
 version=`$SHELL ${top}/../vcversion.sh`
 
-out="# ${project:-zingzong} ${version} for ${arch} #" 
+out="# ${project:-zingzong} ${version} for ${arch} #"
 cat <<EOF
 
  ${out//?/#}
