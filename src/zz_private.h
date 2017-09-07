@@ -53,6 +53,10 @@
 # include <ctype.h>
 # include <string.h>                     /* memset, basename */
 
+#ifdef __MINGW32__
+# include <libgen.h>     /* no GNU version of basename() with mingw */
+#endif
+
 # include <errno.h>
 # define ZZ_EIO    EIO
 # define ZZ_EINVAL EINVAL

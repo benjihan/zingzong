@@ -38,6 +38,13 @@ static const char license[] = \
 static const char bugreport[] = \
   "Report bugs to <https://github.com/benjihan/zingzong/issues>";
 
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#else
+# define _DEFAULT_SOURCE
+# define _GNU_SOURCE                    /* for GNU basename() */
+#endif
+
 #define ZZ_DBG_PREFIX "(cli) "
 #include "zingzong.h"
 #include "zz_def.h"
@@ -51,9 +58,7 @@ static const char bugreport[] = \
  * ---------------------------------------------------------------------- */
 
 /* stdc */
-#include <assert.h>
-#include <stdarg.h>
-#include <stdint.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

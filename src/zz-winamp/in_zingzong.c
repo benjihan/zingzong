@@ -34,7 +34,7 @@
 
 /* generated config header */
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+# include "config.h"
 #endif
 
 #define ZZ_DBG_PREFIX "(amp) "
@@ -46,10 +46,12 @@
 #include "../zz_private.h"
 
 /* libc */
-#include <stdio.h>
-#include <ctype.h>
-#include <assert.h>
+/* #include <stdio.h> */
+/* #include <string.h> */
+/* #include <ctype.h> */
 #include <malloc.h>                     /* malloca */
+#include <libgen.h>
+
 
 /* winamp 2 */
 #include "winamp/in2.h"
@@ -172,12 +174,15 @@ In_Module g_mod =
 {
   IN_VER,               /* Input plugin version as defined in in2.h */
   (char*)
-  "ZinZong (Quartet music player) v" PACKAGE_VERSION, /* Description */
+  "ZingZong (Quartet music player) v" PACKAGE_VERSION, /* Description */
   0,                          /* hMainWindow (filled in by winamp)  */
   0,                          /* hDllInstance (filled in by winamp) */
   (char*)
-  "play\0" "play file (*.play)\0"
-  "4q\0" "Quartet bundle (*.4q)\0" "4v\0" "Quartet score (*.4v)\0",
+  "4q\0"   "Quartet bundle (*.4q)\0"
+  "4v\0"   "Quartet score (*.4v)\0"
+  "qts\0"  "Quartet score (*.qts)\0"
+  "qta\0"  "Quartet score (*.qta)\0"
+  ,
   0,                                  /* is_seekable */
   1,                                  /* uses output plug-in system */
 
@@ -256,13 +261,27 @@ static
  ****************************************************************************/
 int isourfile(const char * uri)
 {
-  const char * ext = strrchr(uri,'.');
-  return
-    (ext &&
-     (0
+  char * s;
+  const char * nud, *ext;
+  int len = uri ? strlen(uri)+1 : 0;
+
+  if ( !len || !(s = _malloca(len)) )
+    return 0;
+  memcpy(s,uri,len);
+  len = (nud = basename(s)) && (ext = strrchr(nud,'.')) &&
+    (
+      0
       || ! strcasecmp(ext,".4q")
       || ! strcasecmp(ext,".4v")
-       ));
+      || ! strcasecmp(ext,".qts")
+      || ! strcasecmp(ext,".qta")
+      || ! strncasecmp(nud,"4q.",3)
+      || ! strncasecmp(nud,"4v.",3)
+      || ! strncasecmp(nud,"qts.",4)
+      || ! strncasecmp(nud,"qta.",4)
+      );
+  _freea(s);
+  return len;
 }
 
 /*****************************************************************************
