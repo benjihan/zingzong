@@ -1,34 +1,61 @@
 # Zingzong - Building help
 
-## Building
+## Requirements
 
-### Tools
+  * `make`
+  
+  GNU make program. Other make programs might work as well but it is
+  untested territory.
 
-  * GNU `make` program. Other make programs might work as well but
-    it is untested territory.
-  * `gcc` the GNU C compiler and linker. Other C compiler and linker
-    should work too but might require a bit of tweaking. Aside
-    traditional variables have a look to `NODEPS` and `MAKERULES`.
-  * `pkg-config` to help configure the dependency libraries.
-    Alternatively each dependency can be configured manually by
-    setting the corresponding *PACKAGE*_CFLAGS and the
-    *PACKAGE*_LIBS variables. See below for the *PACKAGE* prefix.
+  * `gcc`
+  
+  GNU toolchain with C compiler and buddies. Other C compilers should
+  work too but it might require a bit of tweaking.
+	
+  * `pkg-config`
+  
+  Get information on installed library. Alternatively each dependency
+  can be configured manually by setting the corresponding
+  *PACKAGE*_CFLAGS and the *PACKAGE*_LIBS variables. See below for the
+  *PACKAGE* prefix.
+  
+  * `bash`
+  
+  GNU Bourne-Again SHell. Any decent Bourne shell should do. This is
+  specially important when running the build helper script. Compiling
+  directly with the Makefile should work with any shell as long as
+  the `$(shell)` function works.
 
-### Dependencies
 
-  * `liba0` is *highly* recommended unless you only want to build a
-    plugin. It provides support for both audio output and RIFF wave
-    file generation. It is usually distributed under the `libao-dev`
-    package.
-  * `soxr` is recommended for high quality resampling at acceptable
-    performance for modern CPUs.
-  * `libsamplerate` is another alternative for high quality resampling
-    with a number quality versus performance trade off methods.
+## Dependency libraries
 
+  * `liba0` [The cross platform audio library](https://www.xiph.org/ao/) 
+  
+  *highly* recommended unless you only want to build a plugin. It
+  provides support for live audio output and RIFF wave file
+  generation. It is usually distributed under the `libao-dev` package.
+	
+	
+  * `soxr` [The SoX Resampler library](https://sourceforge.net/p/soxr/wiki/Home)
+  
+  recommended for high quality resampling at acceptable performance for
+  modern CPUs.
+  
+  
+  * `libsamplerate` [Secret Rabbit Code](http://www.mega-nerd.com/SRC)
+  
+   a Sample Rate Converter for audio. That library provides a variety
+   of resampling methods allowing quality to be traded off against
+   computation cost. Some methods requires a heavy computation even
+   for modern CPUS. Still run real-time but it might heavily impact
+   your system performance).
+
+
+## Building Zingzong
 
 ### Build script
 
-There is a build script _build/zz_build. To use it create a directory
+There is a build script `_build/zz_build`. To use it create a directory
 named after the host-triplet and call the zz_build script from there.
 You can cross-compile with this script provided the environment is
 properly setup for it. Make variables and targets can be set on the
@@ -95,4 +122,3 @@ variables this Makefile uses.
  | `SPR_MIN`     |Set minimum sampling rate (default: 4 kHz)                  |
  | `SPR_MAX`     |Set maximum sampling rate (default: 96 kHz)                 |
  | `SPR_DEF`     |Set default sampling rate (default: 48 kHz)                 |
-
