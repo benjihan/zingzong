@@ -196,19 +196,19 @@ struct mixer_s {
 
 /** Prepared instrument (sample). */
 struct inst_s {
-  u32_t     len;                        /**< size in bytes.        */
-  u32_t     lpl;                        /**< loop length in bytes. */
-  u32_t     end;                        /**< unroll end.           */
-  uint8_t * pcm;                        /**< sample address.s      */
+  u32_t     len;             /**< size in bytes.                    */
+  u32_t     lpl;             /**< loop length in bytes.             */
+  u32_t     end;             /**< unrolled end.                     */
+  uint8_t * pcm;             /**< sample address.                   */
 };
 
 /** Prepared instrument set. */
 struct vset_s {
-  bin_t *bin;                  /**< voiceset data container.        */
-  u8_t   khz;                  /**< sampling rate from .set.        */
-  u8_t   nbi;                  /**< number of instrument [1..20].   */
-  u32_t  iused;                /**< mask of instrument really used. */
-  inst_t inst[20];             /**< instrument definitions.         */
+  bin_t *bin;                /**< voiceset data container.          */
+  u8_t   khz;                /**< sampling rate from .set.          */
+  u8_t   nbi;                /**< number of instrument [1..20].     */
+  u32_t  iused;              /**< mask of instrument really used.   */
+  inst_t inst[20];           /**< instrument definitions.           */
 };
 
 /** File/Memory sequence. */
@@ -217,17 +217,17 @@ struct sequ_s {
 };
 
 struct memb_s {
-  bin_t  *bin;                          /**< data container. */
+  bin_t  *bin;               /**< data container.                   */
 };
 
 /** Prepared song. */
 struct song_s {
-  bin_t  *bin;                   /**< song data container.          */
-  u8_t    khz;                   /**< header sampling rate (kHz).   */
-  u8_t    barm;                  /**< header bar measure.           */
-  u8_t    tempo;                 /**< header tempo.                 */
-  u8_t    sigm;                  /**< header signature numerator.   */
-  u8_t    sigd;                  /**< header signature denominator. */
+  bin_t  *bin;               /**< song data container.              */
+  u8_t    khz;               /**< header sampling rate (kHz).       */
+  u8_t    barm;              /**< header bar measure.               */
+  u8_t    tempo;             /**< header tempo.                     */
+  u8_t    sigm;              /**< header signature numerator.       */
+  u8_t    sigd;              /**< header signature denominator.     */
 
   u32_t   iused;             /**< mask of instrument really used    */
   u32_t   stepmin;           /**< estimated minimal note been used. */
@@ -237,19 +237,20 @@ struct song_s {
 
 /** Song meta info. */
 struct info_s {
-  bin_t *bin;                          /**< info data container. */
-  char  *comment;                      /**< decoded comment.     */
-  char  *title;                        /**< decoded title.       */
-  char  *artist;                       /**< decoded artist.      */
-  char  *ripper;                       /**< decoded ripper.      */
+  bin_t *bin;                /**< info data container.              */
+  char  *comment;            /**< decoded comment.                  */
+  char  *album;              /**< decoded album.                    */
+  char  *title;              /**< decoded title.                    */
+  char  *artist;             /**< decoded artist.                   */
+  char  *ripper;             /**< decoded ripper.                   */
 };
 
 /** Played note. */
 struct note_s {
-  i32_t   cur;                        /**< current note.            */
-  i32_t   aim;                        /**< current note slide goal. */
-  i32_t   stp;                        /**< note slide speed (step). */
-  inst_t *ins;                        /**< Current instrument.      */
+  i32_t   cur;               /**< current note.                     */
+  i32_t   aim;               /**< current note slide goal.          */
+  i32_t   stp;               /**< note slide speed (step).          */
+  inst_t *ins;               /**< Current instrument.               */
 };
 
 /** Played channel. */
@@ -319,6 +320,7 @@ struct play_s {
   u8_t  done;               /**< true when done */
   u8_t  format;             /**< see ZZ_FORMAT_ enum */
 
+  u8_t      mixer_id;        /**< Mixer identifier.                 */
   mixer_t * mixer;           /**< Mixer to use (almost never null). */
   void    * mixer_data;      /**< Mixer private data (never null).  */
 
@@ -338,130 +340,67 @@ struct songhd {
 /* ---------------------------------------------------------------------- */
 
 /**
- * Motorola integers
+ * Machine specific (byte order and fast mul/div.
  * @{
  */
 
+#ifndef __ORDER_BIG_ENDIAN__
+# define __ORDER_BIG_ENDIAN__ 4321
+#endif
+
 #ifdef __m68k__
 
-static inline u16_t u16(const uint8_t * const v) {
-  return *(const uint16_t *)v;
-}
-
-static inline u32_t u32(const uint8_t * const v) {
-  return *(const uint32_t *)v;
-}
-
-static inline uint32_t always_inline mulu(uint16_t a, uint16_t b)
-{
-  uint32_t c;
-  asm ("mulu.w %1,%0\n\t"
-       : "=d" (c)
-       : "iSd" (a), "0" (b)
-       : "cc");
-  return c;
-}
-
-static inline uint32_t always_inline divu(uint32_t v, uint16_t d)
-{
-  asm("divu.w %1,%0\n\t"
-      : "+d" (v)
-      : "iSd" (d)
-      : "cc");
-  return (uint16_t) v;
-}
-
-static inline uint32_t always_inline modu(uint32_t v, uint16_t d)
-{
-  asm("divu.w %1,%0  \n\t"
-      "clr.w %0      \n\t"
-      "swap %0       \n\t"
-      : "+d" (v)
-      : "iSd" (d)
-      : "cc");
-  return v;
-}
-
-static inline uint32_t always_inline mulu32(uint32_t a, uint16_t b)
-{
-  uint32_t tp1;
-
-  asm("move.l %[val],%[tp1]  \n\t" /* tp1 = XX:YY */
-      "swap   %[tp1]         \n\t" /* tp1 = YY:XX */
-      "mulu.w %[mul],%[tp1]  \n\t" /* tp1 = XX*ZZ */
-      "mulu.w %[mul],%[val]  \n\t" /* val = YY*ZZ */
-      "swap   %[tp1]         \n\t" /* tp1 = XX:00*ZZ */
-      /* We could clear tp1 LSW but if it is set it means the
-       * multiplication has already overflow, so it won't help that
-       * much.
-      "clr.w  %[tp1]         \n\t"
-      */
-      "add.l  %[tp1],%[val]  \n\t" /* val = XX:YY*ZZ */
-      : [val] "+d" (a), [tp1] "=r" (tp1)
-      : [mul] "iSd" (b)
-      : "cc"
-    );
-  return a;
-}
-
-static inline uint32_t always_inline divu32(uint32_t v, uint16_t d)
-{
-  uint32_t tp1, tp2;
-
-  asm("move.l %[val],%[tp1]  \n\t" /* tp1 = Xx:Yy */
-      "clr.w %[val]          \n\t" /* val = Xx:00 */
-      "sub.l %[val],%[tp1]   \n\t" /* tp1 = 00:Yy */
-      "swap %[val]           \n\t" /* val = 00:Xx */
-      "divu.w %[div],%[val]  \n\t" /* val = Rx:Qx */
-      "move.l %[val],%[tp2]  \n\t" /* tp2 = Rx:Qx */
-      "clr.w %[tp2]          \n\t" /* tp2 = Rx:00 */
-      "move.w %[tp1],%[tp2]  \n\t" /* tp2 = Rx:Yy */
-      "divu.w %[div],%[tp2]  \n\t" /* tp2 = Ri:Qi */
-      "swap %[val]           \n\t" /* val = Qx:Rx */
-      "move.w %[tp2],%[val]  \n\t" /* val = Qx:Qi */
-      : [val] "+d" (v), [tp1] "=d" (tp1), [tp2] "=d" (tp2)
-      : [div] "iSd" (d)
-      : "cc"
-    );
-  return v;
-}
+# include "m68k_muldiv.h"
+# ifndef __BYTE_ORDER__
+#  define __BYTE_ORDER__ __ORDER_BIG_ENDIAN__
+# endif
 
 #else /* __m68k__ */
 
-static inline u16_t u16(const uint8_t * const v) {
-  return ((u16_t)v[0]<<8) | v[1];
-}
-
-static inline u32_t u32(const u8_t * const v) {
-  return ((u32_t)u16(v)<<16) | u16(v+2);
-}
-
-static inline u32_t always_inline mulu(u16_t a, u16_t b)
-{
-  return a * b;
-}
-
-static inline uint32_t always_inline mulu32(uint32_t a, uint16_t b)
-{
-  return a * b;
-}
-
-static inline u32_t always_inline divu(u32_t n, u16_t d)
-{
-  return n / d;
-}
-
-static inline u32_t always_inline modu(u32_t n, u16_t d)
-{
-  return n % d;
-}
-
-static inline u32_t always_inline divu32(u32_t n, u16_t d)
-{
-  return n / d;
-}
+static inline u32_t always_inline c_mulu(u16_t a, u16_t b)
+{ return a * b; }
+static inline uint32_t always_inline c_mulu32(uint32_t a, uint16_t b)
+{ return a * b; }
+static inline u32_t always_inline c_divu(u32_t n, u16_t d)
+{ return n / d; }
+static inline u32_t always_inline c_modu(u32_t n, u16_t d)
+{ return n % d; }
+static inline u32_t always_inline c_divu32(u32_t n, u16_t d)
+{ return n / d; }
+# define mulu(a,b)   c_mulu((a),(b))
+# define divu(a,b)   c_divu((a),(b))
+# define modu(a,b)   c_modu((a),(b))
+# define mulu32(a,b) c_mulu32((a),(b))
+# define divu32(a,b) c_divu32((a),(b))
 
 #endif /* __m68k__ */
+
+/* GB: could probably use httons(). */
+#ifndef U16
+# if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+static inline u16_t host_u16(const uint8_t * const v)
+{ return *(const uint16_t *)v; }
+#  define U16(v) host_u16((v))
+# else
+static inline u16_t byte_u16(const uint8_t * const v) {
+  return ((u16_t)v[0]<<8) | v[1];
+}
+#  define U16(v) byte_u16((v))
+# endif
+#endif
+
+/* GB: could probably use httonl(). */
+#ifndef U32
+# if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+static inline u32_t host_u32(const uint8_t * const v)
+{ return *(const uint32_t *)v; }
+#  define U32(v) host_u32((v))
+# else
+static inline u32_t byte_u32(const u8_t * const v)
+{ return ((u32_t)U16(v)<<16) | U16(v+2); }
+#  define U32(v) byte_u32((v))
+# endif
+#endif
 
 /**
  * @}
@@ -586,11 +525,11 @@ ZZ_EXTERN_C
 zz_err_t q4_load(vfs_t vfs, q4_t *q4);
 
 ZZ_EXTERN_C
-void zz_song_wipe(zz_song_t song);
+void zz_song_wipe(song_t * song);
 ZZ_EXTERN_C
-void zz_vset_wipe(zz_vset_t vset);
+void zz_vset_wipe(vset_t * vset);
 ZZ_EXTERN_C
-void zz_info_wipe(zz_info_t info);
+void zz_info_wipe(info_t * info);
 /**
  * @}
  */

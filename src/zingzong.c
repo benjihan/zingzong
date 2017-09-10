@@ -759,6 +759,7 @@ int main(int argc, char *argv[])
   ecode = zz_new(&P);
   if (ecode)
     goto error_exit;
+  zz_assert( P );
 
   ecode = zz_load(P, songuri, vseturi, &format);
   if (ecode)
@@ -807,25 +808,6 @@ int main(int argc, char *argv[])
   if (ecode)
     goto error_exit;
 
-  dmsg("Output via %s to \"%s\"\n", out->name, out->uri);
-
-  /*
-  imsg("Zing that zong\n"
-       " with the \"%s\" mixer at %uhz\n"
-       " for %s%s\n"
-       " via \"%s\"\n"
-       "vset: \"%s\" (%ukHz, %u sound)\n"
-       "song: \"%s\" (%ukHz, %u, %u, %u:%u)\n",
-       mixer_name,
-       out->hz,
-       P->end_detect ? "max " : "",
-       tickstr(P->max_ticks, P->rate), P->out->uri,
-       basename(ZZSTR(P->vseturi)), P->vset.khz, P->vset.nbi,
-       basename(ZZSTR(P->songuri)), P->song.khz, P->song.barm,
-       P->song.tempo, P->song.sigm, P->song.sigd);
-  if (P->info.comment && *P->info.comment)
-    imsg("Comment:\n~~~~~\n%s\n~~~~~\n",P->info.comment);
-  */
 
 #ifndef NO_AO
   if (wavuri)
@@ -841,14 +823,44 @@ int main(int argc, char *argv[])
     if (ecode)
       goto error_exit;
     dmsg("measured: %lu ticks, %lu ms\n", LU(ticks), LU(ms));
-    if (ticks)
-      imsg("duration: %s\n", tickstr(ticks, opt_tickrate));
   }
 
   if (!ecode) {
+    zz_info_t info;
     uint_t sec = (uint_t) -1;
-    zz_u16_t n = 0;
+
+    ecode = zz_info(P, &info);
+    if (ecode)
+      goto error_exit;
+
+    dmsg("Output via %s to \"%s\"\n", out->name, out->uri);
+    imsg("Zing that zong\n"
+         " with the \"%s\" mixer at %luhz\n"
+         " for %s%s\n"
+         " via \"%s\" at %luhz\n"
+         "vset: \"%s\" (%hukHz)\n"
+         "song: \"%s\" (%hukHz)\n\n",
+         info.mix.name, LU(info.mix.spr),
+         opt_length ? "max " : "",
+         tickstr(info.len.ticks, info.len.rate),
+         out->uri, LU(out->hz),
+         basename(info.set.uri), HU(info.set.khz),
+         basename(info.sng.uri), HU(info.sng.khz)
+      );
+
+    if (*info.tag.artist)
+      imsg("Artist  : %s\n", info.tag.artist);
+    if (*info.tag.title)
+      imsg("Title   : %s\n", info.tag.title);
+    if (*info.tag.album)
+      imsg("Album   : %s\n", info.tag.album);
+    if (*info.tag.ripper)
+      imsg("Ripper  : %s\n", info.tag.ripper);
+    if (*info.tag.comment)
+      imsg("Comment :\n~~~~~\n%s\n~~~~~\n",info.tag.comment);
+
     do {
+      zz_u16_t n = 0;
       int16_t * pcm;
 
       pcm = zz_play(P,&n);

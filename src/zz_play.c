@@ -8,30 +8,33 @@
 #define ZZ_DBG_PREFIX "(pla) "
 #include "zz_private.h"
 
-zz_err_t zz_setup(zz_play_t play, zz_u8_t mixerid,
+static char empty_str[] = "";
+#define NEVER_NIL(S) if ( (S) ) {} else (S) = empty_str
+
+zz_err_t zz_setup(zz_play_t P, zz_u8_t mixerid,
                   zz_u32_t spr, zz_u16_t rate,
                   zz_u32_t max_ticks, zz_u8_t end_detect)
 {
-  if ( zz_mixer_set(play, mixerid) == ZZ_DEFAULT_MIXER )
+  if ( zz_mixer_set(P, mixerid) == ZZ_DEFAULT_MIXER )
     return ZZ_EARG;
-  if (!play)
+  if (!P)
     return ZZ_OK;
 
   if (!rate) rate = RATE_DEF;
-  if (!spr) spr = mulu(play->song.khz,1000);
-  if (!spr) spr = SPR_DEF;
+  if (!spr)  spr = mulu(P->song.khz,1000);
+  if (!spr)  spr = SPR_DEF;
 
   if (rate < RATE_MIN || rate > RATE_MAX || spr < SPR_MIN || spr > SPR_MAX)
     return ZZ_EARG;
 
-  play->rate       = rate;
-  play->spr        = spr;
-  play->max_ticks  = max_ticks;
-  play->end_detect = !!end_detect;
+  P->rate       = rate;
+  P->spr        = spr;
+  P->max_ticks  = max_ticks;
+  P->end_detect = !!end_detect;
 
   dmsg("setup: rate:%hu spr:%lu max-ticks:%lu end-detect:%hu\n",
-       HU(play->rate),LU(play->spr),
-       LU(play->max_ticks),HU(play->end_detect));
+       HU(P->rate), LU(P->spr),
+       LU(P->max_ticks), HU(P->end_detect) );
 
   return ZZ_OK;
 }
@@ -50,7 +53,7 @@ zz_chan_init(play_t * P, int k)
   C->id  = 'A'+k;
   C->num = k;
   C->cur = C->seq = P->song.seq[k];
-  for ( seq = C->cur; (cmd=u16(seq->cmd)) != 'F' ; ++seq ) {
+  for ( seq = C->cur; (cmd=U16(seq->cmd)) != 'F' ; ++seq ) {
     switch(cmd) {
     case 'P': case 'R': case 'S':
       /* Scoot first and last note sequence */
@@ -146,10 +149,10 @@ int zz_play_chan(play_t * const P, const int k)
   while (!C->wait) {
     /* This could be an endless loop on empty track but it should
      * have been checked earlier ! */
-    u32_t const cmd = u16(seq->cmd);
-    u32_t const len = u16(seq->len);
-    u32_t const stp = u32(seq->stp);
-    u32_t const par = u32(seq->par);
+    u32_t const cmd = U16(seq->cmd);
+    u32_t const len = U16(seq->len);
+    u32_t const stp = U32(seq->stp);
+    u32_t const par = U32(seq->par);
     ++seq;
 
     switch (cmd) {
@@ -383,10 +386,16 @@ ms_to_ticks(zz_u32_t ms, zz_u16_t rate)
     return 0;                           /* trivial no other check */
 
   if (!rate) {
-    wmsg("rate not set -- assuming 200hz -- %lu ms\n", LU(ms));
-    rate = 200;
+    rate = RATE_DEF;
+    wmsg("rate not set -- assuming %huhz -- %lu ms\n", HU(rate), LU(ms));
   }
-  zz_assert (rate > 0 && rate <= 1000);
+
+  zz_assert( rate >= RATE_MIN );
+  zz_assert( rate <= RATE_MAX );
+  if (rate < RATE_MIN || rate > RATE_MAX) {
+    wmsg("rate out of range -- %huhz\n", HU(rate));
+    return 0;
+  }
 
   /* TICKS = MS x RATE / 1000 */
   switch (rate) {
@@ -527,18 +536,48 @@ zz_measure(play_t * P, zz_u32_t * restrict pticks, zz_u32_t * restrict pms)
 
 /* ---------------------------------------------------------------------- */
 
+static void zz_rt_check(void)
+{
+#ifndef NDEBUG
+  static uint8_t bytes[4] = { 1, 2, 3, 4 };
+#endif
+
+  /* constant check */
+  zz_assert( ZZ_FORMAT_UNKNOWN == 0 );
+  zz_assert( ZZ_OK == 0 );
+  zz_assert( ZZ_DEFAULT_MIXER > 0 );
+
+  /* built-in type check */
+  zz_assert( sizeof(uint8_t)  == 1 );
+  zz_assert( sizeof(uint16_t) == 2 );
+  zz_assert( sizeof(uint32_t) == 4 );
+
+  zz_assert( sizeof(zz_u8_t)  >= 1 );
+  zz_assert( sizeof(zz_u16_t) >= 2 );
+  zz_assert( sizeof(zz_u32_t) >= 4 );
+
+  /* compound type check */
+  zz_assert( sizeof(struct sequ_s) == 12 );
+
+  /* byte order stuff */
+  zz_assert( U32(bytes)   == 0x01020304 );
+  zz_assert( U16(bytes)   == 0x00000102 );
+  zz_assert( U16(bytes+2) == 0x00000304 );
+}
+
 zz_err_t
 zz_init(play_t * P)
 {
   zz_err_t ecode = E_OK;
 
+  zz_rt_check();
+
   zz_assert ( ! P->mix_buf );
   zz_assert ( ! P->mixer_data );
   zz_assert ( P->mixer );
 
-
   if (!P->rate) {
-    P->rate = 200;
+    P->rate = RATE_DEF;
     dmsg("replay rate not set -- default to %hu\n", HU(P->rate));
   }
 
@@ -617,17 +656,17 @@ static void memb_wipe(struct memb_s * memb, int size)
   }
 }
 
-void zz_song_wipe(zz_song_t song)
+void zz_song_wipe(song_t * song)
 {
   memb_wipe((struct memb_s *)song, sizeof(*song));
 }
 
-void zz_vset_wipe(zz_vset_t vset)
+void zz_vset_wipe(vset_t * vset)
 {
   memb_wipe((struct memb_s *)vset, sizeof(*vset));
 }
 
-void zz_info_wipe(zz_info_t info)
+void zz_info_wipe(info_t * info)
 {
   memb_wipe((struct memb_s *)info, sizeof(*info));
 }
@@ -657,6 +696,9 @@ zz_err_t zz_close(zz_play_t P)
     zz_strdel(&P->infouri);
 
     P->st_idx = 0;
+    P->pcm_per_tick = 0;
+
+    /* GB: $$$ XXX FIXME might have some more stuff to clear. */
 
     ecode = E_OK;
   }
@@ -677,6 +719,74 @@ zz_err_t zz_new(zz_play_t * pP)
   return zz_calloc(pP,sizeof(**pP));
 }
 
+
+const char * zz_formatstr(zz_u8_t fmt)
+{
+  switch ( fmt )
+  {
+  case ZZ_FORMAT_UNKNOWN: return "unknown";
+  case ZZ_FORMAT_4V:      return "4v";
+  case ZZ_FORMAT_4Q:      return "4q";
+  case ZZ_FORMAT_QUAR:    return "quar";
+  }
+  zz_assert( ! "unexpecter format" );
+  return "?";
+}
+
+zz_err_t zz_info( zz_play_t P, zz_info_t * pinfo)
+{
+
+  zz_assert(P);
+  zz_assert(pinfo);
+
+  if (!P || !pinfo)
+    return E_ARG;
+
+  /* format */
+  pinfo->fmt.str = zz_formatstr(pinfo->fmt.num = P->format);
+
+  /* rates */
+  pinfo->len.rate  = P->rate;
+  pinfo->mix.spr   = P->spr;
+  pinfo->len.ticks = P->max_ticks;
+  pinfo->len.ms    = tick_to_ms(pinfo->len.ticks, pinfo->len.rate);
+
+  /* mixer */
+  pinfo->mix.ppt = P->pcm_per_tick;
+  pinfo->mix.num = P->mixer_id;
+  if (P->mixer) {
+    pinfo->mix.name = P->mixer->name;
+    pinfo->mix.desc = P->mixer->desc;
+  } else {
+    zz_mixer_enum(pinfo->mix.num, &pinfo->mix.name, &pinfo->mix.desc);
+  }
+
+  pinfo->sng.uri = ZZSTR_SAFE(P->songuri);
+  pinfo->set.uri = ZZSTR_SAFE(P->vseturi);
+  pinfo->sng.khz = P->song.khz;
+  pinfo->set.khz = P->vset.khz;
+
+  /* meta-tags */
+  pinfo->tag.album   = P->info.album;
+  pinfo->tag.title   = P->info.title;
+  pinfo->tag.artist  = P->info.artist;
+  pinfo->tag.ripper  = P->info.ripper;
+  pinfo->tag.comment = P->info.comment;
+
+  /* Ensure no strings are nil */
+  NEVER_NIL(pinfo->fmt.str);
+  NEVER_NIL(pinfo->mix.name);
+  NEVER_NIL(pinfo->mix.desc);
+  NEVER_NIL(pinfo->set.uri);
+  NEVER_NIL(pinfo->sng.uri);
+  NEVER_NIL(pinfo->tag.album);
+  NEVER_NIL(pinfo->tag.title);
+  NEVER_NIL(pinfo->tag.artist);
+  NEVER_NIL(pinfo->tag.ripper);
+  NEVER_NIL(pinfo->tag.comment);
+
+  return E_OK;
+}
 
 #ifndef NO_VFS
 

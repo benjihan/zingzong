@@ -519,16 +519,14 @@ q4_load(vfs_t vfs, q4_t *q4)
           q4->info->title = s+w;
         }
       }
-      if (!q4->info->title ) q4->info->title  = "";
-      if (!q4->info->artist) q4->info->artist = "";
-      if (!q4->info->ripper) q4->info->ripper = "";
 
-      dmsg("title  : <%s>\n", q4->info->title);
-      dmsg("artist : <%s>\n", q4->info->artist);
-      dmsg("ripper : <%s>\n", q4->info->ripper);
-      dmsg("comment:\n%s\n",q4->info->comment);
-
-
+      dmsg("-- 4Q  :\n");
+      dmsg("album  : <%s>\n", q4->info->album  ? q4->info->album  : "");
+      dmsg("title  : <%s>\n", q4->info->title  ? q4->info->title  : "");
+      dmsg("artist : <%s>\n", q4->info->artist ? q4->info->artist : "");
+      dmsg("ripper : <%s>\n", q4->info->ripper ? q4->info->ripper : "");
+      dmsg("comment:\n%s\n",  q4->info->comment ? q4->info->comment : "");
+      dmsg("--\n");
     }
   }
 
@@ -578,9 +576,9 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
       P->vseturi = zz_strdup(P->songuri);
       P->infouri = zz_strdup(P->songuri);
 
-      q4.song = &P->song; q4.songsz = u32(hd+8);
-      q4.vset = &P->vset; q4.vsetsz = u32(hd+12);
-      q4.info = &P->info; q4.infosz = u32(hd+16);
+      q4.song = &P->song; q4.songsz = U32(hd+8);
+      q4.vset = &P->vset; q4.vsetsz = U32(hd+12);
+      q4.info = &P->info; q4.infosz = U32(hd+16);
       dmsg("QUARTET header [sng:%lu set:%lu inf:%lu]\n",
            LU(q4.songsz), LU(q4.vsetsz), LU(q4.infosz));
       ecode = q4_load(inp,&q4);

@@ -300,7 +300,7 @@ static zz_err_t init_srate(play_t * const P, const int quality)
   const int N = P->pcm_per_tick;
   const u32_t size = sizeof(mix_data_t) + sizeof(float)*N;
   zz_assert( !P->mixer_data );
-  zz_assert( N>0 );
+  zz_assert( N > 0 );
   zz_assert( sizeof(float) == 4 );
 
   ecode = zz_calloc(&P->mixer_data, size);

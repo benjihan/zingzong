@@ -86,8 +86,10 @@ zz_u8_t zz_mixer_set(play_t * P, zz_u8_t n)
   if (mixer = get_mixer(&n), mixer) {
     if (!P)
       default_mixer = mixer;
-    else
+    else {
       P->mixer = mixer;
+      P->mixer_id = n;
+    }
   }
   return n;
 }

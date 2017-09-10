@@ -25,9 +25,9 @@
 # define SPR_DEF 48000                  /* sampling rate default */
 #endif
 
-#define RATE_MIN 50
-#define RATE_MAX 800
 #define RATE_DEF 200
+#define RATE_MIN (RATE_DEF>>2)
+#define RATE_MAX (RATE_DEF<<2)
 
 #ifndef zz_void
 # define zz_void ((void)0)
@@ -174,6 +174,9 @@ ZZ_EXTERN_C str_t zz_strset(str_t str, const char * sta);
 ZZ_EXTERN_C str_t zz_strdup(str_t str);
 ZZ_EXTERN_C void  zz_strdel(str_t * pstr);
 ZZ_EXTERN_C zz_u16_t zz_strlen(str_t const str);
+
+#define ZZSTR(S) (char *)((S)->ptr)
+#define ZZSTR_SAFE(S) ((S) ? ZZSTR(S) : 0)
 /**
  * @}
  */

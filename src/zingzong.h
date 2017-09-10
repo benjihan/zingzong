@@ -52,39 +52,86 @@ typedef uint_fast32_t zz_u32_t;
  * Zingzong error codes.
  */
 enum {
-  ZZ_OK, ZZ_ERR,
-  ZZ_EARG, ZZ_ESYS, ZZ_EINP, ZZ_EOUT, ZZ_ESET, ZZ_ESNG, ZZ_EPLA, ZZ_EMIX,
-  ZZ_666 = 66
+  ZZ_OK,                       /**< No error.                       */
+  ZZ_ERR,                      /**< Unspecified error.              */
+  ZZ_EARG,                     /**< Argument error.                 */
+  ZZ_ESYS,                     /**< System error (I/O, memory ...). */
+  ZZ_EINP,                     /**< Problem with input.             */
+  ZZ_EOUT,                     /**< Problem with output.            */
+  ZZ_ESNG,                     /**< Voice set error.                */
+  ZZ_ESET,                     /**< Song error.                     */
+  ZZ_EPLA,                     /**< Player error.                   */
+  ZZ_EMIX,                     /**< Mixer error.                    */
+  ZZ_666 = 66                  /**< Internal error.                 */
 };
 
 /**
  * Known (but not always supported) Quartet file format.
  */
 enum zz_format_e {
-  ZZ_FORMAT_UNKNOWN,            /**< Not yet determined.            */
-  ZZ_FORMAT_4V,                 /**< Original Atari ST song.        */
-  ZZ_FORMAT_BUNDLE = 64,        /**< Next formats are bundkes.      */
-  ZZ_FORMAT_4Q,                 /**< Single song bundle (MUG UK ?). */
-  ZZ_FORMAT_QUAR,               /**< Multi song bundle (sc68).      */
+  ZZ_FORMAT_UNKNOWN,           /**< Not yet determined (must be 0)  */
+  ZZ_FORMAT_4V,                /**< Original Atari ST song.         */
+  ZZ_FORMAT_BUNDLE = 64,       /**< Next formats are bundles.       */
+  ZZ_FORMAT_4Q,                /**< Single song bundle (MUG UK ?).  */
+  ZZ_FORMAT_QUAR,              /**< Multi song bundle (SC68).       */
 };
 
 enum {
-  ZZ_DEFAULT_MIXER = 255        /**< Default mixer id.              */
+  ZZ_DEFAULT_MIXER = 255       /**< Default mixer id.               */
 };
 
 typedef zz_i8_t zz_err_t;
 typedef struct vfs_s  * restrict zz_vfs_t;
-typedef struct info_s * restrict zz_info_t;
+/* typedef struct info_s * restrict zz_info_t; */
 typedef struct vset_s * restrict zz_vset_t;
 typedef struct song_s * restrict zz_song_t;
 typedef struct play_s * restrict zz_play_t;
 typedef const struct zz_vfs_dri_s * zz_vfs_dri_t;
 typedef zz_err_t (*zz_guess_t)(zz_play_t const, const char *);
 
+typedef struct zz_info_s zz_info_t;
+
+struct zz_info_s {
+
+  /** format info. */
+  struct {
+    zz_u8_t      num;         /**< format (@see zz_format_e).       */
+    const char * str;         /**< format string.                   */
+  } fmt;
+
+
+  struct {
+    zz_u16_t     rate;       /**< player tick rate (200hz).         */
+    zz_u32_t     ms;         /**< song duration in ms.              */
+    zz_u32_t     ticks;      /**< song duration in ticks.           */
+  } len;
+
+  struct {
+    zz_u32_t     spr;         /**< sampling rate.                   */
+    zz_u16_t     ppt;         /**< pcm per tick.                    */
+    zz_u8_t      num;         /**< mixer identifier.                */
+    const char * name;        /**< mixer name or "".                */
+    const char * desc;        /**< mixer description or "".         */
+  } mix;                      /**< mixer related info.              */
+
+  struct {
+    const char * uri;         /**<                                  */
+    zz_u32_t     khz;         /**<                                  */
+  } set, sng;
+
+  struct {
+    const char * album;       /**< album or "".                     */
+    const char * title;       /**< title or "".                     */
+    const char * artist;      /**< artist or "".                    */
+    const char * ripper;      /**< ripper or "".                    */
+    const char * comment;     /**< comment or "".                   */
+  } tag;
+
+};
+
 /**
  * Log level (first parameter of zz_log_t function).
  */
-
 enum zz_log_e {
   ZZ_LOG_ERR,                           /**< Log error.   */
   ZZ_LOG_WRN,                           /**< Log warning. */
@@ -156,6 +203,10 @@ ZINGZONG_API( zz_err_t , zz_setup )
         (zz_play_t play, zz_u8_t mixerid,
          zz_u32_t spr, zz_u16_t rate,
          zz_u32_t max_ticks, zz_u8_t end_detect)
+        ;
+
+ZINGZONG_API( zz_err_t , zz_info )
+        (zz_play_t play, zz_info_t * pinfo)
         ;
 
 ZINGZONG_API( zz_err_t , zz_load )

@@ -45,7 +45,7 @@ zz_err_t
 song_init_header(song_t * song, const void *_hd)
 {
   const uint8_t * hd = _hd;
-  const uint16_t khz = u16(hd+0), bar = u16(hd+2), spd = u16(hd+4);
+  const uint16_t khz = U16(hd+0), bar = U16(hd+2), spd = U16(hd+4);
 
   zz_err_t ecode;
   /* Parse song header */
@@ -111,10 +111,10 @@ song_init(song_t * song)
        off += 12)
   {
     sequ_t * const seq = (sequ_t *)(song->bin->ptr+off-11);
-    u16_t    const cmd = u16(seq->cmd);
-    u16_t    const len = u16(seq->len);
-    u32_t    const stp = u32(seq->stp);
-    u32_t    const par = u32(seq->par);
+    u16_t    const cmd = U16(seq->cmd);
+    u16_t    const len = U16(seq->len);
+    u32_t    const stp = U32(seq->stp);
+    u32_t    const par = U32(seq->par);
     u16_t    wait = 0;
 
     if (!song->seq[k])
@@ -258,7 +258,7 @@ vset_init_header(zz_vset_t vset, const void * _hd)
   if (is_valid_khz(vset->khz) && is_valid_ins(vset->nbi)) {
     i8_t i;
     for (i=0; i<20; ++i) {
-      vset->inst[i].len = u32(&hd[142+4*i]);
+      vset->inst[i].len = U32(&hd[142+4*i]);
       dmsg("I#%02i [%7s] %08lx\n", i+1, hd+2+7*i, LU(vset->inst[i].len));
     }
     ecode = E_OK;
@@ -316,8 +316,8 @@ vset_init(zz_vset_t const vset)
 
       /* Get sample info */
       pcm = bin->ptr + off;
-      len = u32(pcm-4);
-      lpl = u32(pcm-8);
+      len = U32(pcm-4);
+      lpl = U32(pcm-8);
       if (lpl == 0xFFFFFFFF) lpl = 0;
 
       /* Some of these tests might be a tad conservative but as the
