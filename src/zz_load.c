@@ -431,7 +431,7 @@ q4_load(vfs_t vfs, q4_t *q4)
   if (q4->info && q4->infosz > 0) {
     if (E_OK ==
         bin_load(&q4->info->bin,vfs,q4->infosz, q4->infosz+2,INFO_MAX_SIZE)
-        && q4->info->bin->len > 1 && *q4->info->bin->buf)
+        && q4->info->bin->len > 1 && *q4->info->bin->ptr)
     {
       /* Atari to UTF-8 conversion */
       static const uint16_t atari_to_unicode[128] = {
@@ -453,7 +453,7 @@ q4_load(vfs_t vfs, q4_t *q4)
         0x00b0,0x2219,0x00b7,0x221a,0x207f,0x00b2,0x00b3,0x00af
       };
       int i,j,len = q4->info->bin->len;
-      uint8_t * s = q4->info->bin->buf;
+      char * s = (char*) q4->info->bin->ptr;
 
       for (i=0; i<len && s[i]; ++i)
         ;
@@ -464,7 +464,8 @@ q4_load(vfs_t vfs, q4_t *q4)
         const uint8_t c = s[--i];
         uint16_t u = c < 128 ? c : atari_to_unicode[c&127];
         if (u < 0x80) {
-          s[--j] = u;                   /* TODO: CR/LF conversion */
+          if ( u != 0x0D ) /* skip <CR> */
+            s[--j] = u;
         } else if (u < 0x800 && j >= 2 ) {
           s[--j] = 0x80 | (u & 63);
           s[--j] = 0xC0 | (u >> 6);
@@ -475,8 +476,59 @@ q4_load(vfs_t vfs, q4_t *q4)
         }
         zz_assert(j >= i);
       }
-      q4->info->comment = (char *)q4->info->bin->buf+j;
-      dmsg("COMMENT:\n%s\n",q4->info->comment);
+      q4->info->comment = (char *)q4->info->bin->ptr+j;
+
+      /* Parse comment for title, artist and ripper. */
+
+      s = (char *) q4->info->bin->ptr;
+      i = q4->info->bin->max;
+      for (len=0; len<4; ++len) {
+        int w;
+        while (s[j] == 0x20) ++j;         /* skip <SPC> */
+        w = j;
+        while (j<i && s[j] != 0x0A) ++j;  /* up to <LF> */
+        if (j<i) s[j++] = 0;
+
+        if (j-1 == w) {
+          q4->info->comment = j<i ? s+j : "";
+          break;
+        }
+        else if (!strncasecmp(s+w,"Composed by",11) ||
+                 !strncasecmp(s+w,"Arranged by",11) ||
+                 !strncasecmp(s+w,"Written by",10))
+        {
+          int artist = w + 10 + (tolower(s[w]) != 'w');
+          artist += s[artist] == ':';
+          while (s[artist] == 0x20) ++artist; /* skip <SPC> */
+          q4->info->artist = s+artist;
+          while (s[artist] && s[artist] != 0x0A) ++artist;
+          s[artist] = 0;
+        }
+        else if (!strncasecmp(s+w,"Hacked by",9) ||
+                 !strncasecmp(s+w,"Ripped by",9) ||
+                 !strncasecmp(s+w,"Rippd by",8) )
+        {
+          int ripper = w + 8 + (tolower(s[w+4]) == 'e');
+          ripper += s[ripper] == ':';
+          while (s[ripper] == 0x20) ++ripper; /* skip <SPC> */
+          q4->info->ripper = s+ripper;
+          while (s[ripper] && s[ripper] != 0x0A) ++ripper;
+          s[ripper] = 0;
+        }
+        else if (len == 0) {
+          q4->info->title = s+w;
+        }
+      }
+      if (!q4->info->title ) q4->info->title  = "";
+      if (!q4->info->artist) q4->info->artist = "";
+      if (!q4->info->ripper) q4->info->ripper = "";
+
+      dmsg("title  : <%s>\n", q4->info->title);
+      dmsg("artist : <%s>\n", q4->info->artist);
+      dmsg("ripper : <%s>\n", q4->info->ripper);
+      dmsg("comment:\n%s\n",q4->info->comment);
+
+
     }
   }
 
@@ -584,39 +636,4 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
     *pfmt = format;
 
   return ecode;
-}
-
-
-/* ----------------------------------------------------------------------
- *   Clean and Free
- * ----------------------------------------------------------------------
- */
-
-static void memb_free(struct memb_s * memb)
-{
-  if (memb && memb->bin)
-    bin_free(&memb->bin);
-}
-
-static void memb_wipe(struct memb_s * memb, int size)
-{
-  if (memb) {
-    memb_free(memb);
-    zz_memclr(memb,size);
-  }
-}
-
-void zz_song_wipe(zz_song_t song)
-{
-  memb_wipe((struct memb_s *)song, sizeof(*song));
-}
-
-void zz_vset_wipe(zz_vset_t vset)
-{
-  memb_wipe((struct memb_s *)vset, sizeof(*vset));
-}
-
-void zz_info_wipe(zz_info_t info)
-{
-  memb_wipe((struct memb_s *)info, sizeof(*info));
 }
