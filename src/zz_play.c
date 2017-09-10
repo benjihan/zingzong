@@ -771,7 +771,6 @@ zz_err_t zz_info( zz_play_t P, zz_info_t * pinfo)
   pinfo->tag.title   = P->info.title;
   pinfo->tag.artist  = P->info.artist;
   pinfo->tag.ripper  = P->info.ripper;
-  pinfo->tag.comment = P->info.comment;
 
   /* Ensure no strings are nil */
   NEVER_NIL(pinfo->fmt.str);
@@ -783,7 +782,6 @@ zz_err_t zz_info( zz_play_t P, zz_info_t * pinfo)
   NEVER_NIL(pinfo->tag.title);
   NEVER_NIL(pinfo->tag.artist);
   NEVER_NIL(pinfo->tag.ripper);
-  NEVER_NIL(pinfo->tag.comment);
 
   return E_OK;
 }

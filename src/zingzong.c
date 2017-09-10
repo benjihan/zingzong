@@ -856,8 +856,6 @@ int main(int argc, char *argv[])
       imsg("Album   : %s\n", info.tag.album);
     if (*info.tag.ripper)
       imsg("Ripper  : %s\n", info.tag.ripper);
-    if (*info.tag.comment)
-      imsg("Comment :\n~~~~~\n%s\n~~~~~\n",info.tag.comment);
 
     do {
       zz_u16_t n = 0;

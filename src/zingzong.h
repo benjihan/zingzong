@@ -82,7 +82,6 @@ enum {
 
 typedef zz_i8_t zz_err_t;
 typedef struct vfs_s  * restrict zz_vfs_t;
-/* typedef struct info_s * restrict zz_info_t; */
 typedef struct vset_s * restrict zz_vset_t;
 typedef struct song_s * restrict zz_song_t;
 typedef struct play_s * restrict zz_play_t;
@@ -115,8 +114,8 @@ struct zz_info_s {
   } mix;                      /**< mixer related info.              */
 
   struct {
-    const char * uri;         /**<                                  */
-    zz_u32_t     khz;         /**<                                  */
+    const char * uri;         /**< URI or path.                     */
+    zz_u32_t     khz;         /**< sampling rate reported.          */
   } set, sng;
 
   struct {
@@ -124,7 +123,6 @@ struct zz_info_s {
     const char * title;       /**< title or "".                     */
     const char * artist;      /**< artist or "".                    */
     const char * ripper;      /**< ripper or "".                    */
-    const char * comment;     /**< comment or "".                   */
   } tag;
 
 };
@@ -251,19 +249,19 @@ enum {
 #define ZZ_EOF ((zz_u32_t)-1)
 
 struct zz_vfs_dri_s {
-  const char * name;                       /**< friendly name. */
-  zz_err_t (*reg)(zz_vfs_dri_t);           /**< register driver. */
-  zz_err_t (*unreg)(zz_vfs_dri_t);         /**< un-register driver. */
-  zz_u16_t (*ismine)(const char *);        /**< is mine. */
-  zz_vfs_t (*new)(const char *, va_list); /**< create VFS. */
-  void     (*del)(zz_vfs_t);                  /**< destroy VFS. */
+  const char * name;                      /**< friendly name.      */
+  zz_err_t (*reg)(zz_vfs_dri_t);          /**< register driver.    */
+  zz_err_t (*unreg)(zz_vfs_dri_t);        /**< un-register driver. */
+  zz_u16_t (*ismine)(const char *);       /**< is mine.            */
+  zz_vfs_t (*new)(const char *, va_list); /**< create VFS.         */
+  void     (*del)(zz_vfs_t);              /**< destroy VFS.        */
   const
-  char *   (*uri)(zz_vfs_t);          /**< get URI. */
-  zz_err_t (*open)(zz_vfs_t);                  /**< open. */
-  zz_err_t (*close)(zz_vfs_t);                 /**< close. */
-  zz_u32_t (*read)(zz_vfs_t, void *, zz_u32_t); /**< read. */
-  zz_u32_t (*tell)(zz_vfs_t);                   /**< get position. */
-  zz_u32_t (*size)(zz_vfs_t);                   /**< get size. */
+  char *   (*uri)(zz_vfs_t);                    /**< get URI.       */
+  zz_err_t (*open)(zz_vfs_t);                   /**< open.          */
+  zz_err_t (*close)(zz_vfs_t);                  /**< close.         */
+  zz_u32_t (*read)(zz_vfs_t, void *, zz_u32_t); /**< read.          */
+  zz_u32_t (*tell)(zz_vfs_t);                   /**< get position.  */
+  zz_u32_t (*size)(zz_vfs_t);                   /**< get size.      */
   zz_err_t (*seek)(zz_vfs_t,zz_u32_t,zz_u8_t);  /**< offset,whence. */
 };
 

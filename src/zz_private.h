@@ -238,7 +238,6 @@ struct song_s {
 /** Song meta info. */
 struct info_s {
   bin_t *bin;                /**< info data container.              */
-  char  *comment;            /**< decoded comment.                  */
   char  *album;              /**< decoded album.                    */
   char  *title;              /**< decoded title.                    */
   char  *artist;             /**< decoded artist.                   */

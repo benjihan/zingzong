@@ -379,6 +379,15 @@ vset_load(vset_t *vset, const char *uri)
   return ecode;
 }
 
+static char * trimstr(char * s)
+{
+  char *beg, *end = 0;
+  while (isspace(*s)) ++s;
+  for (beg = s; *s; ++s)
+    if (!isspace(*s)) end = s;
+  if (end) end[1] = 0;
+  return beg;
+}
 
 /**
  * Load .4q file (after header).
@@ -453,18 +462,18 @@ q4_load(vfs_t vfs, q4_t *q4)
         0x00b0,0x2219,0x00b7,0x221a,0x207f,0x00b2,0x00b3,0x00af
       };
       int i,j,len = q4->info->bin->len;
-      char * s = (char*) q4->info->bin->ptr;
+      char * comment, * s = (char*) q4->info->bin->ptr;
 
       for (i=0; i<len && s[i]; ++i)
         ;
 
       j = q4->info->bin->max;
-      s[--j] = 0;
-      while (i>0 && j>=i) {
+      for (s[--j] = 0; i>0 && j>=i; ) {
         const uint8_t c = s[--i];
         uint16_t u = c < 128 ? c : atari_to_unicode[c&127];
+
         if (u < 0x80) {
-          if ( u != 0x0D ) /* skip <CR> */
+          if (u != '\r')
             s[--j] = u;
         } else if (u < 0x800 && j >= 2 ) {
           s[--j] = 0x80 | (u & 63);
@@ -476,48 +485,89 @@ q4_load(vfs_t vfs, q4_t *q4)
         }
         zz_assert(j >= i);
       }
-      q4->info->comment = (char *)q4->info->bin->ptr+j;
+      comment = (char *)q4->info->bin->ptr+j;
 
       /* Parse comment for title, artist and ripper. */
 
-      s = (char *) q4->info->bin->ptr;
-      i = q4->info->bin->max;
-      for (len=0; len<4; ++len) {
-        int w;
-        while (s[j] == 0x20) ++j;         /* skip <SPC> */
-        w = j;
-        while (j<i && s[j] != 0x0A) ++j;  /* up to <LF> */
-        if (j<i) s[j++] = 0;
+      s = comment;
 
-        if (j-1 == w) {
-          q4->info->comment = j<i ? s+j : "";
-          break;
+      dmsg("== COMMENT: ===\n"
+           "%s\n"
+           " --------------\n", comment);
+
+      while (s != NULL) {
+        char * line = strsep(&s, "\n");
+
+        if (!line) break;
+
+        dmsg("[%s]\n",line);
+
+        /* assume 1st line is always the title. */
+        if (!q4->info->title) {
+          q4->info->title = trimstr(line);
+          continue;
         }
-        else if (!strncasecmp(s+w,"Composed by",11) ||
-                 !strncasecmp(s+w,"Arranged by",11) ||
-                 !strncasecmp(s+w,"Written by",10))
-        {
-          int artist = w + 10 + (tolower(s[w]) != 'w');
-          artist += s[artist] == ':';
-          while (s[artist] == 0x20) ++artist; /* skip <SPC> */
-          q4->info->artist = s+artist;
-          while (s[artist] && s[artist] != 0x0A) ++artist;
-          s[artist] = 0;
+
+        /* continuing previous line ? */
+        if (q4->info->artist && !*q4->info->artist) {
+          q4->info->artist = trimstr(line);
+          if (!*q4->info->artist) q4->info->artist = 0;
+          continue;
         }
-        else if (!strncasecmp(s+w,"Hacked by",9) ||
-                 !strncasecmp(s+w,"Ripped by",9) ||
-                 !strncasecmp(s+w,"Rippd by",8) )
-        {
-          int ripper = w + 8 + (tolower(s[w+4]) == 'e');
-          ripper += s[ripper] == ':';
-          while (s[ripper] == 0x20) ++ripper; /* skip <SPC> */
-          q4->info->ripper = s+ripper;
-          while (s[ripper] && s[ripper] != 0x0A) ++ripper;
-          s[ripper] = 0;
+        if (q4->info->album && !*q4->info->album) {
+          q4->info->album = trimstr(line);
+          if (!*q4->info->album) q4->info->album = 0;
+          continue;
         }
-        else if (len == 0) {
-          q4->info->title = s+w;
+        if (q4->info->ripper && !*q4->info->ripper) {
+          q4->info->ripper = trimstr(line);
+          if (!*q4->info->ripper) q4->info->ripper = 0;
+          continue;
         }
+
+        while ( isspace(*line) ) ++line;
+        if (!*line) continue;
+
+        if (!q4->info->artist) {
+          if (!strncasecmp(line,"Artist:",7)) {
+            q4->info->artist = trimstr(line + 7);
+            continue;
+          }
+          if (!strncasecmp(line,"Composed by",11) ||
+              !strncasecmp(line,"Arranged by",11) ||
+              !strncasecmp(line,"Written by",10)) {
+            line += 10 + (tolower(line[6]) == 'e');
+            q4->info->artist = trimstr(line + (*line == ':'));
+            continue;
+          }
+        }
+
+        if (!q4->info->ripper) {
+          if (!strncasecmp(line,"Ripper:",7)) {
+            q4->info->ripper = trimstr(line + 7);
+            continue;
+          }
+          if (!strncasecmp(line,"Hacked by",9) ||
+              !strncasecmp(line,"Ripped by",9) ||
+              !strncasecmp(line,"Rippd by",8) ) {
+            line += 8 + (tolower(line[4]) == 'e');
+            q4->info->ripper = trimstr(line + (*line == ':'));
+            continue;
+          }
+        }
+
+       if (!q4->info->album) {
+          if (!strncasecmp(line,"Album:",7)) {
+            q4->info->album = trimstr(line + 7);
+            continue;
+          }
+          if (!strncasecmp(line,"Coming from",11)) {
+            line += 11;
+            q4->info->album = trimstr(line + (*line == ':'));
+            continue;
+          }
+        }
+
       }
 
       dmsg("-- 4Q  :\n");
@@ -525,7 +575,6 @@ q4_load(vfs_t vfs, q4_t *q4)
       dmsg("title  : <%s>\n", q4->info->title  ? q4->info->title  : "");
       dmsg("artist : <%s>\n", q4->info->artist ? q4->info->artist : "");
       dmsg("ripper : <%s>\n", q4->info->ripper ? q4->info->ripper : "");
-      dmsg("comment:\n%s\n",  q4->info->comment ? q4->info->comment : "");
       dmsg("--\n");
     }
   }
