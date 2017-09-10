@@ -30,7 +30,7 @@ static volatile intptr_t bus_vector, adr_vector;
 
 static void __attribute__((interrupt)) exception_handler(void)
 {
-  /* register must match the asm code in guess_hardware() */
+  /* address register must match the asm code in guess_hardware() */
   asm volatile ("move.l %a4,2(%a7) \n\t");
 }
 
@@ -46,6 +46,7 @@ uint8_t guess_hardware(void)
   /* Save vectors */
   bus_vector = 2[(volatile uint32_t *)0];
   adr_vector = 3[(volatile uint32_t *)0];
+
   /* Install handlers */
   2[(volatile uint32_t *)0] = (intptr_t) exception_handler;
   3[(volatile uint32_t *)0] = (intptr_t) exception_handler;
@@ -61,6 +62,10 @@ uint8_t guess_hardware(void)
     :
     : "a4","cc" );
 
+  /* Restore vectors */
+  2[(volatile uint32_t *)0] = bus_vector;
+  3[(volatile uint32_t *)0] = adr_vector;
+
   if (aga)
     id = MIXER_AGA;
   else {
@@ -75,7 +80,8 @@ uint8_t guess_hardware(void)
       }
     }
 
-    /* ignoring DSP for now, hopefully we'll add a nice DSP nixer later */
+    /* Ignoring DSP for now, hopefully we'll add a nice DSP mixer
+     * later. */
     if ( snd & SND_16BIT_DMA )
       id = MIXER_FAL;
     else if ( snd & SND_8BIT_DMA )
@@ -105,44 +111,5 @@ zz_u8_t zz_mixer_set(play_t * P, zz_u8_t n)
   case MIXER_FAL: P->mixer = mixer_fal(&mixer); break;
   default: n = ZZ_DEFAULT_MIXER;
   }
-  return n;
+  return P->mixer_id = n;
 }
-
-/* void zz_strfree(str_t ** pstr) {} */
-/* void zz_free_real(void ** pptr) {} */
-/* void *zz_alloc_real(const uint_t size, const int clear) */
-/* { */
-/*   return (void *)(intptr_t) 0x1337;     /\* any value but 0 *\/; */
-/* } */
-
-/* static void * */
-/* m68k_alloc(const uint_t size, int clear) */
-/* { */
-/*   return (void *)(intptr_t) 0x1337;     /\* any value but 0 *\/; */
-/* } */
-/* static void m68k_free(void ** pptr) { } */
-/* void (*zz_free_func)(void **) = m68k_free; */
-/* void * (*zz_alloc_func)(const uint_t, int) = m68k_alloc; */
-
-/* void * zz_memcpy(void * restrict _d, const void * _s, int n) */
-/* { */
-/*   uint8_t * d = _d; const uint8_t * s = _s; */
-/*   while (n--) *d++ = *s++; */
-/*   return _d; */
-/* } */
-
-/* void zz_memclr(void * restrict _d, int n) */
-/* { */
-/*   uint8_t * restrict d = _d; */
-/*   while (n--) *d++ = 0; */
-/* } */
-
-/* int zz_memcmp(const void *_a, const void *_b, int n) */
-/* { */
-/*   int8_t c = 0; */
-/*   const uint8_t *a = _a, *b = _b; */
-/*   if (n) do { */
-/*       c = *a++ - *b++; */
-/*     } while (!c && --n); */
-/*   return c; */
-/* } */
