@@ -51,7 +51,7 @@ str_t zz_strnew(zz_u16_t len)
   str_t str = 0;
   zz_assert( len );
 
-  if (likely(!zz_mem_malloc(&str,xtra+len)))
+  if (likely(!zz_memnew(&str,xtra+len,0)))
     zz_strsetup(str, len, 0, 0);
   return str;
 }
@@ -112,7 +112,7 @@ void zz_strdel(str_t * pstr)
       /* last reference */
       if (str->ptr == str->buf) {
         dmsg("del<%p>: free dynamic\n", str);
-        zz_mem_free(&str);
+        zz_memdel(&str);
       } else {
         dmsg("del<%p>: free static\n", str);
         zz_memclr(str,sizeof(*str));

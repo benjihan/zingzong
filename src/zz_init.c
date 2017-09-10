@@ -39,12 +39,15 @@ static int is_valid_ins(const uint8_t ins) {
  * ----------------------------------------------------------------------
  */
 
+#undef DO_STATS
+
 zz_err_t
 song_init_header(song_t * song, const void *_hd)
 {
   const uint8_t * hd = _hd;
   const uint16_t khz = u16(hd+0), bar = u16(hd+2), spd = u16(hd+4);
 
+  zz_err_t ecode;
   /* Parse song header */
   song->khz   = khz;
   song->barm  = bar;
@@ -54,17 +57,27 @@ song_init_header(song_t * song, const void *_hd)
   dmsg("song: spr:%ukHz, bar:%u, tempo:%u, signature:%u/%u\n",
        song->khz, song->barm, song->tempo, song->sigm, song->sigd);
 
-  return E_SNG & -!( is_valid_khz(khz) &&
-                     is_valid_bar(bar) &&
-                     is_valid_spd(spd) &&
-                     is_valid_sig(song->sigm,song->sigd) );
+  ecode = E_SNG & -!( is_valid_khz(khz) &&
+                      is_valid_bar(bar) &&
+                      is_valid_spd(spd) &&
+                      is_valid_sig(song->sigm,song->sigd) );
+  if (ecode != E_OK)
+    emsg("invalid song header\n");
+  return ecode;
+}
+
+static inline
+u16_t seq_idx(const sequ_t * const org, const sequ_t * seq)
+{
+  return divu( (intptr_t)seq-(intptr_t)org, sizeof(sequ_t) );
 }
 
 zz_err_t
 song_init(song_t * song)
 {
-  uint8_t ins, has_note, k, ecode=E_SNG;
-  int off, size;
+  zz_err_t ecode = E_SNG;
+  u8_t  ins, has_note, k;
+  u16_t off, size;
 
   /* sequence to use in case of empty sequence to avoid endless loop
    * condition and allow to properly measure music length.
@@ -74,6 +87,21 @@ song_init(song_t * song)
     { 0,'F' }                           /* "F"in */
   };
 
+#ifdef DO_STATS
+  /* GB: Attempt to guess tick rate using tempo but it's made hard
+   *     because some song using arpeggio emulation have very small
+   *     wait time (4).
+   */
+  struct {
+    u32_t wait_acu;
+    u32_t wait_cnt;
+    u32_t wait_min;
+    u32_t wait_max;
+  } stats[5];
+  zz_memset(stats,0,sizeof(stats));
+#endif
+
+
   /* Basic parsing of the sequences to find the end. It replaces
    * empty sequences by something that won't loop endlessly and won't
    * disrupt the end of music detection.
@@ -82,10 +110,12 @@ song_init(song_t * song)
        k<4 && off<size;
        off += 12)
   {
-    sequ_t * const seq = (sequ_t *)(song->bin->buf+off-11);
+    sequ_t * const seq = (sequ_t *)(song->bin->ptr+off-11);
     u16_t    const cmd = u16(seq->cmd);
+    u16_t    const len = u16(seq->len);
     u32_t    const stp = u32(seq->stp);
     u32_t    const par = u32(seq->par);
+    u16_t    wait = 0;
 
     if (!song->seq[k])
       song->seq[k] = seq;               /* Sequence */
@@ -102,25 +132,51 @@ song_init(song_t * song)
       has_note = 1;
       song->iused |= 1<<ins;
     case 'S':
-      if (stp < SEQ_STP_MIN || stp > SEQ_STP_MAX)
+      if (stp < SEQ_STP_MIN || stp > SEQ_STP_MAX) {
+        emsg("song: %c[%hu] step out of range -- %08lx\n",
+             'A'+k, HU(seq_idx(song->seq[k],seq)), LU(stp));
         goto error;
+      }
       if (!song->stepmax)
         song->stepmax = song->stepmin = stp;
       else if (stp > song->stepmax)
         song->stepmax = stp;
       else if (stp < song->stepmin)
         song->stepmin = stp;
+      wait = len;
+    case 'R':
+      /* wait = len; */ /* if we want to count rest too */
       break;
-    case 'R': case 'l': case 'L':
+    case 'l': case 'L':
       break;
     case 'V':
       if ( (ins = par >> 2) < 20u && ! (par & ~(31u<<2) ) )
         break;
+        emsg("song: %c[%hu] instrument out of range -- %08lx\n",
+             'A'+k, HU(seq_idx(song->seq[k],seq)), LU(par));
       goto error;
 
     default:
+      emsg("song: %c[%hu] invalid sequence -- %04hx-%04hx-%08lx-%08lx\n",
+           'A'+k, HU(seq_idx(song->seq[k],seq)),
+           HU(cmd), HU(len), LU(stp), LU(par));
       goto error;
     }
+
+#ifdef DO_STATS
+    if (wait) {
+      stats[k].wait_acu += wait;
+      stats[k].wait_cnt += 1;
+      if (!stats[k].wait_max)
+        stats[k].wait_min = stats[k].wait_max = wait;
+      else if (wait < stats[k].wait_min)
+        stats[k].wait_min = wait;
+      else if (wait > stats[k].wait_max)
+        stats[k].wait_max = wait;
+    }
+#else
+    (void) wait;
+#endif
   }
 
   if ( (off -= 11) != song->bin->len) {
@@ -131,7 +187,7 @@ song_init(song_t * song)
   for ( ;k<4; ++k) {
     if (has_note) {
       /* Add 'F'inish mark */
-      sequ_t * const seq = (sequ_t *) (song->bin->buf+off);
+      sequ_t * const seq = (sequ_t *) (song->bin->ptr+off);
       seq->cmd[0] = 0; seq->cmd[1] = 'F';
       off += 12;
       has_note = 0;
@@ -142,12 +198,43 @@ song_init(song_t * song)
     }
   }
 
+#ifdef DO_STATS
+  for (k=0; k<4; ++k) {
+    u32_t avg = stats[k].wait_cnt
+      ? divu32(stats[k].wait_acu,stats[k].wait_cnt)
+      : 0
+      ;
+
+    stats[4].wait_acu += stats[k].wait_acu;
+    stats[4].wait_cnt += stats[k].wait_cnt;
+    if (!stats[4].wait_min)
+      stats[4].wait_min = stats[k].wait_min;
+    else if ( stats[k].wait_min < stats[4].wait_min)
+      stats[4].wait_min = stats[k].wait_min;
+    if (!stats[4].wait_max)
+      stats[4].wait_max = stats[k].wait_max;
+    else if ( stats[k].wait_max > stats[4].wait_max)
+      stats[4].wait_max = stats[k].wait_max;
+
+    dmsg("%c: wait acu: %lu cnt: %lu min: %lu max: %lu avg: %lu\n",
+         'A'+k,
+         LU(stats[k].wait_acu), LU(stats[k].wait_cnt),
+         LU(stats[k].wait_min), LU(stats[k].wait_max), LU(avg));
+  }
+  dmsg("song: wait acu: %lu cnt: %lu min: %lu max: %lu avg: %lu\n",
+       LU(stats[k].wait_acu), LU(stats[k].wait_cnt),
+       LU(stats[k].wait_min), LU(stats[k].wait_max),
+       LU(divu32(stats[k].wait_acu,stats[k].wait_cnt)));
+
+#endif
+
   dmsg("song steps: %08lx .. %08lx\n", LU(song->stepmin), LU(song->stepmax));
   ecode = E_OK;
 
 error:
   if (ecode)
     bin_free(&song->bin);
+
   return ecode;
 }
 
@@ -198,7 +285,7 @@ vset_init(zz_vset_t const vset)
 {
   const u8_t nbi = vset->nbi;
   bin_t * const bin = vset->bin;
-  uint8_t * const beg = bin->buf;
+  uint8_t * const beg = bin->ptr;
   uint8_t * const end = beg + bin->max;
   uint8_t * e;
   i32_t tot, unroll, j, imask;
@@ -228,7 +315,7 @@ vset_init(zz_vset_t const vset)
       if (off >= bin->len)   break;     /* inside ?  */
 
       /* Get sample info */
-      pcm = bin->buf + off;
+      pcm = bin->ptr + off;
       len = u32(pcm-4);
       lpl = u32(pcm-8);
       if (lpl == 0xFFFFFFFF) lpl = 0;

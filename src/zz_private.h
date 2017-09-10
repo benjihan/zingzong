@@ -119,9 +119,9 @@
 #define MIXBLK        16u               /*  */
 #define VSET_UNROLL   1024u             /* Over estimated */
 #define VSET_XSIZE    (20u*VSET_UNROLL) /* Additional space for loops  */
-#define VSET_MAX_SIZE (1<<21) /* arbitrary .set max size */
-#define SONG_MAX_SIZE (1<<18) /* arbitrary .4v max size  */
-#define INFO_MAX_SIZE 4096    /* arbitrary .4q info max size */
+#define VSET_MAX_SIZE (1<<19) /* arbitrary .set max size */
+#define SONG_MAX_SIZE 0xFFF0  /* arbitrary .4v max size  */
+#define INFO_MAX_SIZE 2048    /* arbitrary .4q info max size */
 #define MAX_LOOP      67      /* max loop depth (singsong.prg) */
 
 #define SEQ_STP_MIN   0x04C1B
@@ -179,9 +179,10 @@ struct str_s {
 };
 
 struct bin_s {
-  u32_t   max;                       /**< maximum allocated string. */
-  u32_t   len;                       /**< length including.         */
-  uint8_t buf[1];                    /**< buffer (always last).     */
+  uint8_t *ptr;                      /**< pointer to data (_buf).   */
+  u32_t    max;                      /**< maximum allocated string. */
+  u32_t    len;                      /**< length including.         */
+  uint8_t _buf[1];                  /**< buffer (always last).      */
 };
 
 /** Channels re-sampler and mixer interface. */
@@ -240,6 +241,7 @@ struct info_s {
   char  *comment;                      /**< decoded comment.     */
   char  *title;                        /**< decoded title.       */
   char  *artist;                       /**< decoded artist.      */
+  char  *ripper;                       /**< decoded ripper.      */
 };
 
 /** Played note. */
@@ -353,13 +355,19 @@ static inline u32_t u32(const uint8_t * const v) {
 static inline uint32_t always_inline mulu(uint16_t a, uint16_t b)
 {
   uint32_t c;
-  asm ("mulu.w %1,%0\n\t" : "=d" (c) : "iSd" (a), "0" (b));
+  asm ("mulu.w %1,%0\n\t"
+       : "=d" (c)
+       : "iSd" (a), "0" (b)
+       : "cc");
   return c;
 }
 
 static inline uint32_t always_inline divu(uint32_t v, uint16_t d)
 {
-  asm("divu.w %1,%0\n\t" : "+d" (v) : "iSd" (d));
+  asm("divu.w %1,%0\n\t"
+      : "+d" (v)
+      : "iSd" (d)
+      : "cc");
   return (uint16_t) v;
 }
 
@@ -368,7 +376,9 @@ static inline uint32_t always_inline modu(uint32_t v, uint16_t d)
   asm("divu.w %1,%0  \n\t"
       "clr.w %0      \n\t"
       "swap %0       \n\t"
-      : "+d" (v) : "iSd" (d));
+      : "+d" (v)
+      : "iSd" (d)
+      : "cc");
   return v;
 }
 
@@ -389,7 +399,7 @@ static inline uint32_t always_inline mulu32(uint32_t a, uint16_t b)
       "add.l  %[tp1],%[val]  \n\t" /* val = XX:YY*ZZ */
       : [val] "+d" (a), [tp1] "=r" (tp1)
       : [mul] "iSd" (b)
-      :
+      : "cc"
     );
   return a;
 }
@@ -411,6 +421,7 @@ static inline uint32_t always_inline divu32(uint32_t v, uint16_t d)
       "move.w %[tp2],%[val]  \n\t" /* val = Qx:Qi */
       : [val] "+d" (v), [tp1] "=d" (tp1), [tp2] "=d" (tp2)
       : [div] "iSd" (d)
+      : "cc"
     );
   return v;
 }
@@ -499,15 +510,6 @@ void fltoi16(int16_t * const d, const float * const s, const int n);
 #  define zz_memset(D,V,N) memset((D),(V),(N))
 # endif
 
-#else /* NO_LIBC */
-
-ZZ_EXTERN_C
-void zz_memcpy(void * restrict _d, const void * _s, int n);
-ZZ_EXTERN_C
-void zz_memclr(void * restrict _d, int n);
-ZZ_EXTERN_C
-int zz_memcmp(const void *_a, const void *_b, int n);
-
 #endif /* NO_LIBC */
 /**
  * @}
@@ -517,7 +519,7 @@ int zz_memcmp(const void *_a, const void *_b, int n);
 
 /**
  * Binary container.
- * @{
+ * @{mak
  */
 ZZ_EXTERN_C
 void bin_free(bin_t ** pbin);

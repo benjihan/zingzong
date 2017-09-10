@@ -9,9 +9,10 @@
 
 #ifdef NO_LOG
 
-zz_u8_t zz_log_channels(const zz_u8_t clr, const zz_u8_t set) { return 0; }
-void zz_log_function(zz_log_t func, void * user) {}
+zz_u8_t zz_log_bit(const zz_u8_t clr, const zz_u8_t set) { return 0; }
+void zz_log_fun(zz_log_t func, void * user) {}
 /* # error zz_log.c should not be compiled with NO_LOG defined */
+
 #else
 
 #ifndef ZZ_LOG_CHANNELS

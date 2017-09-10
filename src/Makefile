@@ -257,8 +257,8 @@ dist_top_lst = LICENSE README.md vcversion.sh
 dist_src_lst = README.md Makefile $(sources) $(headers) make.clean	\
 make.depend make.dist
 dist_amp_lst = README.md Makefile in_zingzong.c in_zingzong.h
-dist_68k_lst = README.md Makefile mix_aga.c player.c startup.s test.s	\
-test_sc68.s zz_m68k.c
+dist_68k_lst = README.md Makefile mix_aga.c mix_st.c zz_m68k.c		\
+player.c sc68_debug.h startup.s test.s test_sc68.s
 
 dist_lst = \
  $(addprefix ./,$(dist_top_lst)) \

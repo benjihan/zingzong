@@ -28,15 +28,18 @@ int vset_init(zz_vset_t const vset);
 
 static play_t play;
 static bin_t songbin, vsetbin;
-static volatile int16_t ready;
-
-mixer_t * mixer_get(void); /* provided by mix_aga.c or mix_st.c */
+static volatile zz_err_t ready, ecode;
 
 static void set_bin(bin_t * bin, void * data, int32_t len)
 {
-  bin->_s = data;
-  bin->_n = bin->_l = len;
+  bin->ptr = data;
+  bin->len = bin->max = len;
 }
+
+static void* newf(zz_u32_t n) {
+  return (void *) 0xdeadbeef;
+}
+static void  delf(void * p)   {  }
 
 void player_init(void)
 {
@@ -57,7 +60,8 @@ void player_init(void)
   set_bin(&songbin, p.song+16, p.songsz-16);
   set_bin(&vsetbin, p.vset+222, p.vsetsz-222);
 
-  play.mixer = mixer_get();
+  zz_log_fun(0,0);
+  zz_mem(newf,delf);
 
   ready =
     1
@@ -66,6 +70,7 @@ void player_init(void)
     && ( play.vset.iused = play.song.iused )
     && ! vset_init_header(&play.vset, p.vset)
     && ! vset_init(&play.vset)
+    && ! zz_setup(&play, ZZ_DEFAULT_MIXER, 0, 0, 0, 0)
     && ! zz_init(&play)
     ;
 }
@@ -73,13 +78,16 @@ void player_init(void)
 void player_play(void)
 {
   if (ready) {
-    int n = play.pcm_per_tick;
-    ready = 0 != zz_pull(&play, &n);
+    zz_u16_t npcm = play.pcm_per_tick;
+    int16_t * ptr;
+    ready = !! ( ptr = zz_play(&play, &npcm) );
+    if (!ready)
+      ecode = npcm;
   }
 }
 
 void player_kill(void)
 {
   ready = 0;
-  zz_kill(&play);
+  zz_close(&play);
 }

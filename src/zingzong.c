@@ -802,7 +802,7 @@ int main(int argc, char *argv[])
     RETURN (ZZ_EOUT);
 
   ecode = zz_setup(P, opt_mixerid,
-                   opt_splrate, opt_tickrate,
+                   out->hz, opt_tickrate,
                    max_ticks, !opt_length);
   if (ecode)
     goto error_exit;
@@ -882,7 +882,6 @@ int main(int argc, char *argv[])
   }
 
 error_exit:
-  zz_mem_check_close();
 
   /* clean exit */
   zz_free(&wavuri);
@@ -905,7 +904,7 @@ error_exit:
   dmsg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
   dmsg("!!! Checking memory allocation on exit !!!\n");
   dmsg("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-  if (ZZ_OK == zz_mem_check_close())
+  if (ZZ_OK == zz_memchk_calls())
     dmsg("-->  Everything looks fine on my side  <--\n");
   else if (ecode == ZZ_OK)
     ecode = ZZ_666;

@@ -71,7 +71,7 @@ static uint16_t xstep(uint32_t stp, uint8_t khz)
     /* 20kHz */ { 0x00b15840, 0x00b2fa2e },
   };
 
-  zz_assert( (stp>>3) < 0x10000);
+  zz_assert( (stp>>3) < 0x10000 );
   return divu(ftbl[khz-4][0]>>3,stp>>3);
 }
 
@@ -183,17 +183,15 @@ static void free_cb(play_t * const P)
   P->mixer_data = 0;
 }
 
-static mixer_t _mixer_aga;
-
 /* Need to keep PCR */
-EXTERN_C mixer_t * mixer_get(void);
+ZZ_EXTERN_C mixer_t * mixer_aga(mixer_t * const M);
 
-mixer_t * mixer_get(void)
+mixer_t * mixer_aga(mixer_t * const M)
 {
-  _mixer_aga.name = NAME;
-  _mixer_aga.desc = DESC;
-  _mixer_aga.init = init_cb;
-  _mixer_aga.free = free_cb;
-  _mixer_aga.push = push_cb;
-  return &_mixer_aga;
+  M->name = NAME;
+  M->desc = DESC;
+  M->init = init_cb;
+  M->free = free_cb;
+  M->push = push_cb;
+  return M;
 }

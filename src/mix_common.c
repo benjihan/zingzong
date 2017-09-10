@@ -166,7 +166,7 @@ push_cb(play_t * const P)
 static void * local_calloc(u32_t size, zz_err_t * err)
 {
   void * ptr = 0;
-  *err =  zz_mem_calloc(&ptr,size);
+  *err =  zz_memnew(&ptr,size,1);
   return ptr;
 }
 
@@ -184,7 +184,7 @@ static zz_err_t init_cb(play_t * const P)
 
 static void free_cb(play_t * const P)
 {
-  zz_mem_free(&P->mixer_data);
+  zz_memdel(&P->mixer_data);
 }
 
 mixer_t SYMB =

@@ -8,88 +8,79 @@
 #include "../zz_private.h"
 
 enum {
- ATARI_UNKNOWN, ATARI_ST, ATARI_STE, ATARI_FALCON
+ ATARI_UNKNOWN, ATARI_STE, ATARI_FALCON
 };
-
-static int push_st_cb(play_t * const P)
-{
-  return E_MIX;
-}
 
 static int push_ste_cb(play_t * const P)
 {
+  zz_assert( 0 );
   return E_MIX;
 }
 
 static int push_falcon_cb(play_t * const P)
 {
+  zz_assert( 0 );
   return E_MIX;
-}
-
-static int init_st_cb(play_t * const P)
-{
-  return E_666;
 }
 
 static int init_ste_cb(play_t * const P)
 {
+  zz_assert( 0 );
   return E_666;
 }
 
 static int init_falcon_cb(play_t * const P)
 {
+  zz_assert( 0 );
   return E_666;
-}
-
-static void free_st_cb(play_t * const P)
-{
 }
 
 static void free_ste_cb(play_t * const P)
 {
+  zz_assert( 0 );
 }
 
 static void free_falcon_cb(play_t * const P)
 {
+  zz_assert( 0 );
 }
 
-
-static mixer_t _mixer_st;
-
-/* Need to keep PCR */
-EXTERN_C mixer_t * mixer_get(void);
-
-static int atari_machine_detection()
+static
+mixer_t * mixer_setup(mixer_t * const M, zz_u8_t machine)
 {
-  return ATARI_ST;
-}
+  switch (machine) {
 
-mixer_t * mixer_get(void)
-{
-  switch ( atari_machine_detection() ) {
-  case ATARI_ST:
-      _mixer_st.name = "Atari-ST";
-      _mixer_st.desc = "Atari-ST via YM-2149";
-      _mixer_st.init = init_st_cb;
-      _mixer_st.free = free_st_cb;
-      _mixer_st.push = push_st_cb;
-      break;
   case ATARI_STE:
-      _mixer_st.name = "Atari-STe";
-      _mixer_st.desc = "Atari-STe via audio DMA";
-      _mixer_st.init = init_ste_cb;
-      _mixer_st.free = free_ste_cb;
-      _mixer_st.push = push_ste_cb;
-      break;
+    M->name = "Atari-STe";
+    M->desc = "Atari-STe via audio DMA";
+    M->init = init_ste_cb;
+    M->free = free_ste_cb;
+    M->push = push_ste_cb;
+    break;
 
   case ATARI_FALCON:
-      _mixer_st.name = "Atari-Falcon";
-      _mixer_st.desc = "Atari-Falcon via audio DMA";
-      _mixer_st.init = init_falcon_cb;
-      _mixer_st.free = free_falcon_cb;
-      _mixer_st.push = push_falcon_cb;
-      break;
+    M->name = "Atari-Falcon";
+    M->desc = "Atari-Falcon via audio DMA";
+    M->init = init_falcon_cb;
+    M->free = free_falcon_cb;
+    M->push = push_falcon_cb;
+    break;
+
+  default:
+    zz_assert(!"invalid machine");
+    return 0;
   }
 
-  return &_mixer_st;
+  return M;
+}
+
+
+mixer_t * mixer_ste(mixer_t * const M)
+{
+  return mixer_setup(M,ATARI_STE);
+}
+
+mixer_t * mixer_fal(mixer_t * const M)
+{
+  return mixer_setup(M,ATARI_FALCON);
 }

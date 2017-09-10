@@ -37,7 +37,9 @@
 # define DEBUG_LOG 1
 #endif
 
-#ifndef zz_assert
+#ifdef SC68
+# include "sc68_debug.h"
+#elif ! defined zz_assert
 # ifdef NDEBUG
 #  define zz_assert(E) zz_void
 # else
@@ -125,19 +127,39 @@ zz_log_dbg(const char * fmt,...);
 /**
  * memory functions (zz_mem.c).
  */
-#define zz_malloc(P,N) zz_mem_malloc( (void * restrict) (P), (N) )
-#define zz_calloc(P,N) zz_mem_calloc( (void * restrict) (P), (N) )
-#define zz_free(P)     zz_mem_free( (void * restrict) (P)  )
+#define zz_malloc(P,N) zz_memnew( (void * restrict) (P), (N), 0 )
+#define zz_calloc(P,N) zz_memnew( (void * restrict) (P), (N), 1 )
+#define zz_free(P)     zz_memdel( (void * restrict) (P)  )
+
 ZZ_EXTERN_C
-zz_err_t zz_mem_malloc(void * restrict pmem, zz_u32_t size);
+zz_err_t zz_memnew(void * restrict pmem, zz_u32_t size, zz_u8_t clear);
 ZZ_EXTERN_C
-zz_err_t zz_mem_calloc(void * restrict pmem, zz_u32_t size);
+void zz_memdel(void * restrict pmem);
 ZZ_EXTERN_C
-void zz_mem_free(void * restrict pmem);
+zz_err_t zz_memchk_calls(void);
 ZZ_EXTERN_C
-zz_err_t zz_mem_check_close(void);
+zz_err_t zz_memchk_block(const void *);
+
+#ifndef zz_memcpy
 ZZ_EXTERN_C
-zz_err_t zz_mem_check_block(const void *);
+void * zz_memcpy(void * restrict _d, const void * _s, zz_u32_t n);
+#endif
+
+#ifndef zz_memset
+ZZ_EXTERN_C
+void * zz_memset(void * restrict _d, int v, zz_u32_t n);
+#endif
+
+#ifndef zz_memclr
+ZZ_EXTERN_C
+void * zz_memclr(void * restrict _d, zz_u32_t n);
+#endif
+
+#ifndef zz_memcmp
+ZZ_EXTERN_C
+int zz_memcmp(const void *_a, const void *_b, zz_u32_t n);
+#endif
+
 /**
  * @}
  */

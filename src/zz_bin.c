@@ -22,7 +22,7 @@ bin_alloc(bin_t ** pbin, u32_t len, u32_t xlen)
 {
   zz_err_t ecode;
   const u32_t size   = len + xlen;
-  const u32_t nalloc = size + (intptr_t)(((bin_t*)0)->buf);
+  const u32_t nalloc = size + (intptr_t)(((bin_t*)0)->_buf);
   bin_t * bin = 0;
   zz_assert(pbin);
   zz_assert(len);
@@ -31,17 +31,18 @@ bin_alloc(bin_t ** pbin, u32_t len, u32_t xlen)
     ecode = E_ARG;
     if (!pbin)
       break;
-    ecode = zz_mem_malloc(pbin, nalloc);
+    ecode = zz_memnew(pbin, nalloc, 0);
     if (ecode)
       break;
     bin = *pbin;
     zz_assert(bin);
+    bin->ptr = bin->_buf;
     bin->max = size;
     bin->len = len;
   } while (0);
 
   dmsg("<%p..%p> %lu/%lu/%lu\n",
-       bin, bin->buf+bin->max,
+       bin, bin->_buf+bin->max,
        LU(len), LU(xlen), LU(nalloc));
 
   return ecode;
@@ -50,7 +51,7 @@ bin_alloc(bin_t ** pbin, u32_t len, u32_t xlen)
 zz_err_t
 bin_read(bin_t * bin, vfs_t vfs, u32_t off, u32_t len)
 {
-  return vfs_read_exact(vfs, bin->buf+off, len)
+  return vfs_read_exact(vfs, bin->ptr+off, len)
     ? E_SYS
     : E_OK
     ;

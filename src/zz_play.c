@@ -82,12 +82,31 @@ zz_err_t zz_play_init(play_t * const P)
 
 /* ---------------------------------------------------------------------- */
 
+/* Offset between 2 sequences (should be multiple of 12). */
 static inline
-uint16_t loop_off(const chan_t * const C, const sequ_t * const seq)
+u16_t ptr_off(const sequ_t * const a, const sequ_t * const b)
 {
-  zz_assert( seq - C->seq < 0x10000 );
-  return (const int8_t *)seq - (const int8_t *)C->seq;
+  const u32_t off = (const int8_t *) b - (const int8_t *) a;
+  zz_assert( a <= b );
+  zz_assert( off < 0x10000 );
+  return off;
 }
+
+/* Index (position) of seq in this channel */
+static inline
+u16_t seq_idx(const chan_t * const C, const sequ_t * const seq)
+{
+  zz_assert (sizeof(sequ_t) == 12u);
+  return divu(ptr_off(C->seq,seq),sizeof(sequ_t));
+}
+
+/* Offset of seq in this channel */
+static inline
+u16_t seq_off(const chan_t * const C, const sequ_t * const seq)
+{
+  return ptr_off(C->seq, seq);
+}
+
 
 static inline
 sequ_t * loop_seq(const chan_t * const C, const uint16_t off)
@@ -148,14 +167,14 @@ int zz_play_chan(play_t * const P, const int k)
 
     case 'P':                           /* Play-Note */
       if (C->curi < 0 || C->curi >= P->vset.nbi) {
-        dmsg("%c[%lu]@%lu: using invalid instrument number -- %hu/%hu\n",
-             C->id, LU(seq-1-C->seq), LU(P->tick),
+        dmsg("%c[%hu]@%lu: using invalid instrument number -- %hu/%hu\n",
+             C->id, HU(seq_idx(C,seq)-1), LU(P->tick),
              HU(C->curi+1),HU(P->vset.nbi));
         return E_SNG;
       }
       if (!P->vset.inst[C->curi].len) {
-        dmsg("%c[%lu]@%lu: using tainted instrument -- I#%02hu\n",
-             C->id,LU(seq-1-C->seq), LU(P->tick),
+        dmsg("%c[%hu]@%lu: using tainted instrument -- I#%02hu\n",
+             C->id, HU(seq_idx(C,seq)-1), LU(P->tick),
              HU(C->curi+1));
         return E_SET;
       }
@@ -202,7 +221,7 @@ int zz_play_chan(play_t * const P, const int k)
     case 'l':                       /* Set-Loop-Point */
       if (C->loop_sp < C->loops+MAX_LOOP) {
         struct loop_s * const l = C->loop_sp++;
-        l->off = loop_off(C,seq);
+        l->off = seq_off(C,seq);
         l->cnt = 0;
       } else {
         dmsg("%c off:%lu tick:%lu -- loop stack overflow\n",
@@ -269,16 +288,28 @@ int zz_play_chan(play_t * const P, const int k)
 zz_err_t
 zz_tick(play_t * const P)
 {
-  zz_err_t ecode = E_OK, k;
+  zz_err_t ecode;
+  u8_t k;
 
   ++P->tick;
   for (k=0; k<4; ++k)
     if (E_OK != (ecode = zz_play_chan(P,k)))
       break;
 
-  P->done =
-    ( P->end_detect && P->has_loop == 15 ) ||
-    ( P->max_ticks && P->tick > P->max_ticks );
+  P->done |= 0
+    | ( 0x01 & -(P->end_detect && P->has_loop == 15) )
+    | ( 0x02 & -(P->max_ticks && P->tick > P->max_ticks) )
+    ;
+
+  zz_assert(ecode == E_OK);
+
+  if (ecode != E_OK) {
+    const chan_t * const C = P->chan+k;
+    P->done |= 0x10 << k;
+    (void)C;
+    emsg("play: %c[%hu]@%lu: failed\n",
+         C->id, HU(seq_idx(C,C->cur)), LU(P->tick));
+  }
 
   return ecode;
 }
@@ -311,7 +342,6 @@ int16_t * zz_play(play_t * P, zz_u16_t * ptr_n)
   ecode = E_OK;
 
   zz_assert( P->mix_ptr );
-  ptr = P->mix_ptr;
   if (!n)
     n = P->pcm_per_tick;
   if (n > 0) {
@@ -371,7 +401,9 @@ ms_to_ticks(zz_u32_t ms, zz_u16_t rate)
       r >>= 1; d >>= 1;
     }
     ticks = divu32(mulu32(ms,r), d);
+#ifndef SC68                            /* $$$ GB: FIXME */
     zz_assert ( ticks == ms * rate / 1000u );
+#endif
   } break;
   }
 
@@ -414,8 +446,9 @@ tick_to_ms(zz_u32_t ticks, zz_u16_t rate)
   /*      LU(ticks),HU(rate),LU(ms), */
   /*      LU(ticks*1000ull/rate)); */
 
+#ifndef SC68                            /* $$$ GB: FIXME  */
   zz_assert ( ms == ( ticks*1000ull / 200u ) );
-
+#endif
   return ms;
 }
 
@@ -537,7 +570,7 @@ zz_init(play_t * P)
     goto error;
 
   P->mix_ptr = 0;
-  ecode = zz_mem_malloc(&P->mix_buf, 2*P->pcm_per_tick);
+  ecode = zz_memnew(&P->mix_buf, 2*P->pcm_per_tick, 0);
 
 error:
   return ecode;
@@ -570,6 +603,35 @@ zz_u32_t zz_position(zz_play_t P, zz_u32_t * const pms)
   return tick;
 }
 
+static void memb_free(struct memb_s * memb)
+{
+  if (memb && memb->bin)
+    bin_free(&memb->bin);
+}
+
+static void memb_wipe(struct memb_s * memb, int size)
+{
+  if (memb) {
+    memb_free(memb);
+    zz_memclr(memb,size);
+  }
+}
+
+void zz_song_wipe(zz_song_t song)
+{
+  memb_wipe((struct memb_s *)song, sizeof(*song));
+}
+
+void zz_vset_wipe(zz_vset_t vset)
+{
+  memb_wipe((struct memb_s *)vset, sizeof(*vset));
+}
+
+void zz_info_wipe(zz_info_t info)
+{
+  memb_wipe((struct memb_s *)info, sizeof(*info));
+}
+
 zz_err_t zz_close(zz_play_t P)
 {
   zz_err_t ecode = E_ARG;
@@ -583,7 +645,7 @@ zz_err_t zz_close(zz_play_t P)
     P->mixer_data = 0;
 
     P->mix_ptr = 0;
-    zz_mem_free(&P->mix_buf);
+    zz_memdel(&P->mix_buf);
     zz_assert( !P->mix_buf );
 
     zz_song_wipe(&P->song);
@@ -601,11 +663,6 @@ zz_err_t zz_close(zz_play_t P)
   return ecode;
 }
 
-zz_err_t zz_new(zz_play_t * pP)
-{
-  return zz_calloc(pP,sizeof(**pP));
-}
-
 void zz_del(zz_play_t * pP)
 {
   zz_assert( pP );
@@ -614,6 +671,12 @@ void zz_del(zz_play_t * pP)
     zz_free(pP);
   }
 }
+
+zz_err_t zz_new(zz_play_t * pP)
+{
+  return zz_calloc(pP,sizeof(**pP));
+}
+
 
 #ifndef NO_VFS
 

@@ -21,7 +21,7 @@ init:
 	adda.l	a2,a0
 	adda.l	a2,a1
 player:
-	incbin	"zingzong-aga.bin"
+	incbin	"zingzong.bin"
 	even
 	
 song:	incbin	"test.4v"

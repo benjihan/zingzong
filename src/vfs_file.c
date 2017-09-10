@@ -74,7 +74,7 @@ x_new(const char * uri, va_list list)
   zz_err_t ecode;
   int len = strlen(uri);
   vfs_file_t fs = 0;
-  ecode = zz_mem_malloc(&fs, sizeof(*fs)+len);
+  ecode = zz_memnew(&fs, sizeof(*fs)+len,0);
   if (likely(E_OK == ecode)) {
     zz_assert(fs);
     fs->X.dri = &file_dri;
@@ -88,7 +88,7 @@ static void
 x_del(vfs_t vfs)
 {
   zz_assert( vfs );
-  zz_mem_free(&vfs);
+  zz_memdel(&vfs);
   zz_assert( !vfs );
 }
 

@@ -3,6 +3,24 @@
  * @author Benjamin Gerard AKA Ben/OVR
  * @date   2017-08-01
  * @brief  memory functions.
+ *
+ * API functions:
+ *
+ * - void zz_mem(new,del)
+ *
+ * Exported functions:
+ *
+ * - zz_memnew(size,clear)
+ * - zz_memdel(ptr)
+ *
+ * These functions are exported. However if NO_LIBC is defined they
+ * will issue a warning on call.
+ *
+ * - zz_memcpy(d,s,n)
+ * - zz_memset(d,v,n)
+ * - zz_memclr(d,n)
+ * - zz_memcmp(a,b,n)
+ *
  */
 
 #define ZZ_DBG_PREFIX "(mem) "
@@ -18,8 +36,8 @@ static zz_new_t newf = 0;
 static zz_del_t delf = 0;
 
 # ifndef NDEBUG
-zz_err_t zz_mem_check_close(void)          { return E_OK; }
-zz_err_t zz_mem_check_block(const void *m) { return E_OK; }
+zz_err_t zz_memchk_calls(void)          { return E_OK; }
+zz_err_t zz_memchk_block(const void *m) { return E_OK; }
 # endif
 
 #else /* NO_LIBC */
@@ -37,8 +55,8 @@ static void* zz_libc_new(zz_u32_t n) { return malloc(n); }
 static void  zz_libc_del(void * p)   { free(p); }
 static zz_new_t newf = zz_libc_new;
 static zz_del_t delf = zz_libc_del;
-zz_err_t zz_mem_check_close(void)          { return E_OK; }
-zz_err_t zz_mem_check_block(const void *m) { return E_OK; }
+zz_err_t zz_memchk_calls(void)          { return E_OK; }
+zz_err_t zz_memchk_block(const void *m) { return E_OK; }
 
 # else /* NDEBUG */
 
@@ -59,7 +77,7 @@ typedef struct {
 
 #define XTRA ((intptr_t)((memchk_t *)0)->buf)
 
-zz_err_t zz_mem_check_close(void)
+zz_err_t zz_memchk_calls(void)
 {
   if (mem_calls || mem_bytes) {
     wmsg("!!! (mem) check failed -- calls:%lu bytes:%lu\n",
@@ -74,7 +92,7 @@ static inline memchk_t * memchk_of(const void * const ptr)
   return  (memchk_t *) ( (intptr_t) ptr - XTRA );
 }
 
-zz_err_t zz_mem_check_block(const void * p)
+zz_err_t zz_memchk_block(const void * p)
 {
   const memchk_t * const memchk = memchk_of(p);
   const uint8_t * end;
@@ -134,7 +152,7 @@ static void zz_libc_del(void * p)
 {
   zz_assert (p);
 
-  if ( likely ( E_OK == zz_mem_check_block(p)) ) {
+  if ( likely ( E_OK == zz_memchk_block(p)) ) {
     memchk_t * const memchk = memchk_of(p);
     u32_t const n = memchk->len;
     mem_calls--;                          /* GB: $$$ should be atomic */
@@ -185,17 +203,15 @@ static void mem_free(void * mem)
 }
 
 /* **********************************************************************
-   Exported functions :
-   - zz_mem_malloc()
-   - zz_mem_calloc()
-   - zz_mem_free()
 */
 
-zz_err_t zz_mem_malloc(void * restrict pmem, u32_t size)
+zz_err_t zz_memnew(void * restrict pmem, zz_u32_t size, zz_u8_t clear)
 {
-  zz_err_t ecode = E_ARG;
-  zz_assert(pmem);
-  zz_assert(size);
+  zz_err_t ecode = E_MEM;
+
+  zz_assert( pmem );
+  zz_assert( size );
+  zz_assert( (clear&1) == clear );
 
   if (likely(pmem)) {
     void * mem = unlikely(!size)
@@ -205,21 +221,16 @@ zz_err_t zz_mem_malloc(void * restrict pmem, u32_t size)
     zz_assert( ! *(void**)pmem );       /*  GB: a tad conservative */
     zz_assert( mem );
     *(void**)pmem = mem;
-    ecode = mem ? E_OK : E_MEM;
+     if (likely(mem)) {
+       ecode = E_OK;
+       if (clear)
+         zz_memclr(mem, size);
+     }
   }
   return ecode;
 }
 
-zz_err_t zz_mem_calloc(void * restrict pmem, u32_t size)
-{
-  zz_err_t ecode;
-
-  if (likely(E_OK == (ecode = zz_mem_malloc(pmem, size))))
-    zz_memclr(*(void **)pmem, size);
-  return ecode;
-}
-
-void zz_mem_free(void * restrict pmem)
+void zz_memdel(void * restrict pmem)
 {
   zz_assert(pmem);
   if (likely(pmem)) {
@@ -236,4 +247,57 @@ void zz_mem(zz_new_t user_newf, zz_del_t user_delf)
 {
   zz_assert(user_newf); newf = user_newf;
   zz_assert(user_delf); delf = user_delf;
+}
+
+#undef zz_memcpy
+void * zz_memcpy(void * restrict _d, const void * _s, zz_u32_t n)
+{
+#ifdef NO_LIBC
+  uint8_t * d = _d; const uint8_t * s = _s;
+  while (n--) *d++ = *s++;
+  return _d;
+#else
+  wmsg("calling %s() instead of %s()\n", __func__, __func__+3);
+  return memcpy(_d,_s,n);
+#endif
+}
+
+#undef zz_memset
+void * zz_memset(void * restrict _d, int v, zz_u32_t n)
+{
+#ifdef NO_LIBC
+  uint8_t * restrict d = _d;
+  while (n--) *d++ = v;
+  return _d;
+#else
+  wmsg("calling %s() instead of %s()\n", __func__, __func__+3);
+  return memset(_d,v,n);
+#endif
+}
+
+#undef zz_memclr
+void * zz_memclr(void * restrict _d, zz_u32_t n)
+{
+#ifdef NO_LIBC
+  return zz_memset(_d,0,n);
+#else
+  wmsg("calling %s() instead of %s()\n", __func__, __func__+3);
+  return memset(_d,0,n);
+#endif
+}
+
+#undef zz_memcmp
+int zz_memcmp(const void *_a, const void *_b, zz_u32_t n)
+{
+#ifdef NO_LIBC
+  int8_t c = 0;
+  const uint8_t *a = _a, *b = _b;
+  if (n) do {
+      c = *a++ - *b++;
+    } while (!c && --n);
+  return c;
+#else
+  wmsg("calling %s() instead of %s()\n", __func__, __func__+3);
+  return memcmp(_a,_b,n);
+#endif
 }

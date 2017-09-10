@@ -7,7 +7,7 @@
 # by Benjamin Gerard
 #
 
-targets    = zingzong-aga.bin zingzong-st.bin
+targets    = zingzong.bin
 
 PACKAGE   := zingzong-m68k
 srcdir    := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
@@ -29,9 +29,9 @@ CC          = m68k-sc68-elf-gcc
 AS          = $(CC:gcc=as)
 OBJCOPY     = $(CC:gcc=objcopy)
 m68_CFLAGS  = -m68000 -mpcrel -mno-short -mno-align-int
-GCC_CFLAGS  = -Wall -fshort-enums -fno-common -fPIC
-REL_CFLAGS  = -g -Os -fomit-frame-pointer
-DBG_CFLAGS  = -g -O0
+gcc_CFLAGS  = -Wall -fshort-enums -fno-common  # -fPIC
+rel_CFLAGS  = -g -Ofast -fomit-frame-pointer
+dbg_CFLAGS  = -g -O0
 NOSTARTFILE = -nostartfiles
 NODEFLIB    = -nodefaultlibs
 NOSTDLIB    = -nostdlib
@@ -39,9 +39,9 @@ VASM        = vasmm68k_mot -Fbin -quiet -no-opt -o
 ELF2BIN = $(OBJCOPY) -S -Obinary --set-section-flags .bss=contents,data,load
 
 ifdef DEBUG
-CFLAGS += $(DBG_CFLAGS) -DDEBUG=$(DEBUG)
+zz_CPPFLAGS = $(dbg_CFLAGS) -DDEBUG=$(DEBUG)  -I$(srcdir)
 else
-CFLAGS += $(REL_CFLAGS) -DNDEBUG=1
+zz_CPPFLAGS = $(REL_CFLAGS) -DNDEBUG=1 -I$(srcdir)
 endif
 
 # ----------------------------------------------------------------------
@@ -55,24 +55,17 @@ m68_WL = -Wl,-EB,--gc-sections,--no-undefined,--no-dynamic-linker,--unresolved-s
 
 m68_LDFLAGS = -e _start $(NOSTARTFILE) $(NOSTDLIB) $(NODEFLIB) $(m68_WL)
 
-zz_CPPFLAGS = -DZZ_MINIMAL $(gb_CPPFLAGS)
-zz_CFLAGS   = $(m68_CFLAGS) $(gb_CFLAGS)
-zz_LDFLAGS  = $(m68_LDFLAGS) $(gb_LDFLAGS)
+zz_CPPFLAGS += -DSC68 -DZZ_MINIMAL $(gb_CPPFLAGS) 
+zz_CFLAGS   += $(gcc_CFLAGS) $(m68_CFLAGS) $(gb_CFLAGS)
+zz_LDFLAGS  += $(gcc_LDFLAGS) $(m68_LDFLAGS) $(gb_LDFLAGS)
 
-common =  player zz_m68k zz_play zz_init
-amiga  = mix_aga
-atari  = mix_st
+com = player
+zzz = zz_m68k zz_play zz_init zz_str zz_mem zz_log
+mix = mix_aga mix_st mix_stf
 
-atari_src = $(addsuffix .c,$(common) $(atari))
-amiga_src = $(addsuffix .c,$(common) $(amiga))
-
-atari_obj = startup.o $(atari_src:%.c=%.o)
-amiga_obj = startup.o player.o $(amiga_src:%.c=%.o)
-
-sources := $(sort $(atari_src) $(amiga_src))
-objects := $(sort $(atari_obj) $(amiga_obj))
+sources := $(sort $(addsuffix .c,$(com) $(zzz) $(mix)))
+objects := $(sources:.c=.o)
 depends := $(sources:.c=.d)
-headers := zingzong.h zz_private.h mix_common.c
 
 # ----------------------------------------------------------------------
 #  Targets
@@ -81,13 +74,11 @@ headers := zingzong.h zz_private.h mix_common.c
 all: $(targets)
 .PHONY: all
 
-zingzong-aga.elf: $(amiga_obj)
-zingzong-st.elf: $(atari_obj)
 zingzong.elf: startup.o $(objects)
 
-%.elf: override CPPFLAGS = $(zz_CPPFLAGS)
-%.elf: override CFLAGS   = $(zz_CFLAGS)
-%.elf: override LDFLAGS  = $(m68_LDFLAGS) $(gb_LDFLAGS)
+%.elf: override CPPFLAGS := $(zz_CPPFLAGS)
+%.elf: override CFLAGS   := $(zz_CFLAGS)
+%.elf: override LDFLAGS  := $(m68_LDFLAGS) $(gb_LDFLAGS)
 zz_play.o: override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
 
 %.elf:; $(CC) $(LDFLAGS) $(CFLAGS) -o $@ $^
@@ -102,19 +93,18 @@ clean_files += test.sc68 test.dat $(targets:%.bin=%.elf)
 test: test.sc68
 .PHONY: test
 
-#test.sc68: test.dat
+test.sc68: test.dat
 test.dat: $(targets)
 
 .INTERMEDIATE: test.dat
 
-test_sc68.elf: test_sc68.o
+%.sc68: %_sc68.s %.dat
+	$(VASM) $@ $<
 
-%.sc68: %_sc68.elf %.dat
-	echo [$*].sc68	
 
+%_sc68.dat: %.s		;$(VASM) $@ $<
 %.dat: %.s %.4v %.set	;$(VASM) $@ $<
 %.bin: %.elf		;$(ELF2BIN) $< $@
-
 
 #test_sc68.S
 #-Wl,-e,0x10000 -Wl,-Ttext,0x10000
