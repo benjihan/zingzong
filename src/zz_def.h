@@ -177,6 +177,7 @@ ZZ_EXTERN_C zz_u16_t zz_strlen(str_t const str);
 
 #define ZZSTR(S) (char *)((S)->ptr)
 #define ZZSTR_SAFE(S) ((S) ? ZZSTR(S) : 0)
+#define ZZSTR_NOTNIL(S) ((S) ? ZZSTR(S) : "")
 /**
  * @}
  */

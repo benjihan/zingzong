@@ -11,16 +11,102 @@
 static char empty_str[] = "";
 #define NEVER_NIL(S) if ( (S) ) {} else (S) = empty_str
 
+
+static zz_u32_t never_inline
+ms_to_ticks(zz_u32_t ms, zz_u16_t rate)
+{
+  zz_u32_t ticks;
+  if (!ms)
+    return 0;                           /* trivial no other check */
+
+  if (!rate) {
+    rate = RATE_DEF;
+    wmsg("rate not set -- assuming %huhz -- %lu ms\n", HU(rate), LU(ms));
+  }
+
+  zz_assert( rate >= RATE_MIN );
+  zz_assert( rate <= RATE_MAX );
+  if (rate < RATE_MIN || rate > RATE_MAX) {
+    wmsg("rate out of range -- %huhz\n", HU(rate));
+    return 0;
+  }
+
+  /* TICKS = MS x RATE / 1000 */
+  switch (rate) {
+  case 50:                              /* div 20 */
+    ms >>= 2;                           /* div 4 */
+  case 200:                             /* div 5 */
+    ticks = divu32(ms,5);
+    break;
+  default: {
+    zz_u16_t r = rate, d = 1000;
+    while ( ! ( (r|d) & 1 ) ) {
+      r >>= 1; d >>= 1;
+    }
+    ticks = divu32(mulu32(ms,r), d);
+#ifndef SC68                            /* $$$ GB: FIXME */
+    zz_assert ( ticks == ms * rate / 1000u );
+#endif
+  } break;
+  }
+
+  return ticks;
+}
+
+
+/**
+ * @retval ticks*1000/rate
+ */
+static zz_u32_t never_inline
+tick_to_ms(zz_u32_t ticks, zz_u16_t rate)
+{
+  zz_u32_t ms, acu;              /* TEMP TO TEST OVERFLOW ON 32 bit */
+
+  if (!ticks)
+    return 0;                           /* trivial no other check */
+
+  if (!rate) {
+    rate = RATE_DEF;
+    wmsg("rate not set -- assuming %hu-hz -- %lu-ticks\n",
+         HU(rate),LU(ticks));
+  }
+  ms = ticks;
+
+  switch ( rate ) {
+  case 50:                              /* x20 */
+    ms <<= 2;
+  case 200:                             /* x5 */
+    ms += (ms << 2);
+    break;
+  default:
+    acu  = ms <<= 3;                    /* ms = x8  acu = x8 */
+    acu += ms += ms;                    /* ms = x16 acu = x24 */
+    ms <<= 6;                           /* ms = x1024 */
+    ms -= acu;                          /* ms = x1000 */
+  }
+
+  /* dmsg("ticks: %lu rate:%hu ms:%lu == %lu\n", */
+  /*      LU(ticks),HU(rate),LU(ms), */
+  /*      LU(ticks*1000ull/rate)); */
+
+#ifndef SC68                            /* $$$ GB: FIXME  */
+  zz_assert ( ms == ( ticks*1000ull / rate ) );
+#endif
+  return ms;
+}
+
 zz_err_t zz_setup(zz_play_t P, zz_u8_t mixerid,
                   zz_u32_t spr, zz_u16_t rate,
-                  zz_u32_t max_ticks, zz_u8_t end_detect)
+                  zz_u32_t max_ticks, zz_u32_t max_ms, zz_u8_t end_detect)
 {
   if ( zz_mixer_set(P, mixerid) == ZZ_DEFAULT_MIXER )
     return ZZ_EARG;
   if (!P)
     return ZZ_OK;
 
-  if (!rate) rate = RATE_DEF;
+  zz_assert( ! rate );                  /* XXX $$$ TEMP to catch */
+
+  if (!rate) rate = P->song.rate ? P->song.rate : RATE_DEF;
   if (!spr)  spr = mulu(P->song.khz,1000);
   if (!spr)  spr = SPR_DEF;
 
@@ -29,12 +115,19 @@ zz_err_t zz_setup(zz_play_t P, zz_u8_t mixerid,
 
   P->rate       = rate;
   P->spr        = spr;
+
+  if (!max_ticks && max_ms) {
+    max_ticks = ms_to_ticks(max_ms, rate);
+    dmsg("setup: %lu-ms@%hu-hz -> %lu-ticks\n",
+         LU(max_ms), HU(rate), LU(max_ticks));
+  }
+
   P->max_ticks  = max_ticks;
   P->end_detect = !!end_detect;
 
-  dmsg("setup: rate:%hu spr:%lu max-ticks:%lu end-detect:%hu\n",
+  dmsg("setup: rate:%hu spr:%lu max-ticks:%lu end-detect:%s\n",
        HU(P->rate), LU(P->spr),
-       LU(P->max_ticks), HU(P->end_detect) );
+       LU(P->max_ticks), P->end_detect?"yes":"no" );
 
   return ZZ_OK;
 }
@@ -171,13 +264,13 @@ int zz_play_chan(play_t * const P, const int k)
     case 'P':                           /* Play-Note */
       if (C->curi < 0 || C->curi >= P->vset.nbi) {
         dmsg("%c[%hu]@%lu: using invalid instrument number -- %hu/%hu\n",
-             C->id, HU(seq_idx(C,seq)-1), LU(P->tick),
+             C->id, HU(seq_idx(C,seq-1)), LU(P->tick),
              HU(C->curi+1),HU(P->vset.nbi));
         return E_SNG;
       }
       if (!P->vset.inst[C->curi].len) {
         dmsg("%c[%hu]@%lu: using tainted instrument -- I#%02hu\n",
-             C->id, HU(seq_idx(C,seq)-1), LU(P->tick),
+             C->id, HU(seq_idx(C,seq-1)), LU(P->tick),
              HU(C->curi+1));
         return E_SET;
       }
@@ -227,8 +320,8 @@ int zz_play_chan(play_t * const P, const int k)
         l->off = seq_off(C,seq);
         l->cnt = 0;
       } else {
-        dmsg("%c off:%lu tick:%lu -- loop stack overflow\n",
-             C->id, LU(seq-C->seq-1), LU(P->tick));
+        dmsg("%c[%hu]@%lu -- loop stack overflow\n",
+             C->id, HU(seq_idx(C,seq-1)), LU(P->tick));
         return E_PLA;
       }
       break;
@@ -278,7 +371,9 @@ int zz_play_chan(play_t * const P, const int k)
     } break;
 
     default:
-      dmsg("invalid seq-%c command #%04hX\n",HU(C->id),HU(cmd));
+      dmsg("%c[%hu]@%lu command <%c> #%04hX\n",
+           C->id, HU(seq_idx(C,seq-1)), LU(P->tick),
+           isalpha(cmd) ? (char)cmd : '^', HU(cmd));
       return E_PLA;
     } /* switch */
   } /* while !wait */
@@ -303,8 +398,6 @@ zz_tick(play_t * const P)
     | ( 0x01 & -(P->end_detect && P->has_loop == 15) )
     | ( 0x02 & -(P->max_ticks && P->tick > P->max_ticks) )
     ;
-
-  zz_assert(ecode == E_OK);
 
   if (ecode != E_OK) {
     const chan_t * const C = P->chan+k;
@@ -378,88 +471,6 @@ error:
   return ptr;
 }
 
-static zz_u32_t never_inline
-ms_to_ticks(zz_u32_t ms, zz_u16_t rate)
-{
-  zz_u32_t ticks;
-  if (!ms)
-    return 0;                           /* trivial no other check */
-
-  if (!rate) {
-    rate = RATE_DEF;
-    wmsg("rate not set -- assuming %huhz -- %lu ms\n", HU(rate), LU(ms));
-  }
-
-  zz_assert( rate >= RATE_MIN );
-  zz_assert( rate <= RATE_MAX );
-  if (rate < RATE_MIN || rate > RATE_MAX) {
-    wmsg("rate out of range -- %huhz\n", HU(rate));
-    return 0;
-  }
-
-  /* TICKS = MS x RATE / 1000 */
-  switch (rate) {
-  case 50:                              /* div 20 */
-    ms >>= 2;                           /* div 4 */
-  case 200:                             /* div 5 */
-    ticks = divu32(ms,5);
-    break;
-  default: {
-    zz_u16_t r = rate, d = 1000;
-    while ( ! ( (r|d) & 1 ) ) {
-      r >>= 1; d >>= 1;
-    }
-    ticks = divu32(mulu32(ms,r), d);
-#ifndef SC68                            /* $$$ GB: FIXME */
-    zz_assert ( ticks == ms * rate / 1000u );
-#endif
-  } break;
-  }
-
-  return ticks;
-}
-
-
-/**
- * @retval ticks*1000/rate
- */
-static zz_u32_t never_inline
-tick_to_ms(zz_u32_t ticks, zz_u16_t rate)
-{
-  zz_u32_t ms, acu;              /* TEMP TO TEST OVERFLOW ON 32 bit */
-
-  if (!ticks)
-    return 0;                           /* trivial no other check */
-
-  if (!rate) {
-    rate = RATE_DEF;
-    wmsg("rate not set -- assuming %hu-hz -- %lu-ticks\n",
-         HU(rate),LU(ticks));
-  }
-  ms = ticks;
-
-  switch ( rate ) {
-  case 50:                              /* x20 */
-    ms <<= 2;
-  case 200:                             /* x5 */
-    ms += (ms << 2);
-    break;
-  default:
-    acu  = ms <<= 3;                    /* ms = x8  acu = x8 */
-    acu += ms += ms;                    /* ms = x16 acu = x24 */
-    ms <<= 6;                           /* ms = x1024 */
-    ms -= acu;                          /* ms = x1000 */
-  }
-
-  /* dmsg("ticks: %lu rate:%hu ms:%lu == %lu\n", */
-  /*      LU(ticks),HU(rate),LU(ms), */
-  /*      LU(ticks*1000ull/rate)); */
-
-#ifndef SC68                            /* $$$ GB: FIXME  */
-  zz_assert ( ms == ( ticks*1000ull / 200u ) );
-#endif
-  return ms;
-}
 
 zz_err_t
 zz_measure(play_t * P, zz_u32_t * restrict pticks, zz_u32_t * restrict pms)
@@ -468,6 +479,11 @@ zz_measure(play_t * P, zz_u32_t * restrict pticks, zz_u32_t * restrict pms)
   zz_err_t ecode = E_OK;
   zz_u32_t ticks = pticks ? *pticks : 0;
   zz_u32_t save_max_ticks = P->max_ticks;
+
+  if (!P->rate && P->song.rate) {
+    P->rate = P->song.rate;
+    dmsg("set tick-rate to song default -- %huhz\n", HU(P->rate));
+  }
 
   if (!P->vset.bin) {
     /* If there is no voice set we still want to be able to measure
@@ -508,18 +524,19 @@ zz_measure(play_t * P, zz_u32_t * restrict pticks, zz_u32_t * restrict pms)
   }
   dmsg("measure loop ended [done:%hu code:%hu ticks:%lu/%lu\n",
        HU(P->done), HU(ecode), LU(P->tick), LU(P->max_ticks));
-  P->max_ticks = save_max_ticks;
 
   /* If everything went as planed and we were able to measure music
    * duration then set play_t::end_detect and play_t::max_ticks.
    */
-  if (!ecode) {
-    P->end_detect = P->tick <= P->max_ticks;
-    if (P->end_detect)
-      ticks = P->max_ticks = P->tick;
-    P->done = 0;
-    P->tick = 0;
+  P->end_detect = !ecode && (P->tick <= P->max_ticks);
+  if (!P->end_detect) {
+    P->max_ticks = save_max_ticks;
+    ticks = 0;
   }
+  else {
+    ticks = P->max_ticks = P->tick;
+  }
+
   P->mix_ptr = 0;
   P->mixer = save_mixer;
   if (!P->vset.bin)
@@ -530,7 +547,9 @@ zz_measure(play_t * P, zz_u32_t * restrict pticks, zz_u32_t * restrict pms)
   if (pms)
     *pms = tick_to_ms(ticks, P->rate);
 
-  dmsg("measure -> ticks:%lu ms:%lu\n", LU(ticks), LU(pms?*pms:0));
+  dmsg("measured (%s) -> ticks:%lu ms:%lu\n",
+        ecode ? "ERR" : P->end_detect ? "OK" : "NOEND",
+        LU(ticks), LU(pms?*pms:0));
   return ecode;
 }
 
@@ -576,9 +595,15 @@ zz_init(play_t * P)
   zz_assert ( ! P->mixer_data );
   zz_assert ( P->mixer );
 
+  if (!P->rate && P->song.rate) {
+    P->rate = P->song.rate;
+    dmsg("set tick-rate to song default -- %huhz\n", HU(P->rate));
+  }
+
   if (!P->rate) {
-    P->rate = RATE_DEF;
-    dmsg("replay rate not set -- default to %hu\n", HU(P->rate));
+      P->rate = P->song.rate ? P->song.rate :RATE_DEF;
+      dmsg("replay rate not set to %sdefault %hu\n",
+           P->song.rate ? "song ":"", HU(P->rate));
   }
 
   if (!P->spr) {
@@ -697,6 +722,7 @@ zz_err_t zz_close(zz_play_t P)
 
     P->st_idx = 0;
     P->pcm_per_tick = 0;
+    P->format = ZZ_FORMAT_UNKNOWN;
 
     /* GB: $$$ XXX FIXME might have some more stuff to clear. */
 
@@ -735,42 +761,49 @@ const char * zz_formatstr(zz_u8_t fmt)
 
 zz_err_t zz_info( zz_play_t P, zz_info_t * pinfo)
 {
-
-  zz_assert(P);
   zz_assert(pinfo);
-
-  if (!P || !pinfo)
+  if (!pinfo)
     return E_ARG;
 
-  /* format */
-  pinfo->fmt.str = zz_formatstr(pinfo->fmt.num = P->format);
-
-  /* rates */
-  pinfo->len.rate  = P->rate;
-  pinfo->mix.spr   = P->spr;
-  pinfo->len.ticks = P->max_ticks;
-  pinfo->len.ms    = tick_to_ms(pinfo->len.ticks, pinfo->len.rate);
-
-  /* mixer */
-  pinfo->mix.ppt = P->pcm_per_tick;
-  pinfo->mix.num = P->mixer_id;
-  if (P->mixer) {
-    pinfo->mix.name = P->mixer->name;
-    pinfo->mix.desc = P->mixer->desc;
+  if (!P || P->format == ZZ_FORMAT_UNKNOWN) {
+    dmsg("clear info (%s)\n", !P ? "nil" : "empty");
+    zz_memclr(pinfo,sizeof(*pinfo));
+    pinfo->fmt.str = zz_formatstr(pinfo->fmt.num);
   } else {
-    zz_mixer_enum(pinfo->mix.num, &pinfo->mix.name, &pinfo->mix.desc);
+    dmsg("set info from <%s> \"%s\"\n",
+         zz_formatstr(P->format),
+         ZZSTR_NOTNIL(P->infouri));
+    /* format */
+    pinfo->fmt.num = P->format;
+    pinfo->fmt.str = zz_formatstr(pinfo->fmt.num);
+
+    /* rates */
+    pinfo->len.rate  = P->rate = P->rate ? P->rate : P->song.rate;
+    pinfo->mix.spr   = P->spr;
+    pinfo->len.ticks = P->max_ticks;
+    pinfo->len.ms    = tick_to_ms(pinfo->len.ticks, pinfo->len.rate);
+
+    /* mixer */
+    pinfo->mix.ppt = P->pcm_per_tick;
+    pinfo->mix.num = P->mixer_id;
+    if (P->mixer) {
+      pinfo->mix.name = P->mixer->name;
+      pinfo->mix.desc = P->mixer->desc;
+    } else {
+      zz_mixer_enum(pinfo->mix.num, &pinfo->mix.name, &pinfo->mix.desc);
+    }
+
+    pinfo->sng.uri = ZZSTR_SAFE(P->songuri);
+    pinfo->set.uri = ZZSTR_SAFE(P->vseturi);
+    pinfo->sng.khz = P->song.khz;
+    pinfo->set.khz = P->vset.khz;
+
+    /* meta-tags */
+    pinfo->tag.album   = P->info.album;
+    pinfo->tag.title   = P->info.title;
+    pinfo->tag.artist  = P->info.artist;
+    pinfo->tag.ripper  = P->info.ripper;
   }
-
-  pinfo->sng.uri = ZZSTR_SAFE(P->songuri);
-  pinfo->set.uri = ZZSTR_SAFE(P->vseturi);
-  pinfo->sng.khz = P->song.khz;
-  pinfo->set.khz = P->vset.khz;
-
-  /* meta-tags */
-  pinfo->tag.album   = P->info.album;
-  pinfo->tag.title   = P->info.title;
-  pinfo->tag.artist  = P->info.artist;
-  pinfo->tag.ripper  = P->info.ripper;
 
   /* Ensure no strings are nil */
   NEVER_NIL(pinfo->fmt.str);

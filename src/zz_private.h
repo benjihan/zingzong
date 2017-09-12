@@ -15,6 +15,7 @@
 #else
 # define _DEFAULT_SOURCE
 # define _GNU_SOURCE                    /* for GNU basename() */
+# define _BSD_SOURCE
 #endif
 
 #ifdef ZZ_MINIMAL
@@ -223,6 +224,7 @@ struct memb_s {
 /** Prepared song. */
 struct song_s {
   bin_t  *bin;               /**< song data container.              */
+  u16_t   rate;              /**< tick rate (0: unspecified).       */
   u8_t    khz;               /**< header sampling rate (kHz).       */
   u8_t    barm;              /**< header bar measure.               */
   u8_t    tempo;             /**< header tempo.                     */
@@ -316,7 +318,7 @@ struct play_s {
   u8_t  muted_voices;       /**< channels mask */
   u8_t  has_loop;           /**< channels mask */
   u8_t  end_detect;         /**< true if trying to auto detect end */
-  u8_t  done;               /**< true when done */
+  u8_t  done;               /**< true when done (GB: bits to be defined) */
   u8_t  format;             /**< see ZZ_FORMAT_ enum */
 
   u8_t      mixer_id;        /**< Mixer identifier.                 */

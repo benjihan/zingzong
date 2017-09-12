@@ -145,8 +145,6 @@ override gb_LDLIBS  += $(call filter-l,$(SRATE_LIBS))
 #  soxr (NO_SOXR=0 to enable)
 # ----------------------------------------------------------------------
 
-$(call with-module,SOXR,soxr)
-
 ifneq ($(NO_SOXR),0)
 override undefine SOXR_CFLAGS
 override undefine SOXR_LIBS

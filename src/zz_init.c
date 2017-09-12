@@ -9,6 +9,11 @@
 #include "zz_private.h"
 #include <ctype.h>
 
+/* [0,50,200] not official, it's an extension of qts file. */
+static int is_valid_tck(const uint16_t tck) {
+  return tck == 0 || tck == 50 || tck == 200;
+}
+
 /* {4..20} as defined as by the original replay routine. */
 static int is_valid_khz(const uint16_t khz) {
   return khz >= 4 && khz <= 20;
@@ -46,18 +51,30 @@ song_init_header(song_t * song, const void *_hd)
 {
   const uint8_t * hd = _hd;
   const uint16_t khz = U16(hd+0), bar = U16(hd+2), spd = U16(hd+4);
-
+  uint16_t tck = U16(hd+12) == 0x5754 ? U16(hd+14) : 0;
   zz_err_t ecode;
   /* Parse song header */
+
+  /* GB: qts/ohh_cricket respectable request 46hz !!?! */
+  if (tck < RATE_MIN && tck >= RATE_MIN-(RATE_MIN>>3)) {
+    dmsg("correcting rate from %hu-hz to %hu-hz\n",
+         HU(tck), HU(RATE_MIN));
+    tck  = RATE_MIN;
+  }
+
+  song->rate  = tck;
   song->khz   = khz;
   song->barm  = bar;
   song->tempo = spd;
   song->sigm  = hd[6];
   song->sigd  = hd[7];
-  dmsg("song: spr:%ukHz, bar:%u, tempo:%u, signature:%u/%u\n",
-       song->khz, song->barm, song->tempo, song->sigm, song->sigd);
 
-  ecode = E_SNG & -!( is_valid_khz(khz) &&
+  dmsg("song: rate:%huHz spr:%hukHz, bar:%hu, tempo:%hu, signature:%hu/%hu\n",
+       HU(song->rate), HU(song->khz),
+       HU(song->barm), HU(song->tempo), HU(song->sigm), HU(song->sigd));
+
+  ecode = E_SNG & -!( is_valid_tck(tck) &&
+                      is_valid_khz(khz) &&
                       is_valid_bar(bar) &&
                       is_valid_spd(spd) &&
                       is_valid_sig(song->sigm,song->sigd) );

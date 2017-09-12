@@ -51,7 +51,7 @@
 /* #include <ctype.h> */
 #include <malloc.h>                     /* malloca */
 #include <libgen.h>
-
+#include <limits.h>
 
 /* winamp 2 */
 #include "winamp/in2.h"
@@ -70,32 +70,45 @@ zz_vfs_dri_t zz_file_vfs(void);
 
 const char me[] = "in_zingzong";
 
-#define DEFAULT_SEC 150u
+#define PLAY_SEC       (2*60+30)        /*  2'30" */
+#define MEASURE_SEC    (12*60)          /* 12'00" */
+
 #define USE_LOCK 1
 
 #ifdef USE_LOCK
-static HANDLE g_lock;                   /* mutex handle           */
+static HANDLE g_lock;                   /* mutex handle            */
 #endif
 
 struct xinfo_s {
   HANDLE lock;                          /* mutex for extended info */
+  zz_info_t info;                       /*  */
+  unsigned int ready:1, fail:1;         /* status flags.           */
+  unsigned int ms;                      /* duration.               */
+  char * format;                        /* file format (static)    */
   char * uri;                           /* load uri (in data[])    */
+  char * album;                         /* album (in data[])       */
   char * title;                         /* title (in data[])       */
   char * artist;                        /* artist (in data[])      */
-  int  used;                            /* currently used in data */
-  char data[4096];                      /* Buffer for infos       */
-} g_info;
+  char * ripper;                        /* ripper (in data[])      */
+  char data[4096];                      /* Buffer for infos        */
+};
+typedef struct xinfo_s xinfo_t;
 
-static HANDLE g_thdl;                   /* thread handle          */
-static DWORD  g_tid;                    /* thread id              */
-static play_t g_play;                   /* play emulator instance */
-static int    g_spr = SPR_DEF;          /* sampling rate in hz    */
-static int    g_maxlatency;             /* max latency in ms      */
-static volatile LONG g_playing;         /* true while playing     */
-static volatile LONG g_stopreq;         /* stop requested         */
-static volatile LONG g_paused;          /* pause status           */
-static int16_t g_pcm[576*2];            /* buffer for DSP filters */
+static DWORD     g_tid;                 /* thread id               */
+static HANDLE    g_thdl;                /* thread handle           */
+static play_t    g_play;                /* play emulator instance  */
+static zz_info_t g_info;                /* current file info.      */
+static xinfo_t   x_info;                /* unique x_info           */
+static int g_spr  = SPR_DEF;            /* sampling rate in hz     */
+/* static int g_rate = 0;                  /\* player tick rate in hz  *\/
+ */
+static int g_maxlatency;                /* max latency in ms       */
+static volatile LONG g_playing;         /* true while playing      */
+static volatile LONG g_stopreq;         /* stop requested          */
+static volatile LONG g_paused;          /* pause status            */
+static int16_t g_pcm[576*2];            /* buffer for DSP filters  */
 static zz_u8_t g_mixerid = ZZ_DEFAULT_MIXER;
+
 /*****************************************************************************
  * Declaration
  ****************************************************************************/
@@ -159,11 +172,11 @@ void play_unlock(play_t * play)
 
 static inline
 struct xinfo_s * info_lock()
-{ return lock(g_info.lock) ? &g_info : 0; }
+{ return lock(x_info.lock) ? &x_info : 0; }
 
 static inline
 void info_unlock(struct xinfo_s * xinfo)
-{ if (xinfo == &g_info) unlock(g_info.lock); }
+{ if (xinfo == &x_info) unlock(x_info.lock); }
 
 
 static
@@ -311,8 +324,13 @@ int getlength()
   if (atomic_get(&g_playing)) {
     play_t * const P = play_lock();
     if (P) {
-      if (P->end_detect)
-        ms = P->max_ticks * (1000u / P->rate);
+      if (P->end_detect && P->rate && P->max_ticks) {
+        uint_least64_t ums = (uint_least64_t) P->max_ticks * 1000u / P->rate;
+        if (ums > INT_MAX)
+          ms = INT_MAX;
+        else
+          ms = ums;
+      }
       play_unlock(P);
     }
   }
@@ -371,8 +389,8 @@ static void clean_close(void)
     g_thdl = 0;
   }
   atomic_set(&g_playing,0);
+  zz_info(0,&g_info);
   zz_close(&g_play);
-
   g_mod.outMod->Close();                /* Close output system */
   g_mod.SAVSADeInit();                  /* Shutdown visualization */
 }
@@ -402,28 +420,95 @@ enum {
   NO_MEASURE=0, MEASURE, MEASURE_ONLY
 };
 
-static int load(play_t * const P, const char * uri, int measure)
+static zz_err_t load(zz_play_t P, zz_info_t *I, const char * uri,
+                     zz_u8_t measure, zz_u32_t sec)
 {
-  int ecode = E_INP;
+  zz_err_t ecode = E_INP;
+  zz_u32_t ticks = 0, ms = 0;
 
+  zz_assert( P );
+  zz_assert( I );
+  zz_assert( (P==&g_play && I==&g_info) || (P!=&g_play && I!=&g_info) );
+  zz_assert( uri );
+  zz_assert( *uri );
+
+  if (!sec) sec = PLAY_SEC;
+
+  dmsg ("load: (%s) measure:%hu sec:%lu fmt:%u \"%s\"\n",
+        P == &g_play ? "current" : "other",
+        HU(measure), LU(sec),  HU(P->format), uri);
+
+  zz_assert( P->format == ZZ_FORMAT_UNKNOWN );
+  zz_assert( P->vset.bin == 0 );
+  zz_assert( P->song.bin == 0 );
+  zz_assert( P->info.bin == 0 );
   zz_memclr(P,sizeof(*P));
+
   ecode = zz_load(P, uri, measure == MEASURE_ONLY ? "" : 0, 0);
+  if (ecode)
+    goto error_no_close;
 
-  if (!ecode) {
-    ecode = zz_setup(P,g_mixerid,g_spr,200,DEFAULT_SEC*P->rate,1);
-    if (!ecode)
-      ecode = zz_init(P);
-    dmsg("inited song:%ukhz vset:%ukhz\n",
-         P->song.khz, P->vset.khz);
+  zz_assert( P->format != ZZ_FORMAT_UNKNOWN );
+
+  ecode = zz_setup(P, g_mixerid, g_spr, 0, 0, sec*1000u, 1);
+  if (ecode) {
+    dmsg("load: setup failed (%hu)\n", HU(ecode));
+    goto error_close;
+  }
+  dmsg("load: -> setup mixer:%hu spr:%lu rate:%hu ticks:%lu end-detect:%s\n",
+       HU(P->mixer_id), LU(P->spr), HU(P->rate),
+       LU(P->max_ticks), P->end_detect?"yes":"no");
+
+  dmsg("load: init\n");
+  ecode = zz_init(P);
+  if (ecode) {
+    dmsg("load: init failed (%hu)\n", HU(ecode));
+    goto error_close;
   }
 
-  if (!ecode && measure != NO_MEASURE) {
-    zz_u32_t max_ticks = 12u * 60u * 200u;
-    dmsg("measuring for max %u ticks ...\n", max_ticks);
-    ecode = zz_measure(P,&max_ticks,0);
+  if (measure != NO_MEASURE) {
+    zz_u32_t max_ticks = 0, max_ms = MEASURE_SEC * 1000u;
+    dmsg("load: measure for max-ms:%lu\n", LU(max_ms));
+    ecode = zz_measure(P,&max_ticks,&max_ms);
+    if (ecode) {
+      dmsg("load: -> measure failed (%hu) @%lu done:%02hX\n",
+           HU(ecode), LU(P->tick), HU(P->done));
+      goto error_close;
+    } else {
+      dmsg("load: -> measure ticks:%lu ms:%lu\n",
+           LU(max_ticks), LU(max_ms));
+      if (max_ms) {
+        ms    = max_ms;
+        ticks = max_ticks;
+      } else {
+        ms    = PLAY_SEC * 1000u;
+        ticks = PLAY_SEC * P->rate;
+        dmsg("load: !! set default play time: ticks:%lu ms:%lu\n",
+             LU(ticks), LU(ms));
+      }
+    }
   }
 
-  dmsg("load -- '%s' => %d\n", uri, ecode);
+error_close:
+  if (ecode) {
+    dmsg("load: close (%hu)\n", HU(ecode));
+    zz_close(P);
+    dmsg("load: -> closef\n");
+  }
+
+error_no_close:
+  if (I) {
+    dmsg("load: info\n");
+    zz_info(ecode ?0 : P, I);
+    I->len.ms    = ms;
+    I->len.ticks = ticks;
+    dmsg("load: info -> %s\n", I->fmt.str);
+  }
+
+  dmsg("load (%s) -- <%s> \"%s\" %lu/%lu \n", ecode ? "ERR" :"OK",
+       I?I->fmt.str:"?", uri ? uri : "(nil)",
+       LU(ticks), LU(ms));
+
   return ecode;
 }
 
@@ -457,7 +542,7 @@ int play(const char * uri)
   g_paused     = 0;
 
   err = -1;
-  if (load(&g_play,uri,MEASURE))
+  if (load(&g_play, &g_info, uri, MEASURE, 0))
     goto exit;
 
   /* Init output module */
@@ -496,6 +581,43 @@ cantlock:
   return err;
 }
 
+
+#if 0
+static void xinfo_set_info(struct xinfo_s * XI)
+{
+  const int max = sizeof(XI->data)-1;
+  zz_assert( XI );
+  zz_assert( XI == &x_info );
+  zz_assert( XI->ready );
+  zz_assert (!XI->Fail );
+  zz_assert( !XI->data[0] );
+  zz_assert( !XI->data[max] );
+
+  XI->data[0] = XI->data[max] = 0;
+
+  if (!XI->format) XI->format = XI->data;
+  I->fmt.str = XI->format;
+
+  if (!XI->uri) XI->uri = XI->data;
+  I->uri = XI->uri;
+
+  if (!XI->album) XI->album = XI->data;
+  I->tag.album = XI->album;
+
+
+  char * title;                         /* title (in data[])       */
+  char * artist;                        /* artist (in data[])      */
+  char * ripper;                        /* ripper (in data[])      */
+
+
+
+
+
+  I
+  I->
+  I->
+#endif
+
 static
 /*****************************************************************************
  * GET FILE INFO
@@ -510,41 +632,84 @@ static
  ****************************************************************************/
 void getfileinfo(const in_char *uri, in_char *title, int *msptr)
 {
-  play_t * P=0, tmp;
+  play_t    *P=0;
+  zz_info_t *I=0;
 
-  if (!*uri) uri = 0;
-  if (!uri)
-    P = play_lock();
-  else if (load(P=&tmp, uri, MEASURE_ONLY)) {
-    dmsg("load(%s) to measure only failed ?\n", uri);
-    P = 0;
-  }
+  struct play_info_s {
+    play_t    play;
+    zz_info_t info;
+  } * tmp = 0;
 
-  if (P) {
-    if (msptr && P->end_detect && P->max_ticks) {
-      *msptr = P->max_ticks * (1000u / P->rate);
-      dmsg("'%s' ms=%u\n", uri?uri:"<current>", *msptr);
+  if (title) *title = 0;
+  if (msptr) *msptr = 0;
+
+  if (!uri || !*uri) {
+    uri = 0;
+    if (P = play_lock(), !P) {
+      emsg("getfileinfo: play lock failed\n");
+      return;
     }
-    if (title && P->info.comment) {
-      int i,j;
-      dmsg("'%s' comment=\n%s\n",
-           uri?uri:"<current>", P->info.comment);
-      for (j=0; isspace(P->info.comment[j]); ++j)
-        ;
-      if (P->info.comment[j]) {
-        for (i=0; i<GETFILEINFO_TITLE_LENGTH-1; ++i, ++j) {
-          title[i] = P->info.comment[j];
-          if (title[i] < 32) break;
-        }
-        title[i] = 0;
-      }
-    }
+    I = &g_info;
+
+    zz_assert( P == &g_play );
+    zz_assert( I == &g_info );
+
+    dmsg("getfileinfo: on current track\n");
+  } else if (zz_calloc(&tmp, sizeof(*tmp))) {
+    return;
   } else {
-    if (title) *title = 0;
-    if (msptr) *msptr = 0;
+    zz_assert( tmp );
+    P = &tmp->play;
+    I = &tmp->info;
+    if (load(P,I,uri,MEASURE_ONLY,0))
+      goto error_exit;
   }
-  if (P && !uri)
+
+  /* else if (load(P=&t_play, I=&t_info, uri, MEASURE_ONLY, PLAY_SEC, 0, 0)) */
+  /*   return; */
+
+  zz_assert( P );
+  zz_assert( I );
+
+  /* */
+  dmsg("getfileinfo: <%s> fmt:%s mixer:<%s> spr:%lu rate:%lu ticks:%lu ms:%lu\n",
+       uri ? uri : "(current)",
+       I->fmt.str ? I->fmt.str : "(nil)",
+       I->mix.name ? I->mix.name : "(nil)",
+       LU(I->mix.spr), LU(I->len.rate), LU(I->len.ticks), LU(I->len.ms));
+
+  if (msptr) *msptr = I->len.ms;
+  if (title && I->fmt.num != ZZ_FORMAT_UNKNOWN) {
+    switch (((!!*I->tag.album) << 1) | !!*I->tag.title) {
+    case 1:
+      strncpy(title, I->tag.title, GETFILEINFO_TITLE_LENGTH-1);
+      break;
+    case 2:
+      strncpy(title, I->tag.album, GETFILEINFO_TITLE_LENGTH-1);
+      break;
+    case 3:
+      snprintf(title,GETFILEINFO_TITLE_LENGTH-1,
+               "%s - %s",I->tag.album,I->tag.title);
+      break;
+    }
+    title[GETFILEINFO_TITLE_LENGTH-1] = 0;
+  }
+
+error_exit:
+  if (tmp) {
+    dmsg("getfileinfo: releasing temporary play/info\n");
+    assert( P == &tmp->play );
+    assert( I == &tmp->info );
+    zz_close(&tmp->play);
+    zz_memdel(&tmp);
+    zz_assert( !tmp );
+  } else if (P) {
+    zz_assert( P == &g_play );
     play_unlock(P);
+  }
+
+  dmsg("getfileinfo: <%s> \"%s\" %lums\n",
+       uri?uri:"(current)", title?title:"<n/a>", LU(msptr?*msptr:0));
 }
 
 static
@@ -675,7 +840,7 @@ void init()
 #ifdef USE_LOCK
   g_lock = CreateMutex(NULL, FALSE, NULL);
 #endif
-  g_info.lock = CreateMutex(NULL, FALSE, NULL);
+  x_info.lock = CreateMutex(NULL, FALSE, NULL);
 }
 
 static
@@ -687,8 +852,10 @@ void quit()
 #ifdef USE_LOCK
   CloseHandle(g_lock); g_lock = 0;
 #endif
-  CloseHandle(g_info.lock); g_info.lock = 0;
+  CloseHandle(x_info.lock); x_info.lock = 0;
   dmsg("quit\n");
+  if (zz_memchk_calls())
+    emsg("memory check has failed\n");
 }
 
 
@@ -698,7 +865,7 @@ void quit()
 
 struct transcon {
   play_t play;                       /* zingzong play instance      */
-  uint_t duration;                   /* run duration                */
+  zz_info_t info;                       /* info */
   size_t pcm;                        /* pcm counter                 */
   int    done;                       /* 0:not done, 1:done -1:error */
 };
@@ -724,16 +891,15 @@ intptr_t winampGetExtendedRead_open(
   zz_calloc(&trc,sizeof(struct transcon));
   if (!trc)
     goto error_no_free;
-  if (load(&trc->play,uri,MEASURE))
+  if (load(&trc->play, &trc->info, uri, MEASURE, 0))
     goto error;
-  trc->duration = trc->play.end_detect ? trc->play.max_ticks : 0;
 
   *nch = 1;
-  *spr = trc->play.spr;
+  *spr = trc->info.mix.spr;
   *bps = 16;
-  *siz = trc->duration * trc->play.pcm_per_tick * 2;
+  *siz = (uint64_t) trc->info.len.ms * trc->info.mix.ppt * 2;
 
-  dmsg("transcode -- %u ticks, %u bytes\n", trc->duration, *siz);
+  dmsg("transcode length -- %u bytes\n", *siz);
 
   return (intptr_t)trc;
 
@@ -810,6 +976,17 @@ void winampGetExtendedRead_close(intptr_t hdl)
 
 
 #if 0
+
+
+EXPORT
+int winampGetExtendedFileInfo(const char *uri, const char *data,
+                              char *dest, size_t max)
+{
+  dmsg("TAG: <%s>\n", data);
+  return 0;
+}
+
+
 EXPORT
 /**
  * Provides the extended meta tag support of winamp.
@@ -825,6 +1002,10 @@ EXPORT
 int winampGetExtendedFileInfo(const char *uri, const char *data,
                               char *dest, size_t max)
 {
+  play_t * P, tmp_play;
+  zz_info_t *I = 0, tmp_info;
+  struct xinfo_s * XI = 0;
+
   if (!uri)
     dmsg("winampGetExtendedFileInfo '%s' (null)\n", data);
   else if (!*uri)
@@ -832,12 +1013,156 @@ int winampGetExtendedFileInfo(const char *uri, const char *data,
   else
     dmsg("winampGetExtendedFileInfo '%s' (%s)\n", data, uri);
 
-  /* play_t * P; */
+  if (!*uri) uri = 0;
+  if (!uri) {
+    P = play_lock();
+    I = &g_info;
+  } else {
+    int l = 0; const int max = sizeof(XI->data)-1;
 
-  /* if (!*uri) uri = 0; */
-  /* if (!uri) */
-  /*   P = play_lock(); */
+    if (XI = info_lock(), XI) {
+      if (!XI->uri || strcasecmp(uri, XI->uri)) {
+        XI->ready  = 0;
+        XI->uri    = I->data+l;
+        l += 1 + snprintf(XI->uri, max-l,"%s", I->sng->uri);
+      }
+    }
 
+    if (!XI || !XI->ready)
+
+    P = &tmp;
+    memset(P,0,sizeof(*P));
+
+    if (!load(P=&tmp, uri, MEASURE_ONLY, 0))
+
+    if (!load(
+
+
+
+      I->album  = I->data+l;
+
+
+
+    }
+
+        value = 0;
+        if (I) {
+          if (!strcasecmp(data, "type"))
+            value = "0";                        /* audio format */
+          else if (!strcasecmp(data,"family"))
+            value = "quartet audio file";
+          else if (!strcasecmp(data,"length")) {
+            snprintf(dest, destlen, "%u", (unsigned) I->len.ms);
+            value = dest;
+          }
+          else if (!strcasecmp(data,"streamtype"))
+            ;
+          else if (!strcasecmp(data, "lossless"))
+            value = "1";
+          /* -------------------- */
+          else if (!strcasecmp(data,"album"))
+            value = I->tag.album;
+          else if (!strcasecmp(data,"albumartist") ||
+                   !strcasecmp(data,"artist" ))
+            value = I->tag.artist;
+          else if (!strcasecmp(data,"title"))
+            value = I->tag.title;
+          else if (!strcasecmp(data,"genre"))
+            value = "Atari ST Quartet";
+          else if (!strcasecmp(data,"publisher"))
+            value = I->tag.ripper;
+        }
+
+
+/* TAG: <Artist> */
+/* TAG: <GracenoteExtData> */
+/* TAG: <GracenoteFileID> */
+/* TAG: <album> */
+/* TAG: <albumartist> */
+/* TAG: <artist> */
+/* TAG: <bpm> */
+/* TAG: <comment> */
+/* TAG: <composer> */
+/* TAG: <disc> */
+/* TAG: <formatinformation> */
+/* TAG: <genre> */
+/* TAG: <length> */
+/* TAG: <publisher> */
+/* TAG: <replaygain_album_gain> */
+/* TAG: <replaygain_track_gain> */
+/* TAG: <streamname> */
+/* TAG: <streamtype> */
+/* TAG: <title> */
+/* TAG: <track> */
+/* TAG: <type> */
+/* TAG: <year> */
+
+        if (XI)
+          info_unlock(XI);
+
+        dest[0] = 0;
+        if (value && *value) {
+          if (value != dest) {
+            strncpy(dest, max, value);
+            dest[max-1] = 0;
+          }
+          return 1;
+        }
+
+      I->album  = I->data+l;
+      l += 1 + snprintf(I->data+l, max-l,"%s",I->tag.album);
+
+      i str
+
+
+
+      ;
+
+
+    if (I->ready)
+
+        /* Same URI :) */
+
+
+
+
+    info_unlock(I);
+  }
+
+
+
+      els
+
+
+
+    if (P) {
+
+
+
+    }
+
+  HANDLE lock;                          /* mutex for extended info */
+  unsigned int ms;                      /* duration.               */
+  char * format;                        /* file format (static)    */
+  char * uri;                           /* load uri (in data[])    */
+  char * album;                         /* album (in data[])       */
+  char * title;                         /* title (in data[])       */
+  char * artist;                        /* artist (in data[])      */
+  char * ripper;                        /* ripper (in data[])      */
+  char data[4096];                      /* Buffer for infos        */
+
+
+    P = 0;
+
+  if (P) {
+    info_t info;
+    if (!zz_info(P,&info)) {
+
+
+
+
+
+    }
 
 
   /* else { */

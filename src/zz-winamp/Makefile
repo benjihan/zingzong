@@ -88,8 +88,8 @@ filter-l    = $(strip $(filter     $(l_patterns),$1))
 # ----------------------------------------------------------------------
 
 ifneq ($(NO_SRATE),0)
-override SRATE_CFLAGS=
-override SRATE_LIBS=
+override undefine SRATE_CFLAGS
+override undefine SRATE_LIBS
 else
 ifeq ($(origin SRATE_CFLAGS)/$(origin SRATE_LIBS),undefined/undefined)
 
@@ -97,7 +97,6 @@ SRATE_CFLAGS := $(call pkgconfig,--cflags samplerate)
 ifeq ($(SRATE_CFLAGS),n/a)
 $(error pkg-config failed -- samplerate --cflags)
 endif
-SRATE_CFLAGS += -DWITH_SRATE=1
 
 SRATE_LIBS := $(call pkgconfig,--libs samplerate)
 ifeq ($(SRATE_LIBS),n/a)
@@ -107,6 +106,9 @@ endif
 endif
 endif
 
+ifneq ($(SRATE_LIBS),)
+override gb_CPPFLAGS += -DWITH_SRATE=1
+endif
 override gb_CFLAGS  += $(SRATE_CFLAGS)
 override gb_LDFLAGS += $(call filter-L,$(SRATE_LIBS))
 override gb_LDLIBS  += $(call filter-l,$(SRATE_LIBS))
@@ -115,9 +117,10 @@ override gb_LDLIBS  += $(call filter-l,$(SRATE_LIBS))
 #  soxr (NO_SOXR=0 to enable)
 # ----------------------------------------------------------------------
 
+
 ifneq ($(NO_SOXR),0)
-override SOXR_CFLAGS=
-override SOXR_LIBS=
+override undefine SOXR_CFLAGS
+override undefine SOXR_LIBS
 else
 ifeq ($(origin SOXR_CFLAGS)/$(origin SOXR_LIBS),undefined/undefined)
 
@@ -125,7 +128,6 @@ SOXR_CFLAGS := $(call pkgconfig,--cflags soxr)
 ifeq ($(SOXR_CFLAGS),n/a)
 $(error pkg-config failed -- soxr --cflags)
 endif
-SOXR_CFLAGS += -DWITH_SOXR=1
 
 SOXR_LIBS := $(call pkgconfig,--libs soxr)
 ifeq ($(SOXR_LIBS),n/a)
@@ -135,6 +137,9 @@ endif
 endif
 endif
 
+ifneq ($(SOXR_LIBS),)
+override gb_CPPFLAGS += -DWITH_SOXR=1
+endif
 override gb_CFLAGS  += $(SOXR_CFLAGS)
 override gb_LDFLAGS += $(call filter-L,$(SOXR_LIBS))
 override gb_LDLIBS  += $(call filter-l,$(SOXR_LIBS))

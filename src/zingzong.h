@@ -77,7 +77,8 @@ enum zz_format_e {
 };
 
 enum {
-  ZZ_DEFAULT_MIXER = 255       /**< Default mixer id.               */
+  ZZ_EXTERN_MIXER = 254,       /**< External mixer.                 */
+  ZZ_DEFAULT_MIXER             /**< Default mixer id.               */
 };
 
 typedef zz_i8_t zz_err_t;
@@ -200,7 +201,7 @@ ZINGZONG_API( void , zz_del )
 ZINGZONG_API( zz_err_t , zz_setup )
         (zz_play_t play, zz_u8_t mixerid,
          zz_u32_t spr, zz_u16_t rate,
-         zz_u32_t max_ticks, zz_u8_t end_detect)
+         zz_u32_t max_ticks, zz_u32_t max_ms, zz_u8_t end_detect)
         ;
 
 ZINGZONG_API( zz_err_t , zz_info )

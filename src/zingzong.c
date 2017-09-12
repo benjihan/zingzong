@@ -53,6 +53,8 @@ static const char bugreport[] = \
 # define MAX_DETECT 1800    /* maximum seconds for length detection */
 #endif
 
+#define MAX_PLAY 150
+
 /* ----------------------------------------------------------------------
  * Includes
  * ---------------------------------------------------------------------- */
@@ -102,7 +104,7 @@ enum {
 
 /* Options */
 
-static int opt_splrate = SPR_DEF, opt_tickrate=200;
+static int opt_splrate = SPR_DEF, opt_tickrate = 0;
 static int opt_mixerid = ZZ_DEFAULT_MIXER;
 static int8_t opt_mute, opt_help, opt_outtype;
 static char * opt_length, * opt_output;
@@ -282,9 +284,9 @@ static const char * tickstr(uint_t ticks, uint_t rate)
 
   if (!ticks)
     return "infinity";
-  ms = ticks * 1000u / rate;
+  ms = (uint_least64_t) ticks * 1000u / rate;
   if (ms >= 3600000u) {
-    i += snprintf(s+i,max-i,"%hu", HU(ms/3600000u));
+    i += snprintf(s+i,max-i,"%huh", HU(ms/3600000u));
     ms %= 3600000u;
     l = 2;
   }
@@ -315,7 +317,7 @@ static char * fileext(char * s)
 {
   int i, l = strlen(s);
   for ( i=l-2; i>=1; --i )
-    if (s[i] == '.') { l = i; break; }
+    if (s[i] == '.') { if (l-i<5) l = i; break; }
   dmsg("extension of \"%s\" is \"%s\"\n", s, s+l);
   return s+l;
 }
@@ -371,10 +373,10 @@ static uint_t mystrtoul(char **s, const int base)
 /**
  * Parse time argument (a bit permissive)
  */
-static int time_parse(uint_t * pticks, char * time)
+static int time_parse(uint_t * pticks, uint_t * pms, char * time)
 {
-  int i, w = 1;
-  uint_t ticks = 0;
+  int i;
+  uint_t ticks = 0, ms = 0, w = 1000;
   char *s = time;
 
   if (!*s) {
@@ -383,7 +385,7 @@ static int time_parse(uint_t * pticks, char * time)
   }
 
   if (!strcasecmp(time,"inf")) {
-    ticks = 0; s += 3; goto done;
+    s += 3; goto done;
   }
 
   for (i=0; *s && i<3; ++i) {
@@ -395,33 +397,34 @@ static int time_parse(uint_t * pticks, char * time)
       if (!i)
         ticks = v;
       else
-        ticks += v * opt_tickrate * w;
+        ms += v * w;
       goto done;
 
     case ',': case '.':
       ++s;
-      ticks += v * opt_tickrate;
+      ms += v * 1000u;
       v = mystrtoul(&s,10);
       if (v == (uint_t)-1)
         s = "?";
       else if (v) {
         while (v > 1000) v /= 10u;
         while (v <  100) v *= 10u;
-        ticks += (v * opt_tickrate) / 1000u;
+        zz_assert(v >= 0 && v < 1000u);
+        ms += v;
       }
       goto done;
 
     case 'h':
       if (i>0) goto done;
-      ticks = v * opt_tickrate * 3600u;
-      w = 60u;
+      ms = v * 3600000u;
+      w = 60000u;
       ++s;
       break;
 
     case 'm': case '\'':
       if (i>1) goto done;
-      ticks += v * opt_tickrate * 60u;
-      w = 1u;
+      ms += v * 60u * 1000u;
+      w = 1000u;
       ++s;
       break;
 
@@ -435,7 +438,11 @@ done:
     emsg("invalid argument -- length=%s\n", time);
     return ZZ_EARG;
   }
+  dmsg("parse_time: \"%s\" => %lu-ticks %lu-ms\n",
+       time,  LU(ticks), LU(ms));
+  zz_assert( ms == 0 || ticks == 0 );
   *pticks = ticks;
+  *pms    = ms;
   return ZZ_OK;
 }
 
@@ -460,7 +467,7 @@ static int uint_arg(char * arg, const char * name,
       emsg("invalid number -- %s=%s\n", name, arg);
       v = (uint_t) -1;
     } else if  (v < min || (max && v > max)) {
-      emsg("out of range -- %s=%s\n", name, arg);
+      emsg("out of range {%lu..%lu} -- %s=%s\n",LU(min),LU(max),name,arg);
       v = (uint_t) -1;
     }
   }
@@ -674,7 +681,7 @@ int main(int argc, char *argv[])
   char * wavuri = 0;
   char * songuri = 0, * vseturi = 0;
   zz_play_t P = 0;
-  zz_u32_t max_ticks = 0;
+  zz_u32_t max_ticks = 0, max_ms = 0;
   zz_u8_t format;
   zz_out_t * out = 0;
 
@@ -731,11 +738,11 @@ int main(int argc, char *argv[])
   }
 
   if (opt_length) {
-    ecode = time_parse(&max_ticks, opt_length);
+    ecode = time_parse(&max_ticks, &max_ms, opt_length);
     if (ecode)
       goto error_exit;
   } else {
-    max_ticks = MAX_DETECT * opt_tickrate;
+    max_ms = MAX_PLAY * 1000u;
   }
 
   if (optind >= argc)
@@ -804,10 +811,9 @@ int main(int argc, char *argv[])
 
   ecode = zz_setup(P, opt_mixerid,
                    out->hz, opt_tickrate,
-                   max_ticks, !opt_length);
+                   max_ticks, max_ms, !opt_length);
   if (ecode)
     goto error_exit;
-
 
 #ifndef NO_AO
   if (wavuri)
@@ -817,21 +823,25 @@ int main(int argc, char *argv[])
   if (!ecode)
     ecode = zz_init(P);
 
-  if (max_ticks) {
-    zz_u32_t ticks = max_ticks, ms = 0;
+  if ( ! opt_length  ) {
+    zz_u32_t ticks = 0, ms = MAX_DETECT * 1000u;
     ecode = zz_measure(P, &ticks, &ms);
     if (ecode)
       goto error_exit;
-    dmsg("measured: %lu ticks, %lu ms\n", LU(ticks), LU(ms));
+    dmsg("measured: %lu-ticks, %lu-ms\n", LU(ticks), LU(ms));
   }
 
   if (!ecode) {
     zz_info_t info;
     uint_t sec = (uint_t) -1;
-
     ecode = zz_info(P, &info);
     if (ecode)
       goto error_exit;
+
+    dmsg("info: rate:%hu spr:%lu ticks:%lu ms:%lu\n",
+         HU(info.len.rate), LU(info.mix.spr),
+         LU(info.len.ticks), LU(info.len.ms));
+
 
     dmsg("Output via %s to \"%s\"\n", out->name, out->uri);
     imsg("Zing that zong\n"

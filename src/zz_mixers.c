@@ -48,23 +48,25 @@ static mixer_t * const zz_mixers[] = {
 
 static mixer_t * default_mixer = &DEFAULT_MIXER;
 
-
-static mixer_t * get_mixer(zz_u8_t * const n)
+static mixer_t * get_mixer(zz_u8_t * const pn)
 {
   const zz_u8_t max = sizeof(zz_mixers)/sizeof(*zz_mixers) - 1;
   mixer_t * mixer = 0;
-  if (*n == ZZ_DEFAULT_MIXER) {
+  u8_t n = *pn;
+
+  if (n == ZZ_DEFAULT_MIXER) {
     zz_u8_t i;
     mixer = default_mixer;
     for (i=0; i<max; ++i)
       if (mixer == zz_mixers[i]) {
-        *n = i; break;
+        n = i; break;
       }
-  } else if (*n < max) {
-    mixer = zz_mixers[*n];
-  } else {
-    *n = ZZ_DEFAULT_MIXER;
   }
+  else if (n < max)
+    mixer = zz_mixers[n];
+  else if (n != ZZ_EXTERN_MIXER)
+    n = ZZ_DEFAULT_MIXER;
+  *pn = n;
   return mixer;
 }
 
@@ -83,13 +85,17 @@ zz_u8_t zz_mixer_set(play_t * P, zz_u8_t n)
 {
   mixer_t * mixer;
 
-  if (mixer = get_mixer(&n), mixer) {
-    if (!P)
-      default_mixer = mixer;
-    else {
-      P->mixer = mixer;
+
+  dmsg("set %s#%hu\n", P?"":"default ",HU(n));
+  mixer = get_mixer(&n);
+  dmsg("found: #%hu <%s>\n", HU(n), mixer?mixer->name:"");
+
+  if (n != ZZ_DEFAULT_MIXER) {
+    /* mixer can be null if n is ZZ_EXTERN_MIXER. */
+    if (mixer)
+      *( P ? &P->mixer : &default_mixer ) = mixer;
+    if (P)
       P->mixer_id = n;
-    }
   }
   return n;
 }

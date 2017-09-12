@@ -59,12 +59,11 @@ vset_guess(zz_play_t const P, const char * songuri)
 #else
 
 static zz_err_t
-try_vset_load(vset_t * vset, const char * uri, int method)
+try_vset_load(vset_t * vset, const char * uri)
 {
   const zz_u8_t old_log = zz_log_bit(1<<ZZ_LOG_ERR,0);
   zz_err_t ecode;
-  dmsg("testing voiceset method #%hu:%hu -- \"%s\"\n",
-       HU(method>>8),  HU(method&255), uri);
+  dmsg("try set -- \"%s\"\n", uri);
   ecode = vset_load(vset, uri);
   zz_log_bit(0, old_log & (1<<ZZ_LOG_ERR)); /* restore ZZ_LOG_ERROR  */
   if (ecode)
@@ -107,7 +106,9 @@ vset_guess(zz_play_t P, const char * songuri)
     songlen = strlen(songuri),
     case_sensitive = uri_case_sensitive(songuri);
   const char *nud, *dot, *suf_ext;
-  int idx, inud, idot, method, i, c, tr;
+  int inud, idot;
+  int i, c, tr;
+  int idx, next_idx, method, next_method;
 
   enum {
     e_type_ok = 1,                    /* have extension  */
@@ -160,7 +161,7 @@ vset_guess(zz_play_t P, const char * songuri)
   idot = !*dot ? 0 : dot-songuri;       /* index of '.' in songuri[] */
 
   dmsg("extension len: %d\n",songlen-idot);
-  if (songlen-idot >= 4)
+  if (songlen-idot > 4)
     idot = 0;                           /* ignore long extension */
 
   if (idot) {
@@ -173,17 +174,40 @@ vset_guess(zz_play_t P, const char * songuri)
     else if (!strcasecmp(dot+1,"qts") || !strcasecmp(dot+1,"qta") )
       e_type |= e_type_qt;
     dmsg("extension \"%s\" of type $%X\n",dot,e_type);
+  } else {
+    dmsg("no extension\n");
   }
 
   P->vseturi = zz_strnew(songlen+32);
   if (unlikely(!P->vseturi))
     return E_MEM;
 
-  for (idx=method=0; ++method; ) {
+  for (idx=0, method=1; method ; method=next_method, idx=next_idx) {
     char * const s = P->vseturi->ptr;
 
-    *s = 0;
+    *s = 0;                                   /* no candidat */
     tr = (e_type & e_type_uc) ? lc_to_uc : 0; /* translation */
+
+    /* next method (state-init => run-state) */
+    next_method = method;
+    if (method & 1) {
+      ++next_method;
+      idx = 0;
+    }
+    next_idx = idx+1+!case_sensitive;
+
+    /* dmsg("XXX %hu:%hu %hu:%hu\n", */
+    /*      HU(method),HU(idx), HU(next_method), HU(next_idx)); */
+
+    /* GB: Every 2nd idx is the same as its predecessor but using
+     *     the other case. The predecessor case depends on the case
+     *     of the song file extension. It follows this rule --
+     *     lowercase unless there is a single uppercase char in the
+     *     original file extension.
+     */
+    tr ^= lc_to_uc & -(idx & 1);
+    dmsg("---------\n");
+    dmsg("#%hu:%hu %02hX\n",HU(method), HU(idx), HU(tr));
 
     switch (method) {
 
@@ -193,29 +217,18 @@ vset_guess(zz_play_t P, const char * songuri)
        */
     case 1:
       /* No extension ? ignore this method */
-      if (!idot) { method = 2; break; } /* *3* on next loop */
-      idx = -1;                         /* restart the method */
-    case 2: {
-      ++idx;
-      idx += idx & 1 & !case_sensitive;
-      if (idx >= 8)
+      if (!idot) {
+        dmsg("skipping method #%hu because no extension\n", HU(method));
+        ++next_method;
+        zz_assert(next_method==3);
         break;
-      method = 1;                     /* *2* on next loop */
+      }
 
-      /* GB: Every 2nd idx is the same as its predecessor but using
-       *     the other case. The predecessor case depends on the case
-       *     of the song file extension. It follows this rule --
-       *     lowercase unless there is a single uppercase char in the
-       *     original file extension.
-       */
-      tr ^= lc_to_uc & -(idx & 1);
-
-      /* 0->.set 1->.SET 2->*.set 3->*.SET
-       * 4->.smp 5->.SMP 6->*.smp 7->*.SMP
-       */
+    case 2: {
+      if (idx >= 8) { ++next_method; zz_assert(next_method==3); break; }
 
       /* starts with ".set" for ".4v" songs else uses ".smp" first */
-      suf_ext = !(e_type & e_type_4v) ^ (idx >= 4) ? "smp" : "set";
+      suf_ext = ( !(e_type & e_type_4v) ^ (idx >= 4) ) ? "smp" : "set";
 
       /* Copy up to the extension. */
       zz_memcpy(s, songuri, idot+1);
@@ -228,9 +241,9 @@ vset_guess(zz_play_t P, const char * songuri)
           i -= (i > inud+1 && isdigit(s[i-1]));
           i -= (i > inud+1 && strchr(num_sep,s[i-1]));
         } else {
-         /* No song number suffix. Skip this one and the next which
-           * is the same with the alternate case. */
-          idx += 2;
+          /* No song number suffix. Skip regardless of case
+           * sensitivity. */
+          next_idx = idx+2;
           *s = 0;
           break;
         }
@@ -241,45 +254,40 @@ vset_guess(zz_play_t P, const char * songuri)
         s[i] = c - (islower(c) ? tr : 0);
       s[i] = 0;
       zz_assert(i < P->vseturi->max);
-      idx += 2 - case_sensitive;        /* next index */
     } break;
 
       /* 3&4: Append extension. */
     case 3:
       if (e_type & (e_type_4v|e_type_qt)) {
-        method = 4;                     /* *5* on next loop */
+        dmsg("skipping method #%hu because have known extension\n", HU(method));
+        ++next_method;
+        zz_assert( next_method == 5 );
         break;
       }
-      idx = -1;
     case 4:
-      ++idx;
-      idx += idx & 1 & !case_sensitive;
-      if (idx >= 4)
+      if (idx >= 4) {
+        ++next_method;
+        zz_assert( next_method == 5 );
         break;
-      method = 3;                       /* *4* on next loop */
-      tr ^= lc_to_uc & -(idx&1);        /* Get case translation. */
+      }
       suf_ext = !(e_type & e_type_4v) ^ (idx >= 2) ? "smp" : "set";
       zz_memcpy(s, songuri, songlen);
       s[songlen] = '.';
-      zz_memcpy(s+songlen+1, suf_ext, 4);
-      ++idx;
+      for (i=0; (c=suf_ext[i]); ++i)
+        s[songlen+i+1] = c - ( islower(c) ? tr : 0 );
+      s[songlen+i+1] = 0;
       break;
 
       /* 5&6: prefixed extension (Amiga like) */
     case 5:
       if (e_type & (e_type_4v|e_type_qt)) {
-        method = 6;                     /* *7* on next loop */
+        dmsg("skipping method #%hu because have known extension\n", HU(method));
+        ++next_method;
+        zz_assert( next_method == 7 );
         break;
       }
-      idx = -1;
     case 6:
-      ++idx;
-      idx += (idx & 1) & !case_sensitive;
-      if (idx >= 6)
-        break;
-      method = 5;                       /* *6* on next loop */
-      tr ^= lc_to_uc & -(idx&1);        /* Get case translation. */
-
+      if (idx >= 6) { ++next_method; zz_assert( next_method == 7 ); break; }
       switch (idx >> 1) {
       case 0: c = strncasecmp("4v",  nud, i=2); suf_ext = "set"; break;
       case 1: c = strncasecmp("qts", nud, i=3); suf_ext = "smp"; break;
@@ -290,16 +298,16 @@ vset_guess(zz_play_t P, const char * songuri)
       zz_memcpy(s, songuri, inud);
       zz_memcpy(s+inud+3, songuri+inud+i, songlen-inud-i+1);
       for (i=0; (c=suf_ext[i]); ++i)
-        s[inud+i] = c - ( islower(c) ? tr : 0);
+        s[inud+i] = c - ( islower(c) ? tr : 0 );
       break;
 
     default:
-      idx    = -1;                      /* restart next method */
-      method = -2;                      /* continue on last resort */
-    case -1: {
+      zz_assert( idx == 0 );
+      next_method = -2;
+
+    case -2: {
       /* Last resort filenames. */
       static const char * vnames[] = { "voice.set", "SMP.set" };
-      ++idx;
       suf_ext = 0;
 
       if ( e_type & e_type_4v )
@@ -329,8 +337,12 @@ vset_guess(zz_play_t P, const char * songuri)
 
     }
 
-    if (*s && E_OK == try_vset_load(&P->vset, s, (method<<8)|idx) )
-      return E_OK;
+    if (*s) {
+      dmsg("method: #%hu:%hu, next: #%hu:%hu tr:%02hx\n",
+           HU(method), HU(idx), HU(next_method), HU(next_idx), HU(tr));
+      if (E_OK == try_vset_load(&P->vset, s))
+        return E_OK;
+    }
   }
 
   emsg("unable to find a voice set for -- \"%s\"\n", songuri);
@@ -389,6 +401,27 @@ static char * trimstr(char * s)
   return beg;
 }
 
+static char *
+mystrsep(char ** const ps, const char c)
+{
+  char *beg, *end;
+  zz_assert( ps );
+  zz_assert( *ps );
+  for (end = beg = *ps ; ; ++end) {
+    if ( ! *end ) {
+      *ps = 0;
+      break;
+    }
+    if ( *end == c ) {
+      *end = 0;
+      *ps = end+1;
+      break;
+    }
+
+  }
+  return beg;
+}
+
 /**
  * Load .4q file (after header).
  */
@@ -419,9 +452,9 @@ q4_load(vfs_t vfs, q4_t *q4)
       ecode = song_parse(q4->song, vfs, hd, q4->songsz-16);
     if (E_OK == ecode && q4->vset)
       q4->vset->iused = q4->song->iused;
-  } else {
+  } else
     ecode = vfs_seek(vfs, q4->songsz, ZZ_SEEK_CUR);
-  }
+
   if (E_OK != ecode)
     goto error;
 
@@ -491,12 +524,10 @@ q4_load(vfs_t vfs, q4_t *q4)
 
       s = comment;
 
-      dmsg("== COMMENT: ===\n"
-           "%s\n"
-           " --------------\n", comment);
+      dmsg("== COMMENT: ===\n");
 
       while (s != NULL) {
-        char * line = strsep(&s, "\n");
+        char * line = mystrsep(&s, '\n');
 
         if (!line) break;
 
@@ -556,7 +587,7 @@ q4_load(vfs_t vfs, q4_t *q4)
           }
         }
 
-       if (!q4->info->album) {
+        if (!q4->info->album) {
           if (!strncasecmp(line,"Album:",7)) {
             q4->info->album = trimstr(line + 7);
             continue;
@@ -570,6 +601,7 @@ q4_load(vfs_t vfs, q4_t *q4)
 
       }
 
+      dmsg(" --------------\n");
       dmsg("-- 4Q  :\n");
       dmsg("album  : <%s>\n", q4->info->album  ? q4->info->album  : "");
       dmsg("title  : <%s>\n", q4->info->title  ? q4->info->title  : "");
@@ -594,8 +626,15 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
   vfs_t inp = 0;
   zz_err_t ecode;
   zz_u8_t format = ZZ_FORMAT_UNKNOWN;
+  const u8_t without_vset = vseturi && !*vseturi;
 
-  for (ecode = !P || !songuri ? E_ARG : E_OK; ecode == E_OK ; ) {
+  dmsg("load: song:<%s>\n", songuri?songuri:"(nil)");
+  dmsg("%s: vset:<%s>\n", without_vset?"skip":"load", vseturi?vseturi:"(auto)");
+
+  if (!P || !songuri || !*songuri)
+    return E_ARG;
+
+  do {
 
     ecode = vfs_open_uri(&inp, songuri);
     if (ecode == E_OK)
@@ -622,12 +661,15 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
       P->songuri = zz_strset(P->songuri, songuri);
       if (!P->songuri)
         break;
+
       P->vseturi = zz_strdup(P->songuri);
       P->infouri = zz_strdup(P->songuri);
 
-      q4.song = &P->song; q4.songsz = U32(hd+8);
-      q4.vset = &P->vset; q4.vsetsz = U32(hd+12);
       q4.info = &P->info; q4.infosz = U32(hd+16);
+      q4.song = &P->song; q4.songsz = U32(hd+8);
+      q4.vset = without_vset ? 0 : &P->vset;
+      q4.vsetsz = U32(hd+12);
+
       dmsg("QUARTET header [sng:%lu set:%lu inf:%lu]\n",
            LU(q4.songsz), LU(q4.vsetsz), LU(q4.infosz));
       ecode = q4_load(inp,&q4);
@@ -658,27 +700,27 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
           break;
         ecode = E_MEM;
         P->vseturi = zz_strset(P->vseturi,vseturi);
-        if (unlikely(!P->vseturi))
-          break;
+        if (likely(!P->vseturi))
+          ecode = E_OK;
       } else {
         dmsg("skipped voice set as requested\n");
-        ecode = E_OK;
+        zz_assert( ecode == E_OK);
       }
     }
 
     /* Finally */
-    zz_assert( ecode == E_OK );
-    P->format = format;
-    break;
-  }
+  } while (0);
 
   vfs_del(&inp);
   if (ecode) {
     zz_song_wipe(&P->song);
     zz_vset_wipe(&P->vset);
     zz_info_wipe(&P->info);
+    format = ZZ_FORMAT_UNKNOWN;
+  } else {
+    zz_assert( format != ZZ_FORMAT_UNKNOWN );
   }
-
+  P->format = format;
   if (pfmt)
     *pfmt = format;
 
