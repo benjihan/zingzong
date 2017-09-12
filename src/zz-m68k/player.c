@@ -70,7 +70,7 @@ void player_init(void)
     && ( play.vset.iused = play.song.iused )
     && ! vset_init_header(&play.vset, p.vset)
     && ! vset_init(&play.vset)
-    && ! zz_setup(&play, ZZ_DEFAULT_MIXER, 0, 0, 0, 0)
+    && ! zz_setup(&play, ZZ_DEFAULT_MIXER, 0, 0, 0, 0, 0)
     && ! zz_init(&play)
     ;
 }

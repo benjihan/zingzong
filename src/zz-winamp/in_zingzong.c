@@ -81,7 +81,6 @@ static HANDLE g_lock;                   /* mutex handle            */
 
 struct xinfo_s {
   HANDLE lock;                          /* mutex for extended info */
-  zz_info_t info;                       /*  */
   unsigned int ready:1, fail:1;         /* status flags.           */
   unsigned int ms;                      /* duration.               */
   char * format;                        /* file format (static)    */
@@ -177,7 +176,6 @@ struct xinfo_s * info_lock()
 static inline
 void info_unlock(struct xinfo_s * xinfo)
 { if (xinfo == &x_info) unlock(x_info.lock); }
-
 
 static
 /*****************************************************************************
@@ -324,13 +322,7 @@ int getlength()
   if (atomic_get(&g_playing)) {
     play_t * const P = play_lock();
     if (P) {
-      if (P->end_detect && P->rate && P->max_ticks) {
-        uint_least64_t ums = (uint_least64_t) P->max_ticks * 1000u / P->rate;
-        if (ums > INT_MAX)
-          ms = INT_MAX;
-        else
-          ms = ums;
-      }
+      ms = (g_info.len.ms > INT_MAX) ? INT_MAX : g_info.len.ms;
       play_unlock(P);
     }
   }
@@ -352,9 +344,7 @@ static
  ****************************************************************************/
 void setoutputtime(int ms)
 {
-/* Not supported ATM.
- * It has to signal the play thread it has to seek.
- */
+  /* Not supported ATM. */
 }
 
 static
@@ -493,7 +483,7 @@ error_close:
   if (ecode) {
     dmsg("load: close (%hu)\n", HU(ecode));
     zz_close(P);
-    dmsg("load: -> closef\n");
+    dmsg("load: -> closed\n");
   }
 
 error_no_close:
@@ -665,13 +655,9 @@ void getfileinfo(const in_char *uri, in_char *title, int *msptr)
       goto error_exit;
   }
 
-  /* else if (load(P=&t_play, I=&t_info, uri, MEASURE_ONLY, PLAY_SEC, 0, 0)) */
-  /*   return; */
-
   zz_assert( P );
   zz_assert( I );
 
-  /* */
   dmsg("getfileinfo: <%s> fmt:%s mixer:<%s> spr:%lu rate:%lu ticks:%lu ms:%lu\n",
        uri ? uri : "(current)",
        I->fmt.str ? I->fmt.str : "(nil)",
@@ -698,8 +684,8 @@ void getfileinfo(const in_char *uri, in_char *title, int *msptr)
 error_exit:
   if (tmp) {
     dmsg("getfileinfo: releasing temporary play/info\n");
-    assert( P == &tmp->play );
-    assert( I == &tmp->info );
+    zz_assert( P == &tmp->play );
+    zz_assert( I == &tmp->info );
     zz_close(&tmp->play);
     zz_memdel(&tmp);
     zz_assert( !tmp );
@@ -864,10 +850,11 @@ void quit()
  ****************************************************************************/
 
 struct transcon {
-  play_t play;                       /* zingzong play instance      */
-  zz_info_t info;                       /* info */
-  size_t pcm;                        /* pcm counter                 */
-  int    done;                       /* 0:not done, 1:done -1:error */
+  play_t    play;                  /* zingzong play instance.       */
+  zz_info_t info;                  /* zingzong info instance.       */
+  size_t    pcm;                   /* pcm counter.                  */
+  int       done;                  /* 0:running / 1:done / -1:error */
+  zz_err_t  ecode;                 /* error code                    */
 };
 
 EXPORT
@@ -879,33 +866,38 @@ EXPORT
  * @param   bps  pointer to output bit-per-sample
  * @param   nch  pointer to output number of channel
  * @param   spr  pointer to output sampling rate
- * @return  Transcoding context struct (sc68_t right now)
+ * @return  Transcoding context struct (pointer to struct transcon)
  * @retval  0 on errror
  */
 intptr_t winampGetExtendedRead_open(
   const char *uri,int *siz, int *bps, int *nch, int *spr)
 {
   struct transcon * trc = 0;
-
-  dmsg("transcode -- '%s'\n", uri);
+  uint_least64_t bytes;
+  dmsg("transcoder: -- '%s'\n", uri);
   zz_calloc(&trc,sizeof(struct transcon));
   if (!trc)
-    goto error_no_free;
-  if (load(&trc->play, &trc->info, uri, MEASURE, 0))
-    goto error;
+    goto error_free_not;
+
+  trc->ecode = load(&trc->play, &trc->info, uri, MEASURE, 0);
+  if (trc->ecode != ZZ_OK)
+    goto error_free_trc;    /* play should have been closed already */
 
   *nch = 1;
   *spr = trc->info.mix.spr;
   *bps = 16;
-  *siz = (uint64_t) trc->info.len.ms * trc->info.mix.ppt * 2;
 
-  dmsg("transcode length -- %u bytes\n", *siz);
+  bytes = ((uint_least64_t)trc->info.len.ticks * trc->info.mix.ppt) << 1;
+  /* GB: 32 bit kinda suxk here winamp team !!! At least can we have
+   *     UINT_MAX ???
+   */
+  *siz = bytes > UINT_MAX ? UINT_MAX : bytes;
 
-  return (intptr_t)trc;
+  return (intptr_t) trc;
 
-error:
+error_free_trc:
   zz_free(&trc);
-error_no_free:
+error_free_not:
   return 0;
 }
 
@@ -925,32 +917,47 @@ intptr_t winampGetExtendedRead_getData(
   intptr_t hdl, char *dst, int len, int *_end)
 {
   struct transcon * trc = (struct transcon *) hdl;
-  volatile int * end = _end;
+  volatile int * end, fake_end = 0;
   int cnt;
 
-  zz_assert(end);
+  /* safety net. winamp should give us a valid pointers. */
+  end = _end ? _end : &fake_end;
+  if (!trc || !dst)
+    return 0;
 
   for (cnt = 0; len >= 2; ) {
     int16_t * pcm;
     zz_u16_t n;
 
-    if (*end || trc->done) {
-      dmsg("transcoder -- notify end\n");
-      cnt = 0; break;
+    if (*end) {
+      dmsg("transcoder: winamp request to end\n");
+      trc->done  = 0x04;                /* flag as done */
+      trc->ecode = E_ERR;               /* GB: is it an error ? */
+      cnt = 0;                          /* discard all */
+      break;
     }
-    if (trc->play.done) {
-      dmsg("transcoder -- play done\n");
-      trc->done = 1; break;
+
+    if (trc->done) {
+      dmsg("transcoder: marked as done (%02hX)\n", HU(trc->done));
+      cnt = 0;
+      break;
     }
 
     n = trc->play.pcm_per_tick;
     if (n > (len>>1) ) n = len>>1;
     pcm = zz_play(&trc->play, &n);
     if (!pcm) {
-      dmsg("transcoder -- notify failure :(\n");
-      trc->done = -1; break;
+      trc->ecode = n;
+      trc->done  = 1;
+      if (!n)
+        dmsg("transcoder: play done\n");
+      else
+        dmsg("transcoder: play failed (%02hX)\n", HU(n));
+      break;
     }
-    n <<= 1;                            /* in bytes */
+
+
+    n <<= 1;
     zz_memcpy(dst+cnt,pcm,n);
     cnt += n;
     len -= n;
@@ -967,25 +974,64 @@ EXPORT
 void winampGetExtendedRead_close(intptr_t hdl)
 {
   struct transcon * trc = (struct transcon *) hdl;
-
   if (trc) {
+    dmsg("transcoder: close (ecode:%hX done:%hX)\n",
+         HU(trc->ecode), HU(trc->done));
     zz_close(&trc->play);
     zz_free(&trc);
   }
 }
 
-
-#if 0
-
-
-EXPORT
-int winampGetExtendedFileInfo(const char *uri, const char *data,
-                              char *dest, size_t max)
+static int is_my_tag(const char * name, const char ** value)
 {
-  dmsg("TAG: <%s>\n", data);
+  /* Winamp known metatags so far:
+
+     Artist GracenoteExtData GracenoteFileID album albumartist artist
+     bpm comment composer disc formatinformation genre length
+     publisher replaygain_album_gain replaygain_track_gain streamname
+     streamtype title track type year
+  */
+
+  /* Tags zingzong supports. If value is set it's a constant and
+   * actual file loading is not necessary.
+   */
+  static struct supported_tag {
+    const char * name;
+    const char * value;
+  } tags[] = {
+    /* GB: /!\ Keep it sorted /!\ */
+    { "album", 0 },
+    { "artist", 0 },
+    { "family", "quartet audio file" },
+    { "formatinformation",
+      "Microdeal Quartet\n"
+      "\n"
+      "Quartet is a music score editor edited by Microdeal in 1989 for"
+      " the Atari ST and the Amiga home computers featuring a 4 digital"
+      " channel sample sequencer and DSP software.\n"
+      "\n"
+      "Illusions Programmers:\n"
+      "Rob Povey & Kevin Cowtan" },
+    { "genre",   "Quartet Atari ST Music" },
+    { "length",  0 },
+    { "lossless", "1" },
+    { "publisher", 0 },
+    { "title", 0 },
+    { "type", "0" },                  /* "0" = audio format */
+    { 0, 0 }
+  }, *tag;
+
+  for (tag=tags; tag->name; ++tag) {
+    int res = strcasecmp(name, tag->name);
+    if (!res) {
+      *value = tag->value;
+      return 1;
+    }
+    if (res < 0)
+      break;
+  }
   return 0;
 }
-
 
 EXPORT
 /**
@@ -1002,181 +1048,118 @@ EXPORT
 int winampGetExtendedFileInfo(const char *uri, const char *data,
                               char *dest, size_t max)
 {
-  play_t * P, tmp_play;
-  zz_info_t *I = 0, tmp_info;
-  struct xinfo_s * XI = 0;
+  int ret = 0;
+  play_t * P = 0;  zz_info_t *I = 0, tmp_info;
+  struct xinfo_s * X = 0;
+  const char * value;
 
-  if (!uri)
-    dmsg("winampGetExtendedFileInfo '%s' (null)\n", data);
-  else if (!*uri)
-    dmsg("winampGetExtendedFileInfo '%s' (empty)\n", data);
-  else
-    dmsg("winampGetExtendedFileInfo '%s' (%s)\n", data, uri);
+  /* Safety net */
+  if (!data || !*data || !dest || max < 2)
+    return 0;
+
+  if (!is_my_tag(data,&value))
+    return 0;
+  else if (value)
+    goto got_value;
 
   if (!*uri) uri = 0;
   if (!uri) {
     P = play_lock();
     I = &g_info;
   } else {
-    int l = 0; const int max = sizeof(XI->data)-1;
+    int l = 1; const int M = sizeof(X->data)-1;
 
-    if (XI = info_lock(), XI) {
-      if (!XI->uri || strcasecmp(uri, XI->uri)) {
-        XI->ready  = 0;
-        XI->uri    = I->data+l;
-        l += 1 + snprintf(XI->uri, max-l,"%s", I->sng->uri);
+    if (X = info_lock(), X) {
+      zz_err_t ecode = ZZ_OK;
+
+      zz_assert( X == &x_info );
+      /* always the empty string at start */
+      X->data[0] = 0;
+      if (!X->uri || !*X->uri || strcasecmp(uri,X->uri)) {
+        dmsg("WA-Xinfo[%s]: new URI \"%s\"\n", data, uri);
+        X->ready = 0;                   /* not ready yet */
+        /* Copy URI */
+        X->uri = X->data+(l=1);
+        l += 1 + snprintf(X->uri, M-l, "%s", uri);
+        /* Reset all other fields */
+        X->ms = 0;
+        X->format = X->album = X->artist = X->title = X->ripper = X->data;
+        ecode = zz_new(&P);
+        while (!ecode) {
+          if (ecode = zz_load(P,uri,"",0), ecode) break;
+          if (ecode = zz_info(P,&tmp_info), ecode) break;
+          X->format = (char *)tmp_info.fmt.str; /* always a static string */
+          dmsg("WA-Xinfo[%s]: format is <%s>\n", data, X->format);
+
+#define COPYTAG(TAG)                                                    \
+          if ((l+=snprintf(X->TAG=X->data+l,M-l,"%s",I->tag.TAG))       \
+              >= M) { break; } else ++l
+
+          I = &tmp_info;
+          COPYTAG(title);
+          COPYTAG(artist);
+          COPYTAG(ripper);
+          COPYTAG(album);
+          I = 0;
+          break;
+        }
+        X->ready = 1;
+        X->fail  = !!ecode;
+        dmsg("WA-Xinfo[%s]: %s\n", data, X->fail?"FAIL":"READY");
+
+        if (P)
+          zz_del(&P);
+        zz_assert( !P );
+        P = 0;
+      } /* uri */
+
+      if (X->ready && !X->fail) {
+        I = &tmp_info;
+        /* copy xinfo to this temp info to use it below */
+        I->tag.album  = X->album;
+        I->tag.title  = X->title;
+        I->tag.artist = X->artist;
+        I->tag.ripper = X->ripper;
       }
+      /* GB: We can not unlock X until the data is copied */
+      X->data[M] = 0;                   /* safety net */
     }
-
-    if (!XI || !XI->ready)
-
-    P = &tmp;
-    memset(P,0,sizeof(*P));
-
-    if (!load(P=&tmp, uri, MEASURE_ONLY, 0))
-
-    if (!load(
-
-
-
-      I->album  = I->data+l;
-
-
-
-    }
-
-        value = 0;
-        if (I) {
-          if (!strcasecmp(data, "type"))
-            value = "0";                        /* audio format */
-          else if (!strcasecmp(data,"family"))
-            value = "quartet audio file";
-          else if (!strcasecmp(data,"length")) {
-            snprintf(dest, destlen, "%u", (unsigned) I->len.ms);
-            value = dest;
-          }
-          else if (!strcasecmp(data,"streamtype"))
-            ;
-          else if (!strcasecmp(data, "lossless"))
-            value = "1";
-          /* -------------------- */
-          else if (!strcasecmp(data,"album"))
-            value = I->tag.album;
-          else if (!strcasecmp(data,"albumartist") ||
-                   !strcasecmp(data,"artist" ))
-            value = I->tag.artist;
-          else if (!strcasecmp(data,"title"))
-            value = I->tag.title;
-          else if (!strcasecmp(data,"genre"))
-            value = "Atari ST Quartet";
-          else if (!strcasecmp(data,"publisher"))
-            value = I->tag.ripper;
-        }
-
-
-/* TAG: <Artist> */
-/* TAG: <GracenoteExtData> */
-/* TAG: <GracenoteFileID> */
-/* TAG: <album> */
-/* TAG: <albumartist> */
-/* TAG: <artist> */
-/* TAG: <bpm> */
-/* TAG: <comment> */
-/* TAG: <composer> */
-/* TAG: <disc> */
-/* TAG: <formatinformation> */
-/* TAG: <genre> */
-/* TAG: <length> */
-/* TAG: <publisher> */
-/* TAG: <replaygain_album_gain> */
-/* TAG: <replaygain_track_gain> */
-/* TAG: <streamname> */
-/* TAG: <streamtype> */
-/* TAG: <title> */
-/* TAG: <track> */
-/* TAG: <type> */
-/* TAG: <year> */
-
-        if (XI)
-          info_unlock(XI);
-
-        dest[0] = 0;
-        if (value && *value) {
-          if (value != dest) {
-            strncpy(dest, max, value);
-            dest[max-1] = 0;
-          }
-          return 1;
-        }
-
-      I->album  = I->data+l;
-      l += 1 + snprintf(I->data+l, max-l,"%s",I->tag.album);
-
-      i str
-
-
-
-      ;
-
-
-    if (I->ready)
-
-        /* Same URI :) */
-
-
-
-
-    info_unlock(I);
   }
 
-
-
-      els
-
-
-
-    if (P) {
-
-
-
+  value = 0;
+  if (I) {
+    if (!strcasecmp(data,"length")) {
+      snprintf(dest, max, "%lu", LU(I->len.ms));
+      value = dest;
     }
+    else if (!strcasecmp(data,"album"))
+      value = I->tag.album;
+    else if (!strcasecmp(data,"artist" ))
+      value = I->tag.artist;
+    else if (!strcasecmp(data,"title"))
+      value = I->tag.title;
+    else if (!strcasecmp(data,"publisher"))
+      value = I->tag.ripper;
+  }
 
-  HANDLE lock;                          /* mutex for extended info */
-  unsigned int ms;                      /* duration.               */
-  char * format;                        /* file format (static)    */
-  char * uri;                           /* load uri (in data[])    */
-  char * album;                         /* album (in data[])       */
-  char * title;                         /* title (in data[])       */
-  char * artist;                        /* artist (in data[])      */
-  char * ripper;                        /* ripper (in data[])      */
-  char data[4096];                      /* Buffer for infos        */
+got_value:
+  ret = value != 0 && *value;
+  *dest = 0;
+  if (ret) {
+    if (value != dest) strncpy(dest, value, max);
+    dest[max-1] = 0;
+  }
 
+  /* GB: now we can unlock safely */
+  if (X)
+    info_unlock(X);
+  if (P)
+    play_unlock( P );
 
-    P = 0;
+  dmsg("%c [%s]=<%s>\n", ret?'*':'!',data,dest);
 
-  if (P) {
-    info_t info;
-    if (!zz_info(P,&info)) {
-
-
-
-
-
-    }
-
-
-  /* else { */
-  /*   info_lock(); */
-
-  /*   info_unlock(); */
-  /* } */
-
-
-
-  return 0;
+  return ret;
 }
-
-#endif
 
 EXPORT
 /**

@@ -5,7 +5,7 @@
 [Quartet](https://demozoo.org/productions/131242/) is a music score
 editor edited by Microdeal in 1989 for the Atari ST and the Amiga home
 computers. It features a 4 digital channel sample sequencer and DSP
-software rather rare at this time. It has been progammed by *Illusions
+software rather rare at this time. It has been programmed by *Illusions
 Programmers* Rob Povey and Kevin Cowtan.
 
 ## Download
@@ -24,9 +24,9 @@ It's not uncommon for a single voice set file to be shared by many
 musics. while that's not a problem for zingzong command line player
 where the user can pick the right files it can be more challenging to
 integrate with common media players. Furthermore both file formats are
-not very robust and lake a clear identifer.
+not very robust and lake a clear identifier.
 
-`voise.set` is sometime used as the default or last resort instrument file.
+`voice.set` is sometime used as the default or last resort instrument file.
    
  * Amiga archives
    1. `smp.` the Amiga default prefix for the instrument files (`.set`)

@@ -8,8 +8,6 @@
 #define ZZ_DBG_PREFIX "(pla) "
 #include "zz_private.h"
 
-static char empty_str[] = "";
-#define NEVER_NIL(S) if ( (S) ) {} else (S) = empty_str
 
 
 static zz_u32_t never_inline
@@ -746,6 +744,18 @@ zz_err_t zz_new(zz_play_t * pP)
 }
 
 
+#ifdef ZZ_MINIMAL
+
+zz_err_t zz_info( zz_play_t P, zz_info_t * pinfo)
+{
+  return E_ERR;
+}
+
+#else
+
+static char empty_str[] = "";
+#define NEVER_NIL(S) if ( (S) ) {} else (S) = empty_str
+
 const char * zz_formatstr(zz_u8_t fmt)
 {
   switch ( fmt )
@@ -818,6 +828,8 @@ zz_err_t zz_info( zz_play_t P, zz_info_t * pinfo)
 
   return E_OK;
 }
+
+#endif
 
 #ifndef NO_VFS
 
