@@ -29,11 +29,11 @@ dllname = $1.dll
 
 # ----------------------------------------------------------------------
 
-targets = $(zingzong_exe) # $(zingzong_dll)
+targets = $(zz_exe) # $(zz_dll)
 
-zingzong_exe = $(call exename,zingzong)
-zingzong_lib = $(call libname,zingzong)
-zingzong_dll = $(call dllname,zingzong)
+zz_exe = $(call exename,zingzong)
+zz_lib = $(call libname,zingzong)
+zz_dll = $(call dllname,zingzong)
 
 # ----------------------------------------------------------------------
 #  Toolchain
@@ -189,32 +189,32 @@ zz_LDFLAGS  = $(org_LDFLAGS) $(gb_LDFLAGS)
 all: $(targets)
 .PHONY: all
 
-$(zingzong_exe) $(zingzong_dll): override CPPFLAGS = $(zz_CPPFLAGS)
-$(zingzong_exe) $(zingzong_dll): override CFLAGS   = $(zz_CFLAGS)
-$(zingzong_exe): override LDLIBS  = $(zz_LDLIBS)
-$(zingzong_exe): override LDFLAGS = $(zz_LDFLAGS)
+$(zz_exe) $(zz_dll): override CPPFLAGS = $(zz_CPPFLAGS)
+$(zz_exe) $(zz_dll): override CFLAGS   = $(zz_CFLAGS)
+$(zz_exe): override LDLIBS  = $(zz_LDLIBS)
+$(zz_exe): override LDFLAGS = $(zz_LDFLAGS)
 
 zz_play.o: override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
 
-zingzong_dll_src = $(zingzong_vfs_src)
-zingzong_exe_src = $(zingzong_out_src) $(zingzong_vfs_src)
-zingzong_lib_src = $(zingzong_mix_src) $(zingzong_pla_src) $(zingzong_zzz_src)
+zz_dll_src = $(zz_vfs_src)
+zz_exe_src = $(zz_out_src) $(zz_vfs_src)
+zz_lib_src = $(zz_mix_src) $(zz_pla_src) $(zz_zzz_src)
 
-zingzong_dll_obj = $(zingzong_dll_src:.c=.o)
-zingzong_exe_obj = $(zingzong_exe_src:.c=.o)
-zingzong_lib_obj = $(zingzong_lib_src:.c=.o)
+zz_dll_obj = $(zz_dll_src:.c=.o)
+zz_exe_obj = $(zz_exe_src:.c=.o)
+zz_lib_obj = $(zz_lib_src:.c=.o)
 
-zingzong_mix_src = $(addsuffix .c,$(mix))
-zingzong_out_src = $(addsuffix .c,$(out))
-zingzong_vfs_src = $(addsuffix .c,$(vfs))
-zingzong_pla_src = $(addsuffix .c,$(pla))
-zingzong_zzz_src = $(addsuffix .c,$(zzz))
+zz_mix_src = $(addsuffix .c,$(mix))
+zz_out_src = $(addsuffix .c,$(out))
+zz_vfs_src = $(addsuffix .c,$(vfs))
+zz_pla_src = $(addsuffix .c,$(pla))
+zz_zzz_src = $(addsuffix .c,$(zzz))
 
-zingzong_mix_obj = $(zingzong_mix_src:.c=.o)
-zingzong_out_obj = $(zingzong_out_src:.c=.o)
-zingzong_vfs_obj = $(zingzong_vfs_src:.c=.o)
-zingzong_pla_obj = $(zingzong_pla_src:.c=.o)
-zingzong_zzz_obj = $(zingzong_zzz_src:.c=.o)
+zz_mix_obj = $(zz_mix_src:.c=.o)
+zz_out_obj = $(zz_out_src:.c=.o)
+zz_vfs_obj = $(zz_vfs_src:.c=.o)
+zz_pla_obj = $(zz_pla_src:.c=.o)
+zz_zzz_obj = $(zz_zzz_src:.c=.o)
 
 mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
 out := out_ao out_raw
@@ -222,18 +222,18 @@ vfs := vfs_file
 pla := zz_init zz_play zz_log
 zzz := zz_load zz_bin zz_mem zz_str zz_vfs zz_mixers
 
-sources = $(sort $(zingzong_exe_src) $(zingzong_lib_src) $(zingzong_dll_src))
+sources = $(sort $(zz_exe_src) $(zz_lib_src) $(zz_dll_src))
 headers = zingzong.h zz_private.h zz_def.h mix_common.c
 objects = $(sources:.c=.o)
 
-$(zingzong_dll): $(zingzong_lib_obj) $(zingzong_dll_obj)
-$(zingzong_exe): $(zingzong_lib_obj) $(zingzong_exe_obj)
-$(zingzong_lib): $(zingzong_lib_obj:%=$(zingzong_lib)(%))
+$(zz_dll): $(zz_lib_obj) $(zz_dll_obj)
+$(zz_exe): $(zz_lib_obj) $(zz_exe_obj)
+$(zz_lib): $(zz_lib_obj:%=$(zz_lib)(%))
 
 %.dll:
 	$(CC) -mdll $(LDFLAGS) $(LDLIBS) -o $@ $^
 
-clean_files += $(zingzong_lib) $(zingzong_exe) $(zingzong_dll)
+clean_files += $(zz_lib) $(zz_exe) $(zz_dll)
 
 # ----------------------------------------------------------------------
 #  Clean
@@ -256,13 +256,13 @@ dist_src_lst = README.md Makefile $(sources) $(headers) make.clean	\
 make.depend make.dist
 dist_amp_lst = README.md Makefile in_zingzong.c in_zingzong.h
 dist_68k_lst = README.md Makefile mix_aga.c mix_st.c zz_m68k.c		\
-player.c sc68_debug.h startup.s test.s test_sc68.s
+player.c sc68_debug.h startup.s test.s test_sc68.s m68k_muldiv.h
 
-dist_lst = \
+dist_lst = $(sort \
  $(addprefix ./,$(dist_top_lst)) \
  $(addprefix src/,$(dist_src_lst)) \
  $(addprefix src/zz-winamp/,$(dist_amp_lst)) \
- $(addprefix src/zz-m68k/,$(dist_68k_lst))
+ $(addprefix src/zz-m68k/,$(dist_68k_lst)) )
 
 include $(topdir)/src/make.dist
 

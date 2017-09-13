@@ -74,7 +74,7 @@ uint8_t guess_hardware(void)
 
     while (cookie = *jar++, cookie) {
       uint32_t value = *jar++;
-      if (cookie == '_SND') {
+      if (cookie == FCC('_','S','N','D')/* '_SND' */) {
         snd = value;
         break;
       }

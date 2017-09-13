@@ -168,7 +168,9 @@ struct str_s {
    * @notice  ALWAYS FIRST
    */
   char * ptr;                /**< buf: dynamic else: static. */
+#ifdef WITH_ZSTR_FCC
   char fcc[4];               /**< "ZSTR". */
+#endif
   zz_u16_t ref;              /**< number of reference. */
   zz_u16_t max;              /**< 0: const static else buffer size. */
   zz_u16_t len;              /**< 0: ndef else len+1. */
@@ -534,4 +536,3 @@ void zz_info_wipe(info_t * info);
 /**
  * @}
  */
-

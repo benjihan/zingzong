@@ -102,8 +102,6 @@ zz_err_t zz_setup(zz_play_t P, zz_u8_t mixerid,
   if (!P)
     return ZZ_OK;
 
-  zz_assert( ! rate );                  /* XXX $$$ TEMP to catch */
-
   if (!rate) rate = P->song.rate ? P->song.rate : RATE_DEF;
   if (!spr)  spr = mulu(P->song.khz,1000);
   if (!spr)  spr = SPR_DEF;
@@ -617,7 +615,7 @@ zz_init(play_t * P)
   dmsg("pcm per tick: %lu (%lux%lu+%lu) %lu:%lu\n",
        LU(P->pcm_per_tick),
        LU(divu32(P->pcm_per_tick,MIXBLK)),
-       LU(MIXBLK), LU(P->pcm_per_tick%MIXBLK), /* GB: $$$ no ggod for m68k */
+       LU(MIXBLK), LU(P->pcm_per_tick%MIXBLK), /* GB: $$$ no good for m68k */
        LU(P->spr), LU(P->rate));
 
   ecode = E_PLA;

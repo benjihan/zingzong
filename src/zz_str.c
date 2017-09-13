@@ -11,16 +11,22 @@
 #include <stdlib.h>
 #include <errno.h>
 
+#ifdef WITH_ZSTR_FCC
 static const char strfcc[4] = { 'Z','S','T','R' };
+#endif
 
 static inline zz_err_t valid_str(const str_t str)
 {
   zz_assert(str);
   zz_assert(str->max);
   zz_assert(str->ref);
+#ifdef WITH_ZSTR_FCC
   zz_assert(FCC_EQ(str->fcc,strfcc));
-
-  return str && str->ref && str->max && FCC_EQ(str->fcc,strfcc)
+#endif
+  return str && str->ref && str->max
+#ifdef WITH_ZSTR_FCC
+    && FCC_EQ(str->fcc,strfcc)
+#endif
     ? E_OK
     : E_ARG
     ;
@@ -32,8 +38,10 @@ zz_strsetup(str_t str, u16_t max, u16_t len, void * buf)
   zz_assert(str);
   zz_assert(max);
 
+#ifdef WITH_ZSTR_FCC
   str->fcc[0] = strfcc[0];  str->fcc[1] = strfcc[1];
   str->fcc[2] = strfcc[2];  str->fcc[3] = strfcc[3];
+#endif
   str->ref = 1;
   str->max = max;
   str->len = len;
@@ -64,11 +72,11 @@ str_t zz_strset(str_t str, const char * sta)
   else {
     u16_t len;
     for (len=0; sta[len]; ++len);
-    ++len;                         /* length including zero ending  */
+    ++len;                          /* length including zero ending */
 
     for ( ;; ) {
       if (!str) {
-        str = zz_strnew(len + 16);    /* alloc a bi more than needed  */
+        str = zz_strnew(len + 16);  /* alloc a bit more than needed */
         break;
       }
       if (len <= str->max)
