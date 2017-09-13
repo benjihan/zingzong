@@ -1,13 +1,23 @@
-;;; sc68 header for zingzong test
-;;;
+;;; @file   test_sc68.s
+;;; @author Benjamin Gerard AKA Ben/OVR
+;;; @date   2017-08
+;;; @brief  create a sc68 file
+;;; 
+;;; ----------------------------------------------------------------------
 
-start:	equ	0		; 0:PCR
-
-;;; Hardware flags
+	ifnd	START
+START:	set	0		; 0:PCR $10000:sc68 default start address
+	endc
+	
+;;; Hardware flags defiition
 PSG:	set	1		; YM-2149 flag
 STE:	set	2		; STe flag
 AGA:	set	4		; Amiga flag
 
+;;; ----------------------------------------------------------------------
+;;;  Low level macros
+;;; ----------------------------------------------------------------------
+	
 ;;; LEint(value)
 ;;; ------------
 ;;; encode little endian integer
@@ -73,6 +83,10 @@ asciz:	macro
 	;;
 	endm
 
+;;; ----------------------------------------------------------------------
+;;;  High level macros
+;;; ----------------------------------------------------------------------
+	
 ;;; track(title,file,type,addr,frames)
 ;;; ------ /1 -- /2 - /3 - /4 -- /5 --
 ;;; declare a new track (song)
@@ -81,50 +95,90 @@ track:	macro
 	;; 
 	chtag	SCMU,0
 	;; 
+	if	\?4
 	ifne	\4
-	chint	SCAT,\3
+	chint	SCAT,\4
+	endc
 	endc
 	;; 
 	chint	SCFQ,200
-	;; 
+	;;
+	if	\?5
 	ifne	\5
 	chint	SCFR,\5
 	endc
-	;; 
+	endc
+	;;
 	chint	SCTY,\3
-	;; 
-	begdat	SCMN
-	asciz	\1
-	enddat
+	;;
+	title	\1
 	;;
 	if	\?2
 	begdat	SCDA
 	incbin	\2
 	enddat
 	endc
-	;; 
+	;;
+	endm
+
+
+;;; open(name)
+;;; 
+open	macro
+	asciz	"SC68 Music-file / (c) (BeN)jamin Gerard / SasHipA-Dev  "
+\1_open:
+	chtag	SC68,\1_close-\1_open
+	endm
+
+;;; close(name)
+;;; 
+close:	macro
+	chtag	SCEF,0
+\1_close:
+	endm
+
+;;; album(string)
+;;; 
+album:	macro
+	if	\?1
+	begdat	SCFN
+	asciz	\1
+	enddat
+	endc
+	endm
+
+;;; title(string)
+;;; 
+title:	macro
+	if	\?1
+	begdat	SCMN
+	asciz	\1
+	enddat
+	endc
+	endm
+	
+;;; artist(string)
+;;; 
+artist:	macro
+	if	\?1
+	begdat	SCAN
+	asciz	\1
+	enddat
+	endc
 	endm
 
 	
-;;; ======================================================================
-;;; 
+;;; ----------------------------------------------------------------------
+;;;  Finally the sc68 file looks like this
+;;; ----------------------------------------------------------------------
 	
 sc68:
-	asciz	"SC68 Music-file / (c) (BeN)jamin Gerard / SasHipA-Dev  "
-begin:	
-	chtag	SC68,theend-begin
-	
-	begdat	SCFN
-	asciz	"Zingzong m68k test"
-	enddat
+	open	zingzong
 
-	begdat	SCAN
-	asciz	"Ben/OVR"
-	enddat
-
-	track	"Test AGA","test.dat",AGA,0,start
-	track	"Test STf",,PSG,0,start
-	track	"Test STe",,STE,0,start
+	album	"Zingzong m68k test"
+	artist	"Ben/OVR"
+	track	"Test AGA","test.bin",AGA,START
+	track	"Test STf",,PSG,START
+	track	"Test STe",,STE,START
 	
-	chtag	SCEF,0
-theend:
+	close	zingzong
