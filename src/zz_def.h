@@ -128,14 +128,14 @@ zz_log_dbg(const char * fmt,...);
 /**
  * memory functions (zz_mem.c).
  */
-#define zz_malloc(P,N) zz_memnew( (void * restrict) (P), (N), 0 )
-#define zz_calloc(P,N) zz_memnew( (void * restrict) (P), (N), 1 )
-#define zz_free(P)     zz_memdel( (void * restrict) (P)  )
+#define zz_malloc(P,N) zz_memnew( (void *) (P), (N), 0 )
+#define zz_calloc(P,N) zz_memnew( (void *) (P), (N), 1 )
+#define zz_free(P)     zz_memdel( (void *) (P)  )
 
 ZZ_EXTERN_C
-zz_err_t zz_memnew(void * restrict pmem, zz_u32_t size, zz_u8_t clear);
+zz_err_t zz_memnew(void *  pmem, zz_u32_t size, zz_u8_t clear);
 ZZ_EXTERN_C
-void zz_memdel(void * restrict pmem);
+void zz_memdel(void *  pmem);
 ZZ_EXTERN_C
 zz_err_t zz_memchk_calls(void);
 ZZ_EXTERN_C
@@ -143,17 +143,17 @@ zz_err_t zz_memchk_block(const void *);
 
 #ifndef zz_memcpy
 ZZ_EXTERN_C
-void * zz_memcpy(void * restrict _d, const void * _s, zz_u32_t n);
+void * zz_memcpy(void * _d, const void * _s, zz_u32_t n);
 #endif
 
 #ifndef zz_memset
 ZZ_EXTERN_C
-void * zz_memset(void * restrict _d, int v, zz_u32_t n);
+void * zz_memset(void * _d, int v, zz_u32_t n);
 #endif
 
 #ifndef zz_memclr
 ZZ_EXTERN_C
-void * zz_memclr(void * restrict _d, zz_u32_t n);
+void * zz_memclr(void * _d, zz_u32_t n);
 #endif
 
 #ifndef zz_memcmp

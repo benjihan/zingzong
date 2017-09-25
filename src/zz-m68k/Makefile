@@ -1,4 +1,4 @@
-#! /usr/bin/make -f
+#! /usr/bin/make -f 
 #
 # ----------------------------------------------------------------------
 #
@@ -7,22 +7,37 @@
 # by Benjamin Gerard AKA Ben/OVR
 #
 
-targets    = zingzong.bin
-
-PACKAGE   := zingzong-m68k
-srcdir    := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
-topdir    := $(realpath $(srcdir)/../..)
-VERSION   := $(shell $(topdir)/vcversion.sh || echo ERROR)
+targets := zingzong.bin
+PACKAGE := zingzong-m68k
+srcdir  := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
+topdir  := $(realpath $(srcdir)/../..)
+VERSION := $(shell $(topdir)/vcversion.sh || echo ERROR)
 ifeq ($(VERSION),ERROR)
 $(error vcversion.sh failed)
 endif
-PKGCONFIG  = pkg-config
+PKGCONFIG := pkg-config
 pkgconfig  = $(shell $(PKGCONFIG) $(1) || echo n/a)
 
 # ----------------------------------------------------------------------
 
 vpath %.c $(srcdir) $(srcdir)/..
 
+# ----------------------------------------------------------------------
+#  Tools
+# ----------------------------------------------------------------------
+
+CC      = m68k-sc68-elf-gcc	# GB: any m68k-elf gcc should do
+AS      = $(CC:gcc=as)
+LD      = $(CC:gcc=ld)
+OBJCOPY = $(CC:gcc=objcopy)
+ELF2BIN = $(OBJCOPY) -S -Obinary --set-section-flags .bss=contents,data,load
+
+# ----------------------------------------------------------------------
+#
+# m68_CFLAGS: Compile flags for all m68k targets.
+# m68_CPU: CPU specific flags (default to 68000)
+# m68_ALIGN: How to align variable (default is no-align)
+#
 # ----------------------------------------------------------------------
 #
 # GB: gcc m68k target options of interest.
@@ -48,28 +63,34 @@ vpath %.c $(srcdir) $(srcdir)/..
 #   faster on processors with 32-bit busses at the expense of more
 #   memory.
 #
-#
-#
 
-CC          = m68k-sc68-elf-gcc
-AS          = $(CC:gcc=as)
-OBJCOPY     = $(CC:gcc=objcopy)
-m68_CFLAGS  = -mcpu=68000 -mtune=68000 -mshort -mno-align-int -mpcrel
-gcc_CFLAGS  = -Wall -fshort-enums -fno-common
-#rel_CFLAGS  = -g -Ofast -fomit-frame-pointer
-rel_CFLAGS  = -g -Os -fomit-frame-pointer
-dbg_CFLAGS  = -g -O0
-NOSTARTFILE = -nostartfiles
-NODEFLIB    = -nodefaultlibs
-NOSTDLIB    = -nostdlib
-VASM        = vasmm68k_mot -Fbin -quiet -no-opt -o
-ELF2BIN = $(OBJCOPY) -S -Obinary --set-section-flags .bss=contents,data,load
+m68_CPU      = 68000
+m68_ALIGN    = no-align-int
+m68_SHORT    = short
 
+m68_CFLAGS  += -mcpu=$(m68_CPU) -mtune=$(m68_CPU)
+m68_CFLAGS  += -m$(m68_SHORT) -m$(m68_ALIGN)
+m68_CFLAGS  += -mpcrel
+gcc_CFLAGS  += -Wall -fshort-enums -fno-common -fno-jump-tables
+
+zz_CPPFLAGS += -I$(srcdir) -DSC68 -DZZ_MINIMAL
 ifdef DEBUG
-zz_CPPFLAGS = $(dbg_CFLAGS) -DDEBUG=$(DEBUG) -I$(srcdir)
+zz_CFLAGS   += -g -Og
+zz_CPPFLAGS += -DDEBUG=1
 else
-zz_CPPFLAGS = $(rel_CFLAGS) -DNDEBUG=1 -I$(srcdir)
+zz_CFLAGS   += -g -Os -fomit-frame-pointer
+zz_CPPFLAGS += -DNDEBUG=1 -I$(srcdir)
 endif
+
+zz_ASFLAGS  += --register-prefix-optional # no % annoying %
+zz_ASFLAGS  += --base-size-default-16     # (a0,d0) is (a0,d0.w)
+zz_ASFLAGS  += --disp-size-default-16     # default word size
+
+null  :=
+space := ${null} ${null}
+comma := ,
+
+comma_list = $(subst ${space},${comma},$(strip $1))
 
 # ----------------------------------------------------------------------
 
@@ -77,93 +98,139 @@ PACKAGE_CPPFLAGS  = \
  -DPACKAGE_NAME='"$(PACKAGE)"' \
  -DPACKAGE_VERSION='"$(VERSION)"'
 
-# GB: Bummer ! We can not simply alias mem???() function by there
-#     zz_mem???() counterpart as the latter might be call by the
-#     former into an infinite recursive loop.
-gcc_LDFLAGS = #-Wl,--defsym,memset=zz_memset,--defsym,memcpy=zz_memcpy
-
-
-m68_WL = -Wl,-EB,--gc-sections,--no-undefined,--no-dynamic-linker,--unresolved-symbols=report-all
-#,--verbose=5
-
-m68_LDFLAGS = -e _start $(NOSTARTFILE) $(NOSTDLIB) $(NODEFLIB) $(m68_WL)
-
-zz_CPPFLAGS += -DSC68 -DZZ_MINIMAL $(gb_CPPFLAGS) 
-zz_CFLAGS   += $(gcc_CFLAGS) $(m68_CFLAGS) $(gb_CFLAGS)
-zz_LDFLAGS  += $(gcc_LDFLAGS) $(m68_LDFLAGS) $(gb_LDFLAGS)
-
 com = player
 zzz = zz_m68k zz_play zz_init zz_str zz_mem zz_log
-mix = mix_aga mix_st mix_stf
+mix = mix_aga mix_stf mix_ste mix_fal
 
 sources := $(sort $(addsuffix .c,$(com) $(zzz) $(mix)))
-objects := $(sources:.c=.o)
 depends := $(sources:.c=.d)
 
 # ----------------------------------------------------------------------
 #  Targets
 # ----------------------------------------------------------------------
 
+TARGET_MACH = -mcpu=$(m68_CPU) -march=$(m68_CPU)
+TARGET_ARCH = $(TARGET_MACH) -mtune=$(m68_CPU)
+
+CPPFLAGS = $(zz_CPPFLAGS)
+CFLAGS   = $(zz_CFLAGS) $(gcc_CFLAGS) $(m68_CFLAGS)
+ASFLAGS  = $(call comma_list,-Wa $(zz_ASFLAGS))
+
+.SUFFIXES:
+
 all: $(targets)
 .PHONY: all
 
-zingzong.elf: startup.o $(objects)
+zz_play.o: override CPPFLAGS += $(PACKAGE_CPPFLAGS)
 
-# %.elf: override CPPFLAGS := $(zz_CPPFLAGS)
-# %.elf: override CFLAGS   := $(zz_CFLAGS)
-%.elf: override LDFLAGS  := $(zz_LDFLAGS)
-%.o: override CPPFLAGS := $(zz_CPPFLAGS)
-%.o: override CFLAGS   := $(zz_CFLAGS)
+START_SYMB = $(error START_SYMB must be defined)
+START_ADDR = $(error START_ADDR must be defined)
+ELFFLAGS   = $(error ELFFLAGS must be defined)
 
-zz_play.o: override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
-zz_play.o: override CFLAGS = $(zz_CFLAGS) -fno-jump-tables
+ELFSTATIC  = -static
+ELFPARTIAL = -e $(START_SYMB) -Ttext=0x$(START_ADDR)
+ELFCOMMON  = -EB $(ELFSTATIC) $(ELFPARTIAL)
 
+# ----------------------------------------------------------------------
+#  Drivers
+# ----------------------------------------------------------------------
 
-%.elf:; $(CC) $(LDFLAGS) $(CFLAGS) -o $@ $^
+drivers := $(patsubst %,dri_%.elf,aga stf ste fal)
 
+drivers: $(drivers)
+.PHONY: drivers
+
+dri_aga.elf: mix_aga.o
+dri_stf.elf: mix_stf.o m68k_stf.o
+dri_ste.elf: mix_ste.o
+dri_fal.elf: mix_fal.o
+
+# GB: Drivers have unresolved symbols that are set to 0 by the
+#     linker. Setting a START_ADDRESS far away triggers an overflow
+#     error with 16-bit relocations (R_68K_PC16).
+DRIFLAGS = $(ELFCOMMON) --unresolved-symbols=ignore-all
+
+dri_%.elf: START_SYMB = mixer_$*
+dri_%.elf: START_ADDR = 00000000
+dri_%.elf: ELFPARTIAL = -r
+dri_%.elf: ELFFLAGS   = $(DRIFLAGS)
+
+# ----------------------------------------------------------------------
+#  Player
+# ----------------------------------------------------------------------
+
+player: zingzong.bin
+.PHONY: player
+
+zingzong.elf: START_SYMB = player_start
+zingzong.elf: START_ADDR = C0000000
+zingzong.elf: ELFFLAGS   = $(ELFCOMMON) -dT zingzong.x -Map $*.map
+zingzong.elf: player_start.o $(addsuffix .o,$(com) $(zzz)) $(drivers)
+.PRECIOUS: zingzong.elf
+player_start.o: zingzong.x
 
 # ----------------------------------------------------------------------
 #  Test sc68 files
 # ----------------------------------------------------------------------
 
-clean_files += test.sc68 test.dat $(targets:%.bin=%.elf)
+CLEAN_TARGETS += clean-test
+
+clean-test: ; @rm -f -- *.o *.dri *.elf *.map; echo "$@ done"
+.PHONY: clean-test
 
 test: test.sc68
 .PHONY: test
 
-test.sc68: test.dat
-test.dat: $(targets)
+test.elf: START_SYMB = sc68_start
+test.elf: START_ADDR = 00010000
+test.elf: ELFFLAGS   = $(ELFCOMMON) -dT sc68.x -Map $*.map
+test.elf: sc68_start.o $(addsuffix .o,$(com) $(zzz)) $(drivers) song.elf vset.elf
 
-.INTERMEDIATE: test.dat
+sc68_start.o: sc68.x		# GB: hacky
 
-%.sc68: %_sc68.s %.dat
-	$(VASM) $@ $<
+DATFILE = $(error DATFILE must be defined)
+song.elf: DATFILE = Cowboy_Theme-01.4v
+vset.elf: DATFILE = Cowboy_Theme-01.set
 
+vset.elf song.elf: %.elf: %.o %.dat
+	@echo "[OBJ] $*";\
+	$(OBJCOPY) --add-section .$*.dat=$*.dat $< $@
 
-%_sc68.dat: %.s		;$(VASM) $@ $<
-%.dat: %.s %.4v %.set	;$(VASM) $@ $<
-%.bin: %.elf		;$(ELF2BIN) $< $@
+%.dat:;	@test -n "$(DATFILE)" && echo "[DAT] $*" && cat $(DATFILE) >$@
 
-#test_sc68.S
-#-Wl,-e,0x10000 -Wl,-Ttext,0x10000
+VASMBIN = vasmm68k_mot -quiet -Fbin -o 
 
+%.sc68: %_sc68.s test.bin
+	@echo "[ASM] $*"; $(VASMBIN) $@ $<
+
+.INTERMEDIATE: test.bin
 
 # ----------------------------------------------------------------------
-#  Clean
+#  Implicite rules
+# ----------------------------------------------------------------------
+
+%.o : %.c
+	@echo "[GCC] $* <$(m68_CPU) $(m68_ALIGN)>";\
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o "$@" "$<"
+
+%.o : %.S
+	@echo "[GAS] $* <$(m68_CPU) $(m68_ALIGN)>";\
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(ASFLAGS) -c -o "$@" "$<"
+
+%.elf dri_%.elf:
+	@echo "[ELF] $* [$(START_SYMB)=$(START_ADDR)]";\
+	$(LD) $(ELFFLAGS) -o $@ $^
+
+%.bin : %.elf
+	@echo "[BIN] $*";\
+	$(ELF2BIN) $< $@
+
+# ----------------------------------------------------------------------
+#  Includes
 # ----------------------------------------------------------------------
 
 include $(topdir)/src/make.clean
-
-# ----------------------------------------------------------------------
-#  Dependencies
-# ----------------------------------------------------------------------
-
 include $(topdir)/src/make.depend
-
-# ----------------------------------------------------------------------
-# Just in case redefining default rules is needed
-# ----------------------------------------------------------------------
-
 ifdef MAKERULES
 include $(MAKERULES)
 endif

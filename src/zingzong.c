@@ -229,7 +229,7 @@ static void print_usage(int level)
     " The `-o/--output` option specify the output depending on the output\n"
     " type.\n"
     "\n"
-    " -n/--nul`    output is ignored\n"
+    " -n/--null`   output is ignored\n"
     " -c/--stdout  output to the specified file instead of `stdout`.\n"
     " -w/--wav     unless set output is a file based on song filename.\n"
 

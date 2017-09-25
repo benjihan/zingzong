@@ -8,8 +8,6 @@
 #define ZZ_DBG_PREFIX "(pla) "
 #include "zz_private.h"
 
-
-
 static zz_u32_t never_inline
 ms_to_ticks(zz_u32_t ms, zz_u16_t rate)
 {

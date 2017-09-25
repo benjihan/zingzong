@@ -18,6 +18,10 @@
 # define _BSD_SOURCE
 #endif
 
+#if defined __m68k__ && __SIZEOF_INT__ != 2
+# error __SIZEOF_INT__ != 2
+#endif
+
 #ifdef ZZ_MINIMAL
 # define NO_FLOAT_SUPPORT
 # define NO_LOG
@@ -185,7 +189,7 @@ struct bin_s {
   uint8_t *ptr;                      /**< pointer to data (_buf).   */
   u32_t    max;                      /**< maximum allocated string. */
   u32_t    len;                      /**< length including.         */
-  uint8_t _buf[1];                  /**< buffer (always last).      */
+  uint8_t _buf[1];                   /**< buffer (always last).     */
 };
 
 /** Channels re-sampler and mixer interface. */

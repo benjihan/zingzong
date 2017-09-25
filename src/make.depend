@@ -1,14 +1,15 @@
 # -*- Makefile -*-
 #
+# ----------------------------------------------------------------------
 # @file    make.depend
 # @author  Benjamin Gerard AKA Ben/OVR
 # @date    2017-08-17
 # @brief   Make rules for depend related targets
-#
 # ----------------------------------------------------------------------
+#
 
-depends    = $(sources:.c=.d)
-cc_conf   := cc_conf.h
+depends  = $(sources:.c=.d)
+cc_conf := cc_conf.h
 
 # Avoid creating dependencies for targets matching these patterns
 ignore_dep = clean% dist% uninstall%
@@ -19,22 +20,22 @@ else
 filtered = $(filter-out $(ignore_dep),$(MAKECMDGOALS))
 endif
 
-ifeq ($(NODEPS),1)
+ifdef NODEPS
 filtered =
 endif
 
 # Setup CCDEP depending on NODEPS
 
 ifeq ($(words $(filtered)),0)
+
 CCDEP = true
 .SILENT: $(depends)
+
 else
 
-CC_CONF_O := $(shell cat $(cc_conf) 2>/dev/null)
-CC_CONF_N  = /* $(VERSION): $(zz_CPPFLAGS) $(zz_CFLAGS) */
-
-#$(info CC_CONF_O=[$(CC_CONF_O)])
-#$(info CC_CONF_N=[$(CC_CONF_N)])
+dep_CFLAGS ?= $(strip $(CPPFLAGS) $(CFLAGS))
+CC_CONF_O  := $(shell cat $(cc_conf) 2>/dev/null)
+CC_CONF_N   = /* $(VERSION): $(dep_CFLAGS) */
 
 ifneq ($(CC_CONF_O),$(CC_CONF_N))
 # $(shell echo '$(CC_CONF_N)'  >$(cc_conf))
@@ -43,15 +44,15 @@ $(info Generating [$(cc_conf)])
 endif
 
 $(cc_conf): $(srcdir)/Makefile $(wildcard $(topdir)/src/make.*)
-	@echo "touch [$@] because of [$(?F)]"; touch "$@"
+	@echo "[UPD] $@"; touch "$@"
 
 CCDEP = $(CC)
 DEP_FLAGS = -include $(cc_conf) -MM -MG -MF $@
 -include $(depends)
+
 endif
 
 # ----------------------------------------------------------------------
-
 
 depend: $(depends)
 .PHONY: depend
@@ -61,4 +62,4 @@ depend: $(depends)
 # ----------------------------------------------------------------------
 
 $(depends): %.d: %.c
-	$(CCDEP) $(zz_CPPFLAGS) $(zz_CFLAGS) $(DEP_FLAGS) -c $<
+	@echo "[DEP] $*"; $(CCDEP) $(dep_CFLAGS) $(DEP_FLAGS) -c $<

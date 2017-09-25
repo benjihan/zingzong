@@ -82,10 +82,10 @@ enum {
 };
 
 typedef zz_i8_t zz_err_t;
-typedef struct vfs_s  * restrict zz_vfs_t;
-typedef struct vset_s * restrict zz_vset_t;
-typedef struct song_s * restrict zz_song_t;
-typedef struct play_s * restrict zz_play_t;
+typedef struct vfs_s  * /* restrict */ zz_vfs_t;
+typedef struct vset_s * /* restrict */ zz_vset_t;
+typedef struct song_s * /* restrict */ zz_song_t;
+typedef struct play_s * /* restrict */ zz_play_t;
 typedef const struct zz_vfs_dri_s * zz_vfs_dri_t;
 typedef zz_err_t (*zz_guess_t)(zz_play_t const, const char *);
 

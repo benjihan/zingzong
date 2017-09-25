@@ -7,12 +7,21 @@
 
 #include "../zz_private.h"
 
-#define NAME "paula"
-#define DESC "Amiga hardware channels mixer"
+static zz_err_t init_aga_cb(play_t * const P);
+static void     free_aga_cb(play_t * const P);
+static zz_err_t push_aga_cb(play_t * const P);
 
+mixer_t * mixer_aga(mixer_t * const M)
+{
+  M->name = "paula";
+  M->desc = "Amiga hardware channels mixer";
+  M->init = init_aga_cb;
+  M->free = free_aga_cb;
+  M->push = push_aga_cb;
+  return M;
+}
 
 #define DMACON (*(volatile uint16_t *)0xDFF096)
-
 #define PAULA_PAL  7093789u /* 7093789.2 */
 #define PAULA_NTSC 7159090u /* 7159090.5 */
 
@@ -34,7 +43,6 @@ struct mix_chan_s {
   uint32_t lp_adr;
   uint16_t lp_len;
   uint8_t  status;
-
 };
 
 struct mix_aga_s {
@@ -76,8 +84,7 @@ static uint16_t xstep(uint32_t stp, uint8_t khz)
 }
 
 
-static int
-push_cb(play_t * const P)
+static zz_err_t push_aga_cb(play_t * const P)
 {
   mix_aga_t * const M = (mix_aga_t *)P->mixer_data;
   int k;
@@ -131,7 +138,7 @@ push_cb(play_t * const P)
   return E_OK;
 }
 
-static int init_cb(play_t * const P)
+static zz_err_t init_aga_cb(play_t * const P)
 {
   int ecode = E_OK;
   int16_t k;
@@ -178,20 +185,8 @@ static int init_cb(play_t * const P)
   return ecode;
 }
 
-static void free_cb(play_t * const P)
+static void free_aga_cb(play_t * const P)
 {
   P->mixer_data = 0;
 }
 
-/* Need to keep PCR */
-ZZ_EXTERN_C mixer_t * mixer_aga(mixer_t * const M);
-
-mixer_t * mixer_aga(mixer_t * const M)
-{
-  M->name = NAME;
-  M->desc = DESC;
-  M->init = init_cb;
-  M->free = free_cb;
-  M->push = push_cb;
-  return M;
-}

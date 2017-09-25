@@ -52,27 +52,35 @@ endif
 # ----------------------------------------------------------------------
 
 ifndef CFLAGS
-CFLAGS := -Wall -fvisibility=hidden
-ifdef DEBUG
-CFLAGS += -Og -g -DDEBUG=$(DEBUG)
+CFLAGS = -Wall -fvisibility=hidden
+ifneq ($(DEBUG),)
+CFLAGS += -Og -g
 else
-CFLAGS += -Ofast -DNDEBUG=1
+CFLAGS += -Ofast
 endif
-ifdef PROFILE
-CFLAGS += -pg
-endif
-endif
+endif # ifndef CFLAGS
 
+ifndef CPPFLAGS
+ifneq ($(DEBUG),)
+CPPFLAGS = -DDEBUG=$(DEBUG)
+else
+CPPFLAGS = -DNDEBUG=1
+endif
 ifeq (0,$(words $(filter -I.,-I%,\
 	$(CPPFLAGS) $(gb_CPPFLAGS) $(CFLAGS) $(gb_CFLAGS))))
 override CPPFLAGS += -I.
 endif
+endif # ifndef CPPFLAGS
 
-# Save original CFLAGS for later use
-override org_CPPFLAGS := $(CPPFLAGS)
-override org_CFLAGS   := $(CFLAGS)
-override org_LDLIBS   := $(LDLIBS)
-override org_LDFLAGS  := $(LDFLAGS)
+# $$$ TEMP: keep thos unti lwe are sure we remove all instance of those VARs
+org_CPPFLAGS = $(error org_CPPFLAGS)
+org_CFLAGS   = $(error org_CFLAGS)
+org_LDLIBS   = $(error org_LDLIBS)
+org_LDFLAGS  = $(error org_LDFLAGS)
+zz_CPPFLAGS  = $(error zz_CPPFLAGS)
+zz_CFLAGS    = $(error zz_CFLAGS)
+zz_LDLIBS    = $(error zz_LDLIBS)
+zz_LDFLAGS   = $(error zz_LDFLAGS)
 
 l_patterns := -l% -Wl,-l%
 L_patterns := -L%
@@ -177,10 +185,6 @@ PACKAGE_CPPFLAGS  = \
  -DPACKAGE_NAME='"$(PACKAGE)"' \
  -DPACKAGE_VERSION='"$(VERSION)"'
 
-zz_CPPFLAGS = $(org_CPPFLAGS) $(gb_CPPFLAGS)
-zz_CFLAGS   = $(org_CFLAGS) $(gb_CFLAGS)
-zz_LDLIBS   = $(org_LDLIBS) $(gb_LDLIBS)
-zz_LDFLAGS  = $(org_LDFLAGS) $(gb_LDFLAGS)
 
 # ----------------------------------------------------------------------
 #  Build
@@ -189,12 +193,12 @@ zz_LDFLAGS  = $(org_LDFLAGS) $(gb_LDFLAGS)
 all: $(targets)
 .PHONY: all
 
-$(zz_exe) $(zz_dll): override CPPFLAGS = $(zz_CPPFLAGS)
-$(zz_exe) $(zz_dll): override CFLAGS   = $(zz_CFLAGS)
-$(zz_exe): override LDLIBS  = $(zz_LDLIBS)
-$(zz_exe): override LDFLAGS = $(zz_LDFLAGS)
+override CPPFLAGS += $(gb_CPPFLAGS)
+override CFLAGS   += $(gb_CFLAGS)
+override LDLIBS   += $(gb_LDLIBS)
+override LDFLAGS  += $(gb_LDFLAGS)
 
-zz_play.o: override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
+zz_play.o: override CPPFLAGS += $(PACKAGE_CPPFLAGS)
 
 zz_dll_src = $(zz_vfs_src)
 zz_exe_src = $(zz_out_src) $(zz_vfs_src)
@@ -236,18 +240,6 @@ $(zz_lib): $(zz_lib_obj:%=$(zz_lib)(%))
 clean_files += $(zz_lib) $(zz_exe) $(zz_dll)
 
 # ----------------------------------------------------------------------
-#  Clean
-# ----------------------------------------------------------------------
-
-include $(topdir)/src/make.clean
-
-# ----------------------------------------------------------------------
-#  Dependencies
-# ----------------------------------------------------------------------
-
-include $(topdir)/src/make.depend
-
-# ----------------------------------------------------------------------
 #  Distrib
 # ----------------------------------------------------------------------
 
@@ -255,8 +247,9 @@ dist_top_lst = LICENSE README.md vcversion.sh
 dist_src_lst = README.md Makefile $(sources) $(headers) make.clean	\
 make.depend make.dist
 dist_amp_lst = README.md Makefile in_zingzong.c in_zingzong.h
-dist_68k_lst = README.md Makefile mix_aga.c mix_st.c zz_m68k.c		\
-player.c sc68_debug.h startup.s test.s test_sc68.s m68k_muldiv.h
+dist_68k_lst = README.md Makefile m68k_muldiv.h m68k_stf.S mix_aga.c	\
+mix_fal.c mix_ste.c mix_stf.c player.c player_start.S sc68_debug.h	\
+sc68_start.S song.S test_sc68.s vset.S ym10_pack.h zz_m68k.c zingzong.x
 
 dist_lst = $(sort \
  $(addprefix ./,$(dist_top_lst)) \
@@ -321,9 +314,11 @@ uninstall: uninstall-exec uninstall-data
 .PHONY: uninstall uninstall-exec uninstall-data
 
 # ----------------------------------------------------------------------
-#  Just in case redefining default rules is needed
+#  Includes
 # ----------------------------------------------------------------------
 
+include $(topdir)/src/make.clean
+include $(topdir)/src/make.depend
 ifdef MAKERULES
 include $(MAKERULES)
 endif

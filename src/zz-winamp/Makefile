@@ -34,7 +34,6 @@ CC = i686-w64-mingw32-gcc
 endif
 
 ifndef STRIP
-$(info $(CC:%gcc=gcc))
 ifeq ($(CC:%gcc=gcc),gcc)
 STRIP = $(CC:%gcc=%strip)
 else
@@ -47,18 +46,29 @@ endif
 # ----------------------------------------------------------------------
 
 ifndef CFLAGS
-CFLAGS	:= -Wall # -std=c99
+CFLAGS = -m32 -mwin32 -mdll -Wall
 ifdef DEBUG
-CFLAGS	+= -Og -g -DDEBUG=$(DEBUG)
+CFLAGS  += -Og -g
 else
-CFLAGS	+= -Ofast -DNDEBUG=1
+CFLAGS  += -Ofast
 endif
 ifdef PROFILE
-CFLAGS	+= -pg
+CFLAGS  += -pg
 endif
-endif
-dll_CFLAGS = -m32 -mwin32 -mdll
+endif # ifndef CFLAGS
 
+ifndef CPPFLAGS
+ifdef DEBUG
+CPPFLAGS  = -DDEBUG=$(DEBUG)
+else
+CPPFLAGS  = -DNDEBUG
+endif
+CPPFLAGS += -I. $(WAINC)
+endif # ifndef CPPFLAGS
+
+ifndef LDFLAGS
+LDFLAGS = -static-libgcc -static
+endif # ifndef LDFLAGS
 
 # ----------------------------------------------------------------------
 #  Winamp SDK
@@ -79,9 +89,19 @@ ifndef WPSDK
 WPSDK = $(error WPSDK is undefined)
 endif
 
+# ----------------------------------------------------------------------
+#  LIBS/LDFLAGS filter
+# ----------------------------------------------------------------------
+
 l_patterns := -l% -Wl,-l%
 filter-L    = $(strip $(filter-out $(l_patterns),$1))
 filter-l    = $(strip $(filter     $(l_patterns),$1))
+
+# ----------------------------------------------------------------------
+#  No libao
+# ----------------------------------------------------------------------
+
+override gb_CPPFLAGS += -DNO_AO=1
 
 # ----------------------------------------------------------------------
 #  samplerate (NO_SRATE=0 to enable)
@@ -117,7 +137,6 @@ override gb_LDLIBS  += $(call filter-l,$(SRATE_LIBS))
 #  soxr (NO_SOXR=0 to enable)
 # ----------------------------------------------------------------------
 
-
 ifneq ($(NO_SOXR),0)
 override undefine SOXR_CFLAGS
 override undefine SOXR_LIBS
@@ -150,61 +169,41 @@ PACKAGE_CPPFLAGS  = \
  -DPACKAGE_NAME='"$(NAME)"' \
  -DPACKAGE_VERSION='"$(VERSION)"'
 
-override CPPFLAGS += -I.
-
-zz_CPPFLAGS := $(CPPFLAGS) $(gb_CPPFLAGS) -DNO_AO=1
-zz_CFLAGS   := $(CFLAGS) $(gb_CFLAGS)
-zz_LDLIBS   := $(LDLIBS) $(gb_LDLIBS)
-zz_LDFLAGS  := $(LDFLAGS) $(gb_LDFLAGS)
+zz_CPPFLAGS = $(error zz_CPPFLAGS)
+zz_CFLAGS   = $(error zz_CFLAGS)
+zz_LDLIBS   = $(error zz_LDLIBS)
+zz_LDFLAGS  = $(error zz_LDFLAGS)
 
 # ----------------------------------------------------------------------
 #  Build
 # ----------------------------------------------------------------------
 
+.SUFFIXES:
+
 all: $(targets)
 .PHONY: all
 
-
-#in_zingzong.o: override NAME	   = zingzong (winamp)
-
-%.o: override CPPFLAGS = $(zz_CPPFLAGS)
-%.o: override CFLAGS   = $(dll_CFLAGS) $(zz_CFLAGS)
-$(targets): override LDLIBS   = $(zz_LDLIBS)
-$(targets): override LDFLAGS  = $(zz_LDFLAGS)
-
-in_zingzong.o: override CPPFLAGS = $(WAINC) $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
-zz_play.o: override CPPFLAGS = $(zz_CPPFLAGS) $(PACKAGE_CPPFLAGS)
-
 mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
-out := 
-vfs := vfs_file
 zz  := zz_load zz_init zz_play zz_bin zz_str zz_vfs zz_mixers zz_log zz_mem
-src := in_zingzong
+src := in_zingzong vfs_file
 
-sources := $(addsuffix .c,$(zz) $(vfs) $(mix) $(out) $(src))
+sources := $(addsuffix .c,$(src) $(zz) $(mix))
 objects := $(sources:.c=.o)
 depends := $(sources:.c=.d)
-headers := zingzong.h zz_private.h mix_common.c
 
-# ----------------------------------------------------------------------
-#  Link plugin dll
-# ----------------------------------------------------------------------
+override CPPFLAGS += $(gb_CPPFLAGS)
+override CFLAGS   += $(gb_CFLAGS)
+override LDFLAGS  += $(gb_LDFLAGS)
+override LDLIBS   += $(gb_LDLIBS)
 
-$(targets): $(objects)
-	$(CC) -mdll -o $@ $^ -static-libgcc -static $(LDFLAGS) $(LDLIBS)
+in_zingzong.o zz_play.o: CPPFLAGS += $(PACKAGE_CPPFLAGS)
+in_zingzong.dll: $(objects)
+	@echo "[DLL] $@";\
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
-# ----------------------------------------------------------------------
-#  Clean
-# ----------------------------------------------------------------------
-
-include $(topdir)/src/make.clean
-
-# ----------------------------------------------------------------------
-#  Dependencies
-# ----------------------------------------------------------------------
-
-in_zingzong.d: override zz_CPPFLAGS := $(zz_CPPFLAGS) $(WAINC)
-include $(topdir)/src/make.depend
+%.o: %.c
+	@echo "[GCC] $* [$(patsubst -m%,%,$(filter -m%,$(CFLAGS)))]";\
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 # ----------------------------------------------------------------------
 #  Install / Uninstall
@@ -234,9 +233,11 @@ uninstall:
 .PHONY: install-strip install uninstall
 
 # ----------------------------------------------------------------------
-# Just in case redefining default rules is needed
+#  Includes
 # ----------------------------------------------------------------------
 
+include $(topdir)/src/make.clean
+include $(topdir)/src/make.depend
 ifdef MAKERULES
 include $(MAKERULES)
 endif

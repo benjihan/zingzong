@@ -1,29 +1,29 @@
 # -*- Makefile -*-
 #
+# ----------------------------------------------------------------------
 # @file    make.clean
 # @author  Benjamin Gerard AKA Ben/OVR
 # @date    2017-08-17
 # @brief   Make rules for clean related targets
+# ----------------------------------------------------------------------
 #
 
-RM_F ?= rm -f --
-
+RM ?= rm -f
 depends = $(sources:.c=.d)
 
 clean-cfg:
-	@$(RM_F) $(cc_conf)
+	@$(RM) -- $(cc_conf)
 
 clean-dep: clean-cfg
-	@$(RM_F) $(depends) 
+	@$(RM) -- $(depends) 
 
 clean-obj:
-	@$(RM_F) $(objects)
+	@$(RM) -- $(objects)
 
 
-clean-tgt: CLEAN_TARGETS ?= $(sort $(targets) $(clean_files))
-clean-tgt:
-	@-$(RM_F) $(CLEAN_TARGETS)
-	@echo "[DEL] $(CLEAN_TARGETS)"
+clean-tgt: CLEAN_FILES ?= $(sort $(targets) $(clean_files))
+clean-tgt: $(CLEAN_TARGETS)
+	@-$(RM) -- $(CLEAN_FILES); echo "[DEL] $(CLEAN_FILES)"
 
 clean: clean-dep clean-obj clean-tgt
 

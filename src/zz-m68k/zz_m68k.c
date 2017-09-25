@@ -41,7 +41,7 @@ uint8_t guess_hardware(void)
 {
   uint8_t id = MIXER_LAST, aga;
 
-  BREAKP;
+  /* BREAKP; */
 
   /* Save vectors */
   bus_vector = 2[(volatile uint32_t *)0];
