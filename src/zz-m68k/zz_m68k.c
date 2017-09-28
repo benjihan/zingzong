@@ -14,7 +14,6 @@ enum {
 };
 
 static mixer_t mixer;
-static volatile intptr_t bus_vector, adr_vector;
 
 /* tos cookie jar */
 #define COOKIEJAR (* (uint32_t **) 0x5A0)
@@ -36,10 +35,16 @@ static void __attribute__((interrupt)) exception_handler(void)
 
 #pragma GCC diagnostic ignored "-Wmultichar"
 
+int isalpha(int c)
+{
+  return c >= 'A' && c <= 'z' && ( c <= 'Z' || c >= 'a' );
+}
+
 static
 uint8_t guess_hardware(void)
 {
   uint8_t id = MIXER_LAST, aga;
+  volatile intptr_t bus_vector, adr_vector;
 
   /* BREAKP; */
 

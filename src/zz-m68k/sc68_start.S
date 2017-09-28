@@ -25,7 +25,7 @@ sc68_start:
 	adda.l	(a0),a0
 	pea	(a0)
 	
-	bsr.s	player_init
+	bsr	player_init
 	addq	#8,a7
 
 	rts

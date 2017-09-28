@@ -147,7 +147,7 @@ song_init(song_t * song)
 
     case 'P':                           /* Play-Note */
       has_note = 1;
-      song->iused |= 1<<ins;
+      song->iused |= (u32_t)1 << ins;
     case 'S':
       if (stp < SEQ_STP_MIN || stp > SEQ_STP_MAX) {
         emsg("song: %c[%hu] step out of range -- %08lx\n",
@@ -169,8 +169,8 @@ song_init(song_t * song)
     case 'V':
       if ( (ins = par >> 2) < 20u && ! (par & ~(31u<<2) ) )
         break;
-        emsg("song: %c[%hu] instrument out of range -- %08lx\n",
-             'A'+k, HU(seq_idx(song->seq[k],seq)), LU(par));
+      emsg("song: %c[%hu] instrument out of range -- %08lx\n",
+           'A'+k, HU(seq_idx(song->seq[k],seq)), LU(par));
       goto error;
 
     default:
@@ -246,6 +246,7 @@ song_init(song_t * song)
 #endif
 
   dmsg("song steps: %08lx .. %08lx\n", LU(song->stepmin), LU(song->stepmax));
+  dmsg("song iused: %05lx\n", LU(song->iused));
   ecode = E_OK;
 
 error:
@@ -327,7 +328,7 @@ vset_init(zz_vset_t const vset)
 
     do {
       /* Sanity tests */
-      if (!(imask & (1<<i))) break;     /* Used ? */
+      if (!(1&(imask>>i)))   break;     /* Used ? */
       if (off < 8)           break;     /* inside ?  */
       if (off >= bin->len)   break;     /* inside ?  */
 
@@ -348,7 +349,7 @@ vset_init(zz_vset_t const vset)
       if ((lpl >>= 16) > len) break;
       if (off+len > bin->len) break;
 
-      vset->iused |= 1<<i;
+      vset->iused |= 1l<<i;
       ++nused;
       dmsg("I#%02hu [$%05lX:$%05lX:$%05lX] [$%05lX:$%05lX:$%05lX]\n",
            HU(i+1),
@@ -356,10 +357,10 @@ vset_init(zz_vset_t const vset)
            LU(off), LU(off+len-lpl), LU(off+len));
     } while (0);
 
-    if ( ! ( vset->iused & (1<<i) ) )
+    if ( !(1 & (vset->iused>>i)) )
       pcm = 0, len = lpl = 0;           /* If not used mark dirty */
 
-    zz_assert( (!!len) == !!( vset->iused & (1<<i) ) );
+    zz_assert( (!!len) == (1 & (vset->iused>>i)) );
     zz_assert( len < 0x10000 );
     zz_assert( lpl <= len );
 
@@ -406,17 +407,17 @@ vset_init(zz_vset_t const vset)
     uint8_t * const pcm = (void *)( (intptr_t) (e-unroll-a_len) & -2);
 
     /*
-    dmsg("[%02hu] I#%02hu rlen=%5lu alen:%5lu pcm<%p>%s..<%p>%s inst:<%p>%s\n",
-         HU(i), HU(idx[i]), LU(r_len), LU(a_len),
-         pcm,       pcm       <  beg ? " < beg" : "",
-         pcm+a_len, pcm+a_len <= end ? "" : " > end",
-         inst->pcm, pcm <= inst->pcm ? "fwd":"bwd"
+      dmsg("[%02hu] I#%02hu rlen=%5lu alen:%5lu pcm<%p>%s..<%p>%s inst:<%p>%s\n",
+      HU(i), HU(idx[i]), LU(r_len), LU(a_len),
+      pcm,       pcm       <  beg ? " < beg" : "",
+      pcm+a_len, pcm+a_len <= end ? "" : " > end",
+      inst->pcm, pcm <= inst->pcm ? "fwd":"bwd"
       );
     */
 
     if (!a_len)
       continue;
-    zz_assert( (vset->iused & (1<<idx[i])) );
+    zz_assert( 1 & (vset->iused>>idx[i]) );
     zz_assert( a_len < 0x10000 );
     zz_assert( pcm >= beg );
     zz_assert( pcm+a_len <= end  );

@@ -516,7 +516,7 @@ zz_measure(play_t * P, zz_u32_t * restrict pticks, zz_u32_t * restrict pms)
     }
     zz_assert ( n > 0 || P->done );
   }
-  dmsg("measure loop ended [done:%hu code:%hu ticks:%lu/%lu\n",
+  dmsg("measure loop ended [done:%hu code:%hu ticks:%lu/%lu]\n",
        HU(P->done), HU(ecode), LU(P->tick), LU(P->max_ticks));
 
   /* If everything went as planed and we were able to measure music
@@ -576,6 +576,15 @@ static void zz_rt_check(void)
   zz_assert( U32(bytes)   == 0x01020304 );
   zz_assert( U16(bytes)   == 0x00000102 );
   zz_assert( U16(bytes+2) == 0x00000304 );
+
+  /* GB: When using m68k with -mnoshort the default int size is
+   *     16bit. It is a problem for some of our bit-masks like
+   *     instrument used for instance. We have to cast integer to a
+   *     32bit type such as long integer with the a 'l' prefix. This
+   *     test that.
+   */
+  zz_assert( (1l<<20) == 0x100000 );
+
 }
 
 zz_err_t

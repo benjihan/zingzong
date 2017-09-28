@@ -1,8 +1,8 @@
 /**
  * @file   sc68_debug.h
- * @brief  Debugging facilities.
  * @author Benjamin Gerard AKA Ben/OVR
  * @date   2017-09-09
+ * @brief  sc68 debugging facilities.
  */
 
 #ifndef SC68_DEBUG_H
@@ -21,35 +21,54 @@
 #define _STRINGY(X) #X
 #define _ASSERTY(X,F,L) X " in " F  ":" _STRINGY(L)
 
-#define BREAKP                                               \
-  asm volatile(                                              \
-    "peal 0\n\t"                                             \
-    "peal 0x5C68DB61\n\t"                                    \
-    "trap #0\n\t"                                            \
-    "addqw #8,%sp")
+/* Break-on-debug break-point */
+#define BREAKP                                  \
+  asm volatile(                                 \
+    "clr.l   -(%a7)      \n\t"                  \
+    "pea     0x5C68DB61  \n\t"                  \
+    "trap    #0          \n\t"                  \
+    "addq.w  #8,%a7      \n\t"                  \
+    )                                           \
 
-#define BRKMSG(M)                                             \
-  asm volatile(                                               \
-    "peal %0\n\t"                                             \
-    "peal 0x5C68DB61\n\t"                                     \
-    "trap #0\n\t"                                             \
-    "addqw #8,%%sp" : : "m" (M) )
+/* Break-on-debug break-point with message. */
+#define BRKMSG(M)                               \
+  do {                                          \
+    const char * str = (M);                     \
+    asm volatile (                              \
+      "move.l  %0,-(%%a7)  \n\t"                \
+      "pea     0x5C68DB61  \n\t"                \
+      "trap    #0          \n\t"                \
+      "addq.w  #8,%%a7     \n\t"                \
+      :                                         \
+      : "m" (str)                               \
+      : "cc");                                  \
+  } while (0)
 
-#define DBGMSG(M)                                             \
-  asm volatile(                                               \
-    "peal %0\n\t"                                             \
-    "peal 0x5C68DB60\n\t"                                     \
-    "trap #0\n\t"                                             \
-    "addqw #8,%%sp" : : "m" (M) )
+/* Print a debug message. */
+#define DBGMSG(M)                               \
+  do {                                          \
+    const char * str = (M);                     \
+    asm volatile (                              \
+      "move.l  %0,-(%%a7)  \n\t"                \
+      "pea     0x5C68DB60  \n\t"                \
+      "trap    #0          \n\t"                \
+      "addq.w  #8,%%a7     \n\t"                \
+      :                                         \
+      : "m" (str)                               \
+      : "cc");                                  \
+  } while (0)
 
-#define zz_assert(C) if (! (C) ) {                                      \
-    static char str[] = _ASSERTY(#C, __BASE_FILE__, __LINE__);          \
-    asm volatile(                                                       \
-      "peal %0\n\t"                                                     \
-      "peal 0x5C68DB63\n\t"                                             \
-      "trap #0\n\t"                                                     \
-      "addqw #8,%%sp"                                                   \
-      : : "m" ( str ) ); } else
+/* Break-on-debug-only if condition is false. */
+#define zz_assert(C) if (! (C) ) {                              \
+    static char str[] = _ASSERTY(#C, __BASE_FILE__, __LINE__);  \
+    asm volatile(                                               \
+      "pea     %0          \n\t"                                \
+      "pea     0x5C68DB63  \n\t"                                \
+      "trap    #0          \n\t"                                \
+      "addq.w  #8,%%a7     \n\t"                                \
+      : : "m" ( str ) );                                        \
+  }                                                             \
+  else
 
 #endif /* NDEBUG */
 

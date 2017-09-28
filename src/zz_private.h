@@ -24,9 +24,11 @@
 
 #ifdef ZZ_MINIMAL
 # define NO_FLOAT_SUPPORT
-# define NO_LOG
 # define NO_LIBC
 # define NO_VFS
+# ifndef SC68
+#  define NO_LOG
+# endif
 #endif
 
 #define ZZ_VFS_DRI
@@ -237,7 +239,7 @@ struct song_s {
   u8_t    sigm;              /**< header signature numerator.       */
   u8_t    sigd;              /**< header signature denominator.     */
 
-  u32_t   iused;             /**< mask of instrument really used    */
+  u32_t   iused;             /**< mask of instrument really used.   */
   u32_t   stepmin;           /**< estimated minimal note been used. */
   u32_t   stepmax;           /**< estimated maximal note been used. */
   sequ_t *seq[4];            /**< pointers to channel sequences.    */

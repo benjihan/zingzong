@@ -70,19 +70,21 @@ m68_SHORT    = short
 
 m68_CFLAGS  += -mcpu=$(m68_CPU) -mtune=$(m68_CPU)
 m68_CFLAGS  += -m$(m68_SHORT) -m$(m68_ALIGN)
-m68_CFLAGS  += -mpcrel
+m68_CFLAGS  += -m$(m68_pcrel)
 gcc_CFLAGS  += -Wall -fshort-enums -fno-common -fno-jump-tables
 
 zz_CPPFLAGS += -I$(srcdir) -DSC68 -DZZ_MINIMAL
 ifdef DEBUG
+m68_pcrel    = no-pcrel
 zz_CFLAGS   += -g -Og
 zz_CPPFLAGS += -DDEBUG=1
 else
+m68_pcrel    = pcrel
 zz_CFLAGS   += -g -Os -fomit-frame-pointer
 zz_CPPFLAGS += -DNDEBUG=1 -I$(srcdir)
 endif
 
-zz_ASFLAGS  += --register-prefix-optional # no % annoying %
+zz_ASFLAGS  += --register-prefix-optional # no annoying %
 zz_ASFLAGS  += --base-size-default-16     # (a0,d0) is (a0,d0.w)
 zz_ASFLAGS  += --disp-size-default-16     # default word size
 
@@ -91,6 +93,8 @@ space := ${null} ${null}
 comma := ,
 
 comma_list = $(subst ${space},${comma},$(strip $1))
+
+filter-m = $(patsubst -m%,%,$(filter -m%,$(1)))
 
 # ----------------------------------------------------------------------
 
@@ -188,20 +192,26 @@ test.elf: sc68_start.o $(addsuffix .o,$(com) $(zzz)) $(drivers) song.elf vset.el
 
 sc68_start.o: sc68.x		# GB: hacky
 
-DATFILE = $(error DATFILE must be defined)
-song.elf: DATFILE = Cowboy_Theme-01.4v
-vset.elf: DATFILE = Cowboy_Theme-01.set
+SONGFILE = Cowboy_Theme-01.4v
+ifndef VSETFILE
+VSETFILE = $(SONGFILE:%.4v=%.set)
+endif
 
 vset.elf song.elf: %.elf: %.o %.dat
 	@echo "[OBJ] $*";\
 	$(OBJCOPY) --add-section .$*.dat=$*.dat $< $@
 
-%.dat:;	@test -n "$(DATFILE)" && echo "[DAT] $*" && cat $(DATFILE) >$@
+song.dat: $(SONGFILE)
+vset.dat: $(VSETFILE)
+song.dat vset.dat: %.dat:
+	test -n "$<" &&\
+	echo "[DAT] $* [$<]" &&\
+	cat $< >$@
 
 VASMBIN = vasmm68k_mot -quiet -Fbin -o 
 
 %.sc68: %_sc68.s test.bin
-	@echo "[ASM] $*"; $(VASMBIN) $@ $<
+	@echo "[ASM] $@"; $(VASMBIN) $@ $<
 
 .INTERMEDIATE: test.bin
 
@@ -209,12 +219,13 @@ VASMBIN = vasmm68k_mot -quiet -Fbin -o
 #  Implicite rules
 # ----------------------------------------------------------------------
 
+
 %.o : %.c
-	@echo "[GCC] $* <$(m68_CPU) $(m68_ALIGN)>";\
+	@echo "[GCC] $* <$(call filter-m,$(CFLAGS))>";\
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o "$@" "$<"
 
 %.o : %.S
-	@echo "[GAS] $* <$(m68_CPU) $(m68_ALIGN)>";\
+	@echo "[GAS] $* <$(call filter-m,$(CFLAGS))>";\
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(ASFLAGS) -c -o "$@" "$<"
 
 %.elf dri_%.elf:

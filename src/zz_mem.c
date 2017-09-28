@@ -245,8 +245,10 @@ void zz_memdel(void * restrict pmem)
 /* Install memory handlers. */
 void zz_mem(zz_new_t user_newf, zz_del_t user_delf)
 {
-  zz_assert(user_newf); newf = user_newf;
-  zz_assert(user_delf); delf = user_delf;
+  zz_assert(user_newf);
+  newf = user_newf;
+  zz_assert(user_delf);
+  delf = user_delf;
 }
 
 #undef zz_memcpy

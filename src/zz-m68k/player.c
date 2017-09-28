@@ -1,5 +1,4 @@
 /**
- *
  * @file    player.c
  * @author  Benjamin Gerard AKA Ben/OVR
  * @date    2017-09
@@ -40,10 +39,35 @@ static bin_t * set_bin(bin_t * bin, bin_t *src, int16_t off)
 static void * newf(zz_u32_t n) { return (void *) 0xdeadbea7; }
 static void delf(void * p) { }
 
+#if defined DEBUG && defined SC68
+static void
+logfunc(zz_u8_t chan, void * user, const char *fmt, va_list list)
+{
+  switch (chan)
+  {
+  case ZZ_LOG_ERR:
+  case ZZ_LOG_WRN:
+    BRKMSG(fmt); break;
+    break;
+  case ZZ_LOG_INF:
+  case ZZ_LOG_DBG:
+    DBGMSG(fmt);
+    break;
+  }
+}
+# define LOGFUNC logfunc
+#else
+# define LOGFUNC 0
+#endif
+
 void player_init(bin_t * song, bin_t * vset)
 {
+  BRKMSG("player_init()");
+
+
   ready = 0;
   zz_memclr(&play,sizeof(play));
+
 
   /* Skip the headers */
   if (!song->ptr) song->ptr = song->_buf;
@@ -51,7 +75,7 @@ void player_init(bin_t * song, bin_t * vset)
   if (!vset->ptr) vset->ptr = vset->_buf;
   play.vset.bin = set_bin(&vsetbin, vset, 222);
 
-  zz_log_fun(0,0);
+  zz_log_fun(LOGFUNC,0);
   zz_mem(newf,delf);
 
   ready =
@@ -84,4 +108,3 @@ void player_play(void)
     }
   }
 }
-

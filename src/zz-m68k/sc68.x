@@ -19,7 +19,7 @@ SECTIONS
   text_section_len = SIZEOF(.text);
   text_section_end = text_section_adr + text_section_len;
 
-  .data ALIGN(16):
+  .data ALIGN(4):
   {
     *(.data*) *(.rodata*);
   }
@@ -32,7 +32,7 @@ SECTIONS
    *     driver BSS.
    */
 
-  OVERLAY ALIGN(16) :
+  OVERLAY ALIGN(4) :
   {
     .dri.any { }
     .dri.aga { dri_aga.elf(.bss); }
@@ -50,7 +50,7 @@ SECTIONS
     *(.bss) *(COMMON);
   }
 
-  .data.song ALIGN(16) :
+  .data.song ALIGN(4) :
   { 
     song.elf(.song.bin);
     song_adr = ABSOLUTE(.);
