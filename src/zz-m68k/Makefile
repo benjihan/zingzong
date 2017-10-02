@@ -66,7 +66,7 @@ ELF2BIN = $(OBJCOPY) -S -Obinary --set-section-flags .bss=contents,data,load
 
 m68_CPU      = 68000
 m68_ALIGN    = no-align-int
-m68_SHORT    = short
+m68_SHORT    = no-short
 
 m68_CFLAGS  += -mcpu=$(m68_CPU) -mtune=$(m68_CPU)
 m68_CFLAGS  += -m$(m68_SHORT) -m$(m68_ALIGN)
@@ -92,7 +92,7 @@ null  :=
 space := ${null} ${null}
 comma := ,
 
-comma_list = $(subst ${space},${comma},$(strip $1))
+comma-list = $(subst ${space},${comma},$(strip $1))
 
 filter-m = $(patsubst -m%,%,$(filter -m%,$(1)))
 
@@ -118,7 +118,7 @@ TARGET_ARCH = $(TARGET_MACH) -mtune=$(m68_CPU)
 
 CPPFLAGS = $(zz_CPPFLAGS)
 CFLAGS   = $(zz_CFLAGS) $(gcc_CFLAGS) $(m68_CFLAGS)
-ASFLAGS  = $(call comma_list,-Wa $(zz_ASFLAGS))
+ASFLAGS  = $(call comma-list,-Wa $(zz_ASFLAGS))
 
 .SUFFIXES:
 
@@ -179,7 +179,10 @@ player_start.o: zingzong.x
 
 CLEAN_TARGETS += clean-test
 
-clean-test: ; @rm -f -- *.o *.dri *.elf *.map; echo "$@ done"
+clean-test:
+	@rm -f -- *.o *.dri *.elf *.map song.dat vset.dat
+	@echo "$@ done"
+
 .PHONY: clean-test
 
 test: test.sc68
@@ -204,9 +207,7 @@ vset.elf song.elf: %.elf: %.o %.dat
 song.dat: $(SONGFILE)
 vset.dat: $(VSETFILE)
 song.dat vset.dat: %.dat:
-	test -n "$<" &&\
-	echo "[DAT] $* [$<]" &&\
-	cat $< >$@
+	@test -n "$<" && echo "[DAT] $* [$(notdir $<)]" && cat "$<" >$@
 
 VASMBIN = vasmm68k_mot -quiet -Fbin -o 
 

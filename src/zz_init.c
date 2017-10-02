@@ -369,7 +369,7 @@ vset_init(zz_vset_t const vset)
     vset->inst[i].lpl = lpl;
     vset->inst[i].pcm = pcm;
   }
-  dmsg("Instruments: used:%hu/%hu ($%06lX/$%06lX)\n",
+  dmsg("Instruments: used:%hu/%hu ($%05lX/$%05lX)\n",
        HU(nused), HU(nbi), LU(vset->iused), LU(imask) );
 
   /* That's very conservative. we should definitively warn in case any
@@ -397,7 +397,7 @@ vset_init(zz_vset_t const vset)
   dmsg("%hu/%hu instrument using %lu/%lu bytes unroll:%lu\n",
        HU(nused), HU(nbi), LU(tot), LU(end-beg), LU(unroll));
   if (unroll < VSET_UNROLL)
-    wmsg("Have less unroll space than expected -- %lu\n", LU(unroll-VSET_UNROLL));
+    wmsg("Have less unroll space than expected -- %lu\n", LU(VSET_UNROLL-unroll));
 
   /* -3- Unroll starting from bottom to top */
   for (i=0, e=end; i<nbi; ++i) {

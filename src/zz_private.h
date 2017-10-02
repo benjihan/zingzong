@@ -18,7 +18,7 @@
 # define _BSD_SOURCE
 #endif
 
-#if defined __m68k__ && __SIZEOF_INT__ != 2
+#if 0 && defined __m68k__ && __SIZEOF_INT__ != 2
 # error __SIZEOF_INT__ != 2
 #endif
 
