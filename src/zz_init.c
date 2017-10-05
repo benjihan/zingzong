@@ -276,6 +276,7 @@ vset_init_header(zz_vset_t vset, const void * _hd)
   if (is_valid_khz(vset->khz) && is_valid_ins(vset->nbi)) {
     i8_t i;
     for (i=0; i<20; ++i) {
+      vset->inst[i].num = i;
       vset->inst[i].len = U32(&hd[142+4*i]);
       dmsg("I#%02i [%7s] %08lx\n", i+1, hd+2+7*i, LU(vset->inst[i].len));
     }

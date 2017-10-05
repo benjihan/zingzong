@@ -153,7 +153,6 @@ static void mylog(zz_u8_t log, void * user, const char * fmt, va_list list)
   FILE * out = log_file(log);
 
   errcnt += log == ZZ_LOG_ERR;
-
   if (out) {
     if (log <= ZZ_LOG_WRN) {
       fprintf(out, "\n%s: "+newline, me);
@@ -687,6 +686,7 @@ int main(int argc, char *argv[])
 
   /* Install logger */
   zz_log_fun(mylog,0);
+  zz_log_bit(0, (1<<ZZ_LOG_DBG)-1);
 
   opterr = 0;
   while ((c = getopt_long (argc, argv, sopts, lopts, 0)) != -1) {

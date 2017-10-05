@@ -223,7 +223,7 @@ zz_zzz_obj = $(zz_zzz_src:.c=.o)
 mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
 out := out_ao out_raw
 vfs := vfs_file
-pla := zz_init zz_play zz_log
+pla := zz_init zz_play zz_log zz_fast
 zzz := zz_load zz_bin zz_mem zz_str zz_vfs zz_mixers
 
 sources = $(sort $(zz_exe_src) $(zz_lib_src) $(zz_dll_src))

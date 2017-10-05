@@ -66,12 +66,13 @@ ELF2BIN = $(OBJCOPY) -S -Obinary --set-section-flags .bss=contents,data,load
 
 m68_CPU      = 68000
 m68_ALIGN    = no-align-int
-m68_SHORT    = no-short
+m68_SHORT    = short
 
 m68_CFLAGS  += -mcpu=$(m68_CPU) -mtune=$(m68_CPU)
 m68_CFLAGS  += -m$(m68_SHORT) -m$(m68_ALIGN)
 m68_CFLAGS  += -m$(m68_pcrel)
-gcc_CFLAGS  += -Wall -fshort-enums -fno-common -fno-jump-tables
+gcc_CFLAGS  += -Wall -fshort-enums -fno-common -f$(JUMP_TABLE)
+JUMP_TABLE   = no-jump-tables
 
 zz_CPPFLAGS += -I$(srcdir) -DSC68
 ifdef DEBUG
@@ -107,7 +108,7 @@ PACKAGE_CPPFLAGS  = \
  -DPACKAGE_VERSION='"$(VERSION)"'
 
 com = player
-zzz = zz_m68k zz_play zz_init zz_str zz_mem zz_log
+zzz = zz_m68k zz_play zz_init zz_str zz_mem zz_log zz_fast
 mix = mix_aga mix_stf mix_ste mix_fal
 
 sources := $(sort $(addsuffix .c,$(com) $(zzz) $(mix)))
@@ -130,6 +131,8 @@ all: $(targets)
 .PHONY: all
 
 zz_play.o: override CPPFLAGS += $(PACKAGE_CPPFLAGS)
+zz_fast.o: JUMP_TABLE = jump-tables
+zz_fast.o: override zz_CFLAGS += -Ofast
 
 START_SYMB = $(error START_SYMB must be defined)
 START_ADDR = $(error START_ADDR must be defined)

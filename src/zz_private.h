@@ -18,15 +18,11 @@
 # define _BSD_SOURCE
 #endif
 
-#if 0 && defined __m68k__ && __SIZEOF_INT__ != 2
-# error __SIZEOF_INT__ != 2
-#endif
-
 #ifdef ZZ_MINIMAL
-# define NO_FLOAT_SUPPORT
+# define NO_FLOAT
 # define NO_LIBC
 # define NO_VFS
-# ifndef SC68
+# ifdef SC68
 #  define NO_LOG
 # endif
 #endif
@@ -205,6 +201,7 @@ struct mixer_s {
 
 /** Prepared instrument (sample). */
 struct inst_s {
+  u8_t      num;             /**< instrument number.                */
   u32_t     len;             /**< size in bytes.                    */
   u32_t     lpl;             /**< loop length in bytes.             */
   u32_t     end;             /**< unrolled end.                     */
@@ -269,6 +266,7 @@ struct chan_s {
   sequ_t  *end;                       /**< last sequence.           */
   sequ_t  *sq0;                       /**< First wait-able command. */
   sequ_t  *sqN;                       /**< Last  wait-able command. */
+  inst_t  *ins;                       /**< instrument (fast)        */
 
   char id;                          /**< letter ['A'..'D'].         */
   u8_t num;                         /**< channel number [0..3].     */
@@ -281,8 +279,11 @@ struct chan_s {
   note_t note;                          /**< note (and slide) info. */
 
   struct loop_s {
-    u16_t off;                       /**< loop point. */
     u16_t cnt;                       /**< loop count. */
+    union {
+      u16_t off;                        /**< loop point. */
+      sequ_t * seq;                     /**< loop point (fast). */
+    };
   }
   *loop_sp,                             /**< loop stack pointer.    */
   loops[MAX_LOOP];                      /**< loop stack.   */
@@ -421,7 +422,7 @@ static inline u32_t byte_u32(const u8_t * const v)
  * Floating point conversion.
  * @{
  */
-#ifndef NO_FLOAT_SUPPORT
+#ifndef NO_FLOAT
 
 ZZ_EXTERN_C
 void i8tofl(float * const d, const uint8_t * const s, const int n);
@@ -429,7 +430,7 @@ void i8tofl(float * const d, const uint8_t * const s, const int n);
 ZZ_EXTERN_C
 void fltoi16(int16_t * const d, const float * const s, const int n);
 
-#endif /* NO_FLOAT_SUPPORT */
+#endif /* NO_FLOAT */
 /**
  * @}
  */

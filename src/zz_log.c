@@ -17,7 +17,7 @@ void zz_log_fun(zz_log_t func, void * user) {}
 
 #ifndef ZZ_LOG_CHANNELS
 # ifdef NDEBUG
-#  define ZZ_LOG_CHANNELS ~ZZ_LOG_DBG
+#  define ZZ_LOG_CHANNELS ((1<<ZZ_LOG_DBG)-1)
 # else
 #  define ZZ_LOG_CHANNELS ~0
 # endif

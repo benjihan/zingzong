@@ -8,7 +8,7 @@
 #define ZZ_DBG_PREFIX "(flt) "
 #include "zz_private.h"
 
-#ifndef NO_FLOAT_SUPPORT
+#ifndef NO_FLOAT
 
 #include <math.h>
 
@@ -69,4 +69,4 @@ fltoi16(int16_t * const d, const float * const s, const int n)
   }
 }
 
-#endif /* #ifndef NO_FLOAT_SUPPORT */
+#endif /* #ifndef NO_FLOAT */
