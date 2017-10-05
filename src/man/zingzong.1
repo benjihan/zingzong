@@ -1,0 +1,92 @@
+.TH ZINGZONG "1" "October 2017" "zingzong @VERSION@" "User Commands"
+.SH NAME
+zingzong \- manual page for zingzong @VERSION@
+.SH SYNOPSIS
+.B zingzong [\fI\,OPTIONS\/\fR] \fI\,<song.4v> \/\fR[\fI\,<inst.set>\/\fR]
+.br
+.B zingzong [\fI\,OPTIONS\/\fR] \fI\,<music.4q>
+
+.SH DESCRIPTION
+.IP
+A Microdeal quartet music file command line player
+.SS "OPTIONS:"
+.TP
+\fB\-h\fR \fB\-\-help\fR \fB\-\-usage\fR
+Print this message and exit.
+.TP
+\fB\-V\fR \fB\-\-version\fR
+Print version and copyright and exit.
+.TP
+\fB\-t\fR \fB\-\-tick\fR=\fI\,HZ\/\fR
+Set player tick rate (default is 200hz).
+.TP
+\fB\-r\fR \fB\-\-rate\fR=\fI\,[R\/\fR,]HZ
+Set re\-sampling method and rate (soxr,48K).
+.TP
+\fBR\fR :=
+\fBint:qerp\fR ..... quadratic interpolation (fast,MQ).
+.br
+\fBint:lerp\fR ..... linear interpolation (very fast).
+.br
+\fBint:none\fR ..... no interpolation (lightning fast/LQ).
+.br
+\fBsoxr\fR ......... high quality variable rate.
+.br
+\fBsinc:best\fR .... band limited sinc (best quality).
+.br
+\fBsinc:medium\fR .. band limited sinc (medium quality).
+.br
+\fBsinc:fast\fR .... band limited sinc (fastest).
+.TP
+\fB\-l\fR \fB\-\-length\fR=\fI\,TIME\/\fR
+Set play time.
+.TP
+\fB\-m\fR \fB\-\-mute\fR=\fI\,ABCD\/\fR
+Mute selected channels (bit\-field or string).
+.TP
+\fB\-o\fR \fB\-\-output\fR=\fI\,URI\/\fR
+Set output file name (\fB\-w\fR or \fB\-c\fR).
+.TP
+\fB\-c\fR \fB\-\-stdout\fR
+Output raw PCM to stdout or file (native 16\-bit).
+.TP
+\fB\-n\fR \fB\-\-null\fR
+Output to the void.
+.TP
+\fB\-w\fR \fB\-\-wav\fR
+Generated a .wav file.
+.SS "OUTPUT:"
+Options `\-n/\-\-null`,'\-c/\-\-stdout' and `\-w/\-\-wav` are used to set the
+output type. The last one is used. Without it the default output type
+is used which should be playing sound via the default or configured
+libao driver.
+.P
+The `\-o/\-\-output` option specify the output depending on the output
+type.
+.TP
+\fB\-n\fR/\-\-null`
+output is ignored
+.TP
+\fB\-c\fR/\-\-stdout
+output to the specified file instead of `stdout`.
+.TP
+\fB\-w\fR/\-\-wav
+unless set output is a file based on song filename.
+.SS "TIME:"
+.IP \[bu] 2
+pure integer number to represent a number of ticks
+.IP \[bu]
+comma `,' to separate seconds and milliseconds
+.IP \[bu]
+`h' to suffix hours; `m' to suffix minutes
+.P
+If time is not set the player tries to auto\-detect the music duration.
+However a number of musics are going into unnecessary loops which make
+it harder to properly detect. Detection threshold is set to 30 minutes'.
+.br
+If time is set to `0` or `inf` the player will run forever.
+.SH "REPORTING BUGS"
+Report bugs to <https://github.com/benjihan/zingzong/issues>
+.SH COPYRIGHT
+Copyright \(co 2017 Benjamin Gerard AKA Ben/OVR
+Licensed under MIT license
