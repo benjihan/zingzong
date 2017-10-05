@@ -1,0 +1,193 @@
+/**
+ * @file   zz_fast.c
+ * @author Benjamin Gerard AKA Ben/OVR
+ * @date   2017-08-05
+ * @brief  Faster (and less solid) version of the Quartet player.
+ */
+
+#define ZZ_DBG_PREFIX "(fpl) "
+#include "zz_private.h"
+
+typedef struct zz_fast_s zz_fast_t;
+struct zz_fast_s {
+  uint8_t cmd;
+  union {
+    struct { uint16_t cnt; } loop;
+    struct { uint16_t len; } rest;
+    struct { inst_t * ins; } voice;
+    struct { uint16_t len; uint32_t note; } play;
+    struct { uint16_t len; uint32_t goal; int32_t step; } slide;
+  };
+};
+
+enum {
+  ZZ_FAST_END,
+  ZZ_FAST_PLAY,
+  ZZ_FAST_REST,
+  ZZ_FAST_SLIDE,
+  ZZ_FAST_LABEL,
+  ZZ_FAST_LOOP,
+  ZZ_FAST_VOICE,
+};
+
+int zz_fast_init(play_t * const P, const i16_t k)
+{
+  chan_t * const C = P->chan+k;
+  sequ_t * seq;
+
+  zz_assert( sizeof(zz_fast_t) <= 12 );
+
+  for (seq = C->seq; ; ++seq) {
+    u16_t       cmd = U16(seq->cmd);
+    u16_t const len = U16(seq->len);
+    u32_t const stp = U32(seq->stp);
+    u32_t const par = U32(seq->par);
+    zz_fast_t * fast = (zz_fast_t *) seq;
+
+    switch (cmd) {
+    case 'E':
+      cmd = ZZ_FAST_END;
+      break;
+    case 'P':
+      cmd = ZZ_FAST_PLAY;
+      fast->play.len  = len;
+      fast->play.note = stp;
+      break;
+    case 'R':
+      cmd = ZZ_FAST_REST;
+      fast->rest.len = len;
+      break;
+    case 'S':
+      fast->slide.len  = len;
+      fast->slide.goal = stp;
+      fast->slide.step = (int32_t) par;
+      break;
+    case 'V':
+      fast->voice.ins = &P->vset.inst[par>>2];
+      break;
+    case 'L':
+      cmd = ZZ_FAST_LOOP;
+      fast->loop.cnt = (par >> 16) + 1;
+      break;
+    case 'l':
+      cmd = ZZ_FAST_LABEL;
+      break;
+    default:
+      zz_assert( "invalid command" );
+      return E_SNG;
+    }
+    fast->cmd = cmd;
+    if (cmd == ZZ_FAST_END)
+      break;
+  }
+
+  return ZZ_OK;
+}
+
+int zz_fast_chan(play_t * const P, const i16_t k)
+{
+  chan_t * const C = P->chan+k;
+  sequ_t * seq = C->cur;
+
+  if ( P->muted_voices & (1<<k) )
+    return E_OK;
+
+  C->trig = TRIG_NOP;
+
+  /* Portamento */
+  if (C->note.stp) {
+    i32_t difa, difb;
+
+    if (!C->note.cur)
+      C->note.cur = C->note.aim; /* safety net */
+    C->trig = TRIG_SLIDE;
+
+    difa = C->note.cur - C->note.aim;
+    difb = (C->note.cur += C->note.stp) - C->note.aim;
+
+    if ( (difa ^ difb) < 0 ) {
+      C->note.cur = C->note.aim;
+      C->note.stp = 0;
+    }
+  }
+
+  if (C->wait) --C->wait;
+  while (!C->wait) {
+    const zz_fast_t * const fast = (const zz_fast_t *) seq++;
+
+    switch (fast->cmd) {
+
+    case ZZ_FAST_END:                   /* End-Voice */
+      seq = C->seq;
+      P->has_loop |= 1<<k;
+      C->has_loop++;
+      C->loop_sp = C->loops;
+      break;
+
+    case ZZ_FAST_VOICE:
+      C->ins = fast->voice.ins;
+      break;
+
+    case ZZ_FAST_PLAY:                  /* Play-Note */
+      C->trig     = TRIG_NOTE;
+      C->note.ins = C->ins;
+      C->note.cur = C->note.aim = fast->play.note;
+      C->note.stp = 0;
+      C->wait     = fast->play.len;
+      break;
+
+    case ZZ_FAST_SLIDE:                 /* Slide-to-note */
+      if (!C->note.cur) {
+        C->trig     = TRIG_NOTE;
+        C->note.ins = C->ins;
+        C->note.cur = fast->slide.goal;
+      }
+      C->wait     = fast->slide.len;
+      C->note.aim = fast->slide.goal;
+      C->note.stp = fast->slide.step;
+      break;
+
+    case ZZ_FAST_REST:                  /* Rest */
+      C->trig     = TRIG_STOP;
+      C->wait     = fast->rest.len;
+      break;
+
+    case ZZ_FAST_LABEL:                 /* Set-Loop-Point */
+    {
+      struct loop_s * const l = C->loop_sp++;
+      l->seq = seq;
+      l->cnt = 0;
+    } break;
+
+    case ZZ_FAST_LOOP:                  /* Loop-To-Point */
+    {
+      struct loop_s * l = C->loop_sp-1;
+
+      if (l < C->loops) {
+        C->loop_sp = (l = C->loops) + 1;
+        l->cnt = 0;
+        l->seq = C->seq;
+      }
+
+      if (!l->cnt)
+        l->cnt = fast->loop.cnt;
+
+      if (--l->cnt) {
+        seq = l->seq;
+      } else {
+        --C->loop_sp;
+        zz_assert(C->loop_sp >= C->loops);
+      }
+
+
+    } break;
+
+    default:
+      zz_assert( ! "invalid command" );
+      return E_PLA;
+    } /* switch */
+  } /* while !wait */
+  C->cur = seq;
+
+  return E_OK;
+}
