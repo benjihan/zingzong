@@ -68,10 +68,10 @@ static u32_t mem_calls, mem_bytes;
 static const char mem_fcc[4] = { 'Z', 'M', '3', 'm' };
 
 typedef struct {
-  void  *me;
-  u32_t len;
-  char  fcc[4];
-  u8_t  buf[1];
+  void   *me;
+  u32_t   len;
+  char    fcc[4];
+  uint8_t buf[1];
 } memchk_t ;
 
 

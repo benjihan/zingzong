@@ -73,15 +73,17 @@ m68_CFLAGS  += -m$(m68_SHORT) -m$(m68_ALIGN)
 m68_CFLAGS  += -m$(m68_pcrel)
 gcc_CFLAGS  += -Wall -fshort-enums -fno-common -fno-jump-tables
 
-zz_CPPFLAGS += -I$(srcdir) -DSC68 -DZZ_MINIMAL
+zz_CPPFLAGS += -I$(srcdir) -DSC68
 ifdef DEBUG
 m68_pcrel    = no-pcrel
 zz_CFLAGS   += -g -Og
-zz_CPPFLAGS += -DDEBUG=1
+zz_CPPFLAGS += -DNO_VFS -DDEBUG=1
+ELFLIBS      = --verbose -L$(shell $(LD) --print-sysroot)/usr/lib -lc
 else
 m68_pcrel    = pcrel
 zz_CFLAGS   += -g -Os -fomit-frame-pointer
-zz_CPPFLAGS += -DNDEBUG=1 -I$(srcdir)
+zz_CPPFLAGS += -DZZ_MINIMAL -DNDEBUG=1
+ELFLIBS      =
 endif
 
 zz_ASFLAGS  += --register-prefix-optional # no annoying %
@@ -93,8 +95,10 @@ space := ${null} ${null}
 comma := ,
 
 comma-list = $(subst ${space},${comma},$(strip $1))
+filter-m   = $(patsubst -m%,%,$(filter -m%,$(1)))
 
-filter-m = $(patsubst -m%,%,$(filter -m%,$(1)))
+# Deoending id calling LD or CC to link
+maybe-wl   = $(call comma-list, -Wl $1)
 
 # ----------------------------------------------------------------------
 
@@ -131,9 +135,15 @@ START_SYMB = $(error START_SYMB must be defined)
 START_ADDR = $(error START_ADDR must be defined)
 ELFFLAGS   = $(error ELFFLAGS must be defined)
 
-ELFSTATIC  = -static
-ELFPARTIAL = -e $(START_SYMB) -Ttext=0x$(START_ADDR)
-ELFCOMMON  = -EB $(ELFSTATIC) $(ELFPARTIAL)
+# -static-libgcc -static-libstdc++
+
+DEFAULTLIBS = -nostartfiles # -nodefaultlibs -nostdlib
+
+ELFSTATIC  = -static $(DEFAULTLIBS)
+ELFPARTIAL = -e $(START_SYMB) $(call maybe-Wl,-Ttext=0x$(START_ADDR))
+ELFCOMMON  = $(ELFSTATIC) $(ELFPARTIAL)
+
+# ELFCOMMON += -EB
 
 # ----------------------------------------------------------------------
 #  Drivers
@@ -152,7 +162,7 @@ dri_fal.elf: mix_fal.o
 # GB: Drivers have unresolved symbols that are set to 0 by the
 #     linker. Setting a START_ADDRESS far away triggers an overflow
 #     error with 16-bit relocations (R_68K_PC16).
-DRIFLAGS = $(ELFCOMMON) --unresolved-symbols=ignore-all
+DRIFLAGS = $(ELFCOMMON) $(call maybe-Wl,--unresolved-symbols=ignore-all)
 
 dri_%.elf: START_SYMB = mixer_$*
 dri_%.elf: START_ADDR = 00000000
@@ -168,7 +178,7 @@ player: zingzong.bin
 
 zingzong.elf: START_SYMB = player_start
 zingzong.elf: START_ADDR = C0000000
-zingzong.elf: ELFFLAGS   = $(ELFCOMMON) -dT zingzong.x -Map $*.map
+zingzong.elf: ELFFLAGS   = $(ELFCOMMON) -T zingzong.x $(call maybe-Wl,-Map=$*.map)
 zingzong.elf: player_start.o $(addsuffix .o,$(com) $(zzz)) $(drivers)
 .PRECIOUS: zingzong.elf
 player_start.o: zingzong.x
@@ -190,7 +200,7 @@ test: test.sc68
 
 test.elf: START_SYMB = sc68_start
 test.elf: START_ADDR = 00010000
-test.elf: ELFFLAGS   = $(ELFCOMMON) -dT sc68.x -Map $*.map
+test.elf: ELFFLAGS   = $(ELFCOMMON) -T sc68.x $(call maybe-Wl,-Map=$*.map)
 test.elf: sc68_start.o $(addsuffix .o,$(com) $(zzz)) $(drivers) song.elf vset.elf
 
 sc68_start.o: sc68.x		# GB: hacky
@@ -222,16 +232,19 @@ VASMBIN = vasmm68k_mot -quiet -Fbin -o
 
 
 %.o : %.c
-	@echo "[GCC] $* <$(call filter-m,$(CFLAGS))>";\
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o "$@" "$<"
+	echo "[GCC] $* <$(call filter-m,$(CFLAGS))>";\
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c  "$<" -o "$@"
 
 %.o : %.S
 	@echo "[GAS] $* <$(call filter-m,$(CFLAGS))>";\
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(ASFLAGS) -c -o "$@" "$<"
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(ASFLAGS) -c "$<" -o "$@"
 
 %.elf dri_%.elf:
-	@echo "[ELF] $* [$(START_SYMB)=$(START_ADDR)]";\
-	$(LD) $(ELFFLAGS) -o $@ $^
+	echo "[ELF] $* [$(START_SYMB)=$(START_ADDR)]";\
+	$(CC) $(ELFFLAGS) $^ $(LDLIBS) -o $@
+
+
+#	$(LD) $(ELFFLAGS)  $^ $(ELFLIBS) -o $@
 
 %.bin : %.elf
 	@echo "[BIN] $*";\

@@ -40,9 +40,7 @@ ms_to_ticks(zz_u32_t ms, zz_u16_t rate)
       r >>= 1; d >>= 1;
     }
     ticks = divu32(mulu32(ms,r), d);
-#ifndef SC68                            /* $$$ GB: FIXME */
-    zz_assert ( ticks == ms * rate / 1000u );
-#endif
+    zz_assert ( ticks == ms * rate / 1000u ); /* GB: using libgcc div here */
   } break;
   }
 
@@ -280,7 +278,7 @@ int zz_play_chan(play_t * const P, const int k)
 
     case 'S':                       /* Slide-to-note */
 
-      /* GB: This actually happen (e.g. Wrath of the demon - tune 1)
+      /* GB: This actually happened (e.g. Wrath of the demon - tune 1)
        *     I'm not sure what the original quartet player does.
        *     Here I'm just starting the goal note.
        */
@@ -301,7 +299,7 @@ int zz_play_chan(play_t * const P, const int k)
 
       /* GB: Should I ? What if a slide happens after a rest ? It does
        *     not really make sense but technically it's
-       *     possible. We'll see if it triggers thezz_assert.
+       *     possible. We'll see if it triggers the zz_assert.
        *
        * GB: See note above. It happens so I shouldn't !
        */

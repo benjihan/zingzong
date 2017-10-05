@@ -43,6 +43,13 @@ static void delf(void * p) { }
 static void
 logfunc(zz_u8_t chan, void * user, const char *fmt, va_list list)
 {
+#ifndef NO_LIBC
+  char tmp[256];
+  vsnprintf(tmp,sizeof(tmp),fmt,list);
+  tmp[sizeof(tmp)-1] = 0;
+  fmt = tmp;
+#endif
+
   switch (chan)
   {
   case ZZ_LOG_ERR:
