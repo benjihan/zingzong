@@ -11,22 +11,13 @@
 #include <stdlib.h>
 #include <errno.h>
 
-#ifdef WITH_ZSTR_FCC
-static const char strfcc[4] = { 'Z','S','T','R' };
-#endif
 
 static inline zz_err_t valid_str(const str_t str)
 {
   zz_assert(str);
   zz_assert(str->max);
   zz_assert(str->ref);
-#ifdef WITH_ZSTR_FCC
-  zz_assert(FCC_EQ(str->fcc,strfcc));
-#endif
   return str && str->ref && str->max
-#ifdef WITH_ZSTR_FCC
-    && FCC_EQ(str->fcc,strfcc)
-#endif
     ? E_OK
     : E_ARG
     ;
@@ -38,10 +29,6 @@ zz_strsetup(str_t str, u16_t max, u16_t len, void * buf)
   zz_assert(str);
   zz_assert(max);
 
-#ifdef WITH_ZSTR_FCC
-  str->fcc[0] = strfcc[0];  str->fcc[1] = strfcc[1];
-  str->fcc[2] = strfcc[2];  str->fcc[3] = strfcc[3];
-#endif
   str->ref = 1;
   str->max = max;
   str->len = len;
@@ -138,34 +125,3 @@ zz_u16_t zz_strlen(str_t const str)
   }
   return str->len-1;
 }
-
-
-#if 0
-
-str_t
-zz_strsta(zz_play_t const P, const char * sta)
-{
-  struct str_s * str;
-  const u8_t max = sizeof(P->st_strings) / sizeof(*P->st_strings);
-
-  zz_assert(P);
-  zz_assert(sta);
-  if (!P || !sta)
-    return 0;
-
-  zz_assert(P->st_idx <= max);
-
-  if (P->st_idx < max) {
-    str = &P->st_strings[P->st_idx++];
-    str->buf[0] = 0;
-    str->len    = 0;
-    str->ptr    = sta;
-  } else {
-    u16_t len;
-    wmsg("no more static strings for -- (%hu)\"%s\"\n", HU(len), sta);
-    str = zz_strset(0,sta);
-  }
-  return str;
-}
-
-#endif
