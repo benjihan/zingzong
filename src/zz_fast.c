@@ -9,6 +9,8 @@
 #include "zz_private.h"
 
 typedef struct zz_fast_s zz_fast_t;
+
+/* GB: /!\ this structure can not be more than 12 bytes long /!\ */
 struct zz_fast_s {
   uint8_t cmd;
   union {
@@ -30,7 +32,7 @@ enum {
   ZZ_FAST_VOICE,
 };
 
-int zz_fast_init(play_t * const P, const i16_t k)
+int zz_fast_init(play_t * const P, const u8_t k)
 {
   chan_t * const C = P->chan+k;
   sequ_t * seq;
@@ -38,7 +40,7 @@ int zz_fast_init(play_t * const P, const i16_t k)
   zz_assert( sizeof(zz_fast_t) <= 12 );
 
   for (seq = C->seq; ; ++seq) {
-    u16_t       cmd = U16(seq->cmd);
+    u16_t const cmd = U16(seq->cmd);
     u16_t const len = U16(seq->len);
     u32_t const stp = U32(seq->stp);
     u32_t const par = U32(seq->par);
@@ -46,50 +48,63 @@ int zz_fast_init(play_t * const P, const i16_t k)
 
     switch (cmd) {
     case 'E':
-      cmd = ZZ_FAST_END;
+      fast->cmd = ZZ_FAST_END;
       break;
     case 'P':
-      cmd = ZZ_FAST_PLAY;
+      fast->cmd = ZZ_FAST_PLAY;
       fast->play.len  = len;
       fast->play.note = stp;
       break;
     case 'R':
-      cmd = ZZ_FAST_REST;
+      fast->cmd = ZZ_FAST_REST;
       fast->rest.len = len;
       break;
     case 'S':
+      fast->cmd = ZZ_FAST_SLIDE;
       fast->slide.len  = len;
       fast->slide.goal = stp;
       fast->slide.step = (int32_t) par;
       break;
     case 'V':
+      fast->cmd = ZZ_FAST_VOICE;
       fast->voice.ins = &P->vset.inst[par>>2];
       break;
     case 'L':
-      cmd = ZZ_FAST_LOOP;
+      fast->cmd = ZZ_FAST_LOOP;
       fast->loop.cnt = (par >> 16) + 1;
       break;
     case 'l':
-      cmd = ZZ_FAST_LABEL;
+      fast->cmd = ZZ_FAST_LABEL;
       break;
     default:
       zz_assert( "invalid command" );
       return E_SNG;
     }
-    fast->cmd = cmd;
-    if (cmd == ZZ_FAST_END)
+    if (fast->cmd == ZZ_FAST_END)
       break;
   }
 
   return ZZ_OK;
 }
 
-int zz_fast_chan(play_t * const P, const i16_t k)
+static inline
+u16_t seq2off(const chan_t * const C, const sequ_t * const seq)
+{
+  return (intptr_t) seq - (intptr_t) C->seq;
+}
+
+static inline
+sequ_t * off2seq(const chan_t * const C, const u16_t off)
+{
+  return (sequ_t *) ( (intptr_t)C->seq + off );
+}
+
+int zz_fast_chan(play_t * const P, const u8_t k)
 {
   chan_t * const C = P->chan+k;
   sequ_t * seq = C->cur;
 
-  if ( P->muted_voices & (1<<k) )
+  if ( P->muted_voices & C->bit )
     return E_OK;
 
   C->trig = TRIG_NOP;
@@ -113,13 +128,14 @@ int zz_fast_chan(play_t * const P, const i16_t k)
 
   if (C->wait) --C->wait;
   while (!C->wait) {
+    struct loop_s * l;
     const zz_fast_t * const fast = (const zz_fast_t *) seq++;
 
     switch (fast->cmd) {
 
     case ZZ_FAST_END:                   /* End-Voice */
       seq = C->seq;
-      P->has_loop |= 1<<k;
+      P->has_loop |= C->bit;
       C->has_loop++;
       C->loop_sp = C->loops;
       break;
@@ -153,34 +169,29 @@ int zz_fast_chan(play_t * const P, const i16_t k)
       break;
 
     case ZZ_FAST_LABEL:                 /* Set-Loop-Point */
-    {
-      struct loop_s * const l = C->loop_sp++;
-      l->seq = seq;
+      l = C->loop_sp++;
+      l->off = seq2off(C,seq);
       l->cnt = 0;
-    } break;
+      break;
 
     case ZZ_FAST_LOOP:                  /* Loop-To-Point */
-    {
-      struct loop_s * l = C->loop_sp-1;
-
+      l = C->loop_sp-1;
       if (l < C->loops) {
         C->loop_sp = (l = C->loops) + 1;
         l->cnt = 0;
-        l->seq = C->seq;
+        l->off = 0;
       }
 
       if (!l->cnt)
         l->cnt = fast->loop.cnt;
 
       if (--l->cnt) {
-        seq = l->seq;
+        seq = off2seq(C,l->off);
       } else {
         --C->loop_sp;
         zz_assert(C->loop_sp >= C->loops);
       }
-
-
-    } break;
+      break;
 
     default:
       zz_assert( ! "invalid command" );

@@ -268,8 +268,8 @@ struct chan_s {
   sequ_t  *sqN;                       /**< Last  wait-able command. */
   inst_t  *ins;                       /**< instrument (fast)        */
 
-  char id;                          /**< letter ['A'..'D'].         */
   u8_t num;                         /**< channel number [0..3].     */
+  u8_t bit;                         /**< channel bit {1,2,4,8}.     */
   u8_t trig;                        /**< see TRIG_* enum.           */
   u8_t curi;                        /**< current instrument number. */
 
@@ -280,10 +280,7 @@ struct chan_s {
 
   struct loop_s {
     u16_t cnt;                       /**< loop count. */
-    union {
-      u16_t off;                        /**< loop point. */
-      sequ_t * seq;                     /**< loop point (fast). */
-    };
+    u16_t off;                        /**< loop point. */
   }
   *loop_sp,                             /**< loop stack pointer.    */
   loops[MAX_LOOP];                      /**< loop stack.   */

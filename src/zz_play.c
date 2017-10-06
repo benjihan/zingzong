@@ -126,16 +126,14 @@ zz_err_t zz_setup(zz_play_t P, zz_u8_t mixerid,
 
 /* ---------------------------------------------------------------------- */
 
-void
-zz_chan_init(play_t * P, int k)
+static void chan_init(play_t * const P, u8_t k)
 {
   chan_t * const C = P->chan+k;
   sequ_t * seq;
   int cmd;
 
-  zz_assert(k >= 0 && k < 4);
   zz_memclr(C,sizeof(*C));
-  C->id  = 'A'+k;
+  C->bit = 1 << k;
   C->num = k;
   C->cur = C->seq = P->song.seq[k];
   for ( seq = C->cur; (cmd=U16(seq->cmd)) != 'F' ; ++seq ) {
@@ -156,10 +154,10 @@ zz_chan_init(play_t * P, int k)
 
 zz_err_t zz_play_init(play_t * const P)
 {
-  int k;
+  u8_t k;
 
   for (k=0; k<4; ++k)
-    zz_chan_init(P, k);
+    chan_init(P, k);
   P->has_loop = P->muted_voices;
   P->done = 0;
   P->tick = 0;
@@ -202,12 +200,12 @@ sequ_t * loop_seq(const chan_t * const C, const uint16_t off)
   return (sequ_t *)&off[(int8_t *)C->seq];
 }
 
-int zz_play_chan(play_t * const P, const int k)
+int zz_play_chan(play_t * const P, const int _k)
 {
-  chan_t * const C = P->chan+k;
+  chan_t * const C = P->chan+_k;
   sequ_t * seq = C->cur;
 
-  if ( P->muted_voices & (1<<k) )
+  if ( P->muted_voices & C->bit )
     return E_OK;
 
   C->trig = TRIG_NOP;
@@ -244,7 +242,7 @@ int zz_play_chan(play_t * const P, const int k)
 
     case 'F':                           /* End-Voice */
       seq = C->seq;
-      P->has_loop |= 1<<k;
+      P->has_loop |= C->bit;
       C->has_loop++;
       C->loop_sp = C->loops;            /* Safety net */
       break;
@@ -256,13 +254,13 @@ int zz_play_chan(play_t * const P, const int k)
     case 'P':                           /* Play-Note */
       if (C->curi < 0 || C->curi >= P->vset.nbi) {
         dmsg("%c[%hu]@%lu: using invalid instrument number -- %hu/%hu\n",
-             C->id, HU(seq_idx(C,seq-1)), LU(P->tick),
+             'A'+C->num, HU(seq_idx(C,seq-1)), LU(P->tick),
              HU(C->curi+1),HU(P->vset.nbi));
         return E_SNG;
       }
       if (!P->vset.inst[C->curi].len) {
         dmsg("%c[%hu]@%lu: using tainted instrument -- I#%02hu\n",
-             C->id, HU(seq_idx(C,seq-1)), LU(P->tick),
+             'A'+C->num, HU(seq_idx(C,seq-1)), LU(P->tick),
              HU(C->curi+1));
         return E_SET;
       }
@@ -313,7 +311,7 @@ int zz_play_chan(play_t * const P, const int k)
         l->cnt = 0;
       } else {
         dmsg("%c[%hu]@%lu -- loop stack overflow\n",
-             C->id, HU(seq_idx(C,seq-1)), LU(P->tick));
+             'A'+C->num, HU(seq_idx(C,seq-1)), LU(P->tick));
         return E_PLA;
       }
       break;
@@ -364,7 +362,7 @@ int zz_play_chan(play_t * const P, const int k)
 
     default:
       dmsg("%c[%hu]@%lu command <%c> #%04hX\n",
-           C->id, HU(seq_idx(C,seq-1)), LU(P->tick),
+           'A'+C->num, HU(seq_idx(C,seq-1)), LU(P->tick),
            isalpha(cmd) ? (char)cmd : '^', HU(cmd));
       return E_PLA;
     } /* switch */
@@ -392,11 +390,10 @@ zz_tick(play_t * const P)
     ;
 
   if (ecode != E_OK) {
-    const chan_t * const C = P->chan+k;
-    P->done |= 0x10 << k;
-    (void)C;
+    const chan_t * const C = P->chan+k; (void)C;
+    P->done |= C->bit << 4;
     emsg("play: %c[%hu]@%lu: failed\n",
-         C->id, HU(seq_idx(C,C->cur)), LU(P->tick));
+         'A'+C->num, HU(seq_idx(C,C->cur)), LU(P->tick));
   }
 
   return ecode;
