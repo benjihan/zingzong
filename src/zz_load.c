@@ -51,12 +51,25 @@ song_load(song_t *song, const char *uri)
  */
 
 #ifdef NO_LIBC
+
+# ifndef NO_LIBC_BUT
+/* GB: Technically we can compile zz_load.c without a libc except for
+ *     the vset_guess() function. But usually we probably don't want
+ *     to. Just define NO_LIBC_BUT if you really want to.
+ */
+#  error compiling zz_load.c without LIBC ?
+
+# else /* NO_LIBC_BUT */
+
 static int
 vset_guess(zz_play_t const P, const char * songuri)
 {
   return -1;
 }
-#else
+
+# endif /* NO_LIBC_BUT */
+
+#else /* NO_LIBC */
 
 static zz_err_t
 try_vset_load(vset_t * vset, const char * uri)
@@ -713,9 +726,7 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
 
   vfs_del(&inp);
   if (ecode) {
-    zz_song_wipe(&P->song);
-    zz_vset_wipe(&P->vset);
-    zz_info_wipe(&P->info);
+    zz_wipe(P);
     format = ZZ_FORMAT_UNKNOWN;
   } else {
     zz_assert( format != ZZ_FORMAT_UNKNOWN );

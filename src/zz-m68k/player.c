@@ -26,6 +26,7 @@ int vset_init(zz_vset_t const vset);
 static play_t play;
 static bin_t songbin, vsetbin;
 static volatile zz_err_t ready, ecode;
+static void * pcm;
 
 static bin_t * set_bin(bin_t * bin, bin_t *src, int16_t off)
 {
@@ -92,8 +93,7 @@ void player_init(bin_t * song, bin_t * vset)
     && ( play.vset.iused = play.song.iused )
     && ! vset_init_header(&play.vset, vset->ptr)
     && ! vset_init(&play.vset)
-    && ! zz_setup(&play, ZZ_DEFAULT_MIXER, 0, 0, 0, 0, 0)
-    && ! zz_init(&play)
+    && ! zz_init(&play,ZZ_MIXER_DEF,0,0,0)
     ;
 }
 
@@ -106,11 +106,12 @@ void player_kill(void)
 void player_play(void)
 {
   if (ready) {
-    zz_u16_t npcm = play.pcm_per_tick;
-    int16_t * ptr;
-    ready = !! ( ptr = zz_play(&play, &npcm) );
-    if (!ready) {
-      ecode = npcm;
+    int16_t n = zz_play(&play,0,0);
+    if (n > 0)
+      n = zz_play(&play,pcm,n);
+    if ( n < 0 ) {
+      ready = 0;
+      ecode = -n;
       BREAKP;
     }
   }

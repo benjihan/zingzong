@@ -44,8 +44,6 @@ static int is_valid_ins(const uint8_t ins) {
  * ----------------------------------------------------------------------
  */
 
-#undef DO_STATS
-
 zz_err_t
 song_init_header(song_t * song, const void *_hd)
 {
@@ -53,15 +51,8 @@ song_init_header(song_t * song, const void *_hd)
   const uint16_t khz = U16(hd+0), bar = U16(hd+2), spd = U16(hd+4);
   uint16_t tck = U16(hd+12) == 0x5754 ? U16(hd+14) : 0;
   zz_err_t ecode;
+
   /* Parse song header */
-
-  /* GB: qts/ohh_cricket respectable request 46hz !!?! */
-  if (tck < RATE_MIN && tck >= RATE_MIN-(RATE_MIN>>3)) {
-    dmsg("correcting rate from %hu-hz to %hu-hz\n",
-         HU(tck), HU(RATE_MIN));
-    tck  = RATE_MIN;
-  }
-
   song->rate  = tck;
   song->khz   = khz;
   song->barm  = bar;
@@ -104,21 +95,6 @@ song_init(song_t * song)
     { 0,'F' }                           /* "F"in */
   };
 
-#ifdef DO_STATS
-  /* GB: Attempt to guess tick rate using tempo but it's made hard
-   *     because some song using arpeggio emulation have very small
-   *     wait time (4).
-   */
-  struct {
-    u32_t wait_acu;
-    u32_t wait_cnt;
-    u32_t wait_min;
-    u32_t wait_max;
-  } stats[5];
-  zz_memset(stats,0,sizeof(stats));
-#endif
-
-
   /* Basic parsing of the sequences to find the end. It replaces
    * empty sequences by something that won't loop endlessly and won't
    * disrupt the end of music detection.
@@ -132,7 +108,6 @@ song_init(song_t * song)
     u16_t    const len = U16(seq->len);
     u32_t    const stp = U32(seq->stp);
     u32_t    const par = U32(seq->par);
-    u16_t    wait = 0;
 
     if (!song->seq[k])
       song->seq[k] = seq;               /* Sequence */
@@ -160,9 +135,7 @@ song_init(song_t * song)
         song->stepmax = stp;
       else if (stp < song->stepmin)
         song->stepmin = stp;
-      wait = len;
     case 'R':
-      /* wait = len; */ /* if we want to count rest too */
       break;
     case 'l': case 'L':
       break;
@@ -179,21 +152,6 @@ song_init(song_t * song)
            HU(cmd), HU(len), LU(stp), LU(par));
       goto error;
     }
-
-#ifdef DO_STATS
-    if (wait) {
-      stats[k].wait_acu += wait;
-      stats[k].wait_cnt += 1;
-      if (!stats[k].wait_max)
-        stats[k].wait_min = stats[k].wait_max = wait;
-      else if (wait < stats[k].wait_min)
-        stats[k].wait_min = wait;
-      else if (wait > stats[k].wait_max)
-        stats[k].wait_max = wait;
-    }
-#else
-    (void) wait;
-#endif
   }
 
   if ( (off -= 11) != song->bin->len) {
@@ -214,36 +172,6 @@ song_init(song_t * song)
       song->seq[k] = (sequ_t *) nullseq;
     }
   }
-
-#ifdef DO_STATS
-  for (k=0; k<4; ++k) {
-    u32_t avg = stats[k].wait_cnt
-      ? divu32(stats[k].wait_acu,stats[k].wait_cnt)
-      : 0
-      ;
-
-    stats[4].wait_acu += stats[k].wait_acu;
-    stats[4].wait_cnt += stats[k].wait_cnt;
-    if (!stats[4].wait_min)
-      stats[4].wait_min = stats[k].wait_min;
-    else if ( stats[k].wait_min < stats[4].wait_min)
-      stats[4].wait_min = stats[k].wait_min;
-    if (!stats[4].wait_max)
-      stats[4].wait_max = stats[k].wait_max;
-    else if ( stats[k].wait_max > stats[4].wait_max)
-      stats[4].wait_max = stats[k].wait_max;
-
-    dmsg("%c: wait acu: %lu cnt: %lu min: %lu max: %lu avg: %lu\n",
-         'A'+k,
-         LU(stats[k].wait_acu), LU(stats[k].wait_cnt),
-         LU(stats[k].wait_min), LU(stats[k].wait_max), LU(avg));
-  }
-  dmsg("song: wait acu: %lu cnt: %lu min: %lu max: %lu avg: %lu\n",
-       LU(stats[k].wait_acu), LU(stats[k].wait_cnt),
-       LU(stats[k].wait_min), LU(stats[k].wait_max),
-       LU(divu32(stats[k].wait_acu,stats[k].wait_cnt)));
-
-#endif
 
   dmsg("song steps: %08lx .. %08lx\n", LU(song->stepmin), LU(song->stepmax));
   dmsg("song iused: %05lx\n", LU(song->iused));
@@ -398,7 +326,8 @@ vset_init(zz_vset_t const vset)
   dmsg("%hu/%hu instrument using %lu/%lu bytes unroll:%lu\n",
        HU(nused), HU(nbi), LU(tot), LU(end-beg), LU(unroll));
   if (unroll < VSET_UNROLL)
-    wmsg("Have less unroll space than expected -- %lu\n", LU(VSET_UNROLL-unroll));
+    wmsg("Have less unroll space than expected -- %lu\n",
+         LU(VSET_UNROLL-unroll));
 
   /* -3- Unroll starting from bottom to top */
   for (i=0, e=end; i<nbi; ++i) {
@@ -406,15 +335,6 @@ vset_init(zz_vset_t const vset)
     const u32_t r_len = inst->len;        /* real length */
     const u32_t a_len = (r_len + 1) & -2; /* aligned length */
     uint8_t * const pcm = (void *)( (intptr_t) (e-unroll-a_len) & -2);
-
-    /*
-      dmsg("[%02hu] I#%02hu rlen=%5lu alen:%5lu pcm<%p>%s..<%p>%s inst:<%p>%s\n",
-      HU(i), HU(idx[i]), LU(r_len), LU(a_len),
-      pcm,       pcm       <  beg ? " < beg" : "",
-      pcm+a_len, pcm+a_len <= end ? "" : " > end",
-      inst->pcm, pcm <= inst->pcm ? "fwd":"bwd"
-      );
-    */
 
     if (!a_len)
       continue;

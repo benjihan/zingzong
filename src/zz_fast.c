@@ -136,7 +136,6 @@ int zz_fast_chan(play_t * const P, const u8_t k)
     case ZZ_FAST_END:                   /* End-Voice */
       seq = C->seq;
       P->has_loop |= C->bit;
-      C->has_loop++;
       C->loop_sp = C->loops;
       break;
 

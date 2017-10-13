@@ -8,162 +8,55 @@
 #define ZZ_DBG_PREFIX "(pla) "
 #include "zz_private.h"
 
-static zz_u32_t never_inline
-ms_to_ticks(zz_u32_t ms, zz_u16_t rate)
-{
-  zz_u32_t ticks;
-  if (!ms)
-    return 0;                           /* trivial no other check */
-
-  if (!rate) {
-    rate = RATE_DEF;
-    wmsg("rate not set -- assuming %huhz -- %lu ms\n", HU(rate), LU(ms));
-  }
-
-  zz_assert( rate >= RATE_MIN );
-  zz_assert( rate <= RATE_MAX );
-  if (rate < RATE_MIN || rate > RATE_MAX) {
-    wmsg("rate out of range -- %huhz\n", HU(rate));
-    return 0;
-  }
-
-  /* TICKS = MS x RATE / 1000 */
-  switch (rate) {
-  case 50:                              /* div 20 */
-    ms >>= 2;                           /* div 4 */
-  case 200:                             /* div 5 */
-    ticks = divu32(ms,5);
-    break;
-  default: {
-    zz_u16_t r = rate, d = 1000;
-    while ( ! ( (r|d) & 1 ) ) {
-      r >>= 1; d >>= 1;
-    }
-    ticks = divu32(mulu32(ms,r), d);
-    zz_assert ( ticks == ms * rate / 1000u ); /* GB: using libgcc div here */
-  } break;
-  }
-
-  return ticks;
-}
-
-
-/**
- * @retval ticks*1000/rate
- */
-static zz_u32_t never_inline
-tick_to_ms(zz_u32_t ticks, zz_u16_t rate)
-{
-  zz_u32_t ms, acu;              /* TEMP TO TEST OVERFLOW ON 32 bit */
-
-  if (!ticks)
-    return 0;                           /* trivial no other check */
-
-  if (!rate) {
-    rate = RATE_DEF;
-    wmsg("rate not set -- assuming %hu-hz -- %lu-ticks\n",
-         HU(rate),LU(ticks));
-  }
-  ms = ticks;
-
-  switch ( rate ) {
-  case 50:                              /* x20 */
-    ms <<= 2;
-  case 200:                             /* x5 */
-    ms += (ms << 2);
-    break;
-  default:
-    acu  = ms <<= 3;                    /* ms = x8  acu = x8 */
-    acu += ms += ms;                    /* ms = x16 acu = x24 */
-    ms <<= 6;                           /* ms = x1024 */
-    ms -= acu;                          /* ms = x1000 */
-  }
-
-  /* dmsg("ticks: %lu rate:%hu ms:%lu == %lu\n", */
-  /*      LU(ticks),HU(rate),LU(ms), */
-  /*      LU(ticks*1000ull/rate)); */
-
-#ifndef SC68                            /* $$$ GB: FIXME  */
-  zz_assert ( ms == ( ticks*1000ull / rate ) );
-#endif
-  return ms;
-}
-
-zz_err_t zz_setup(zz_play_t P, zz_u8_t mixerid,
-                  zz_u32_t spr, zz_u16_t rate,
-                  zz_u32_t max_ticks, zz_u32_t max_ms, zz_u8_t end_detect)
-{
-  if ( zz_mixer_set(P, mixerid) == ZZ_DEFAULT_MIXER )
-    return ZZ_EARG;
-  if (!P)
-    return ZZ_OK;
-
-  if (!rate) rate = P->song.rate ? P->song.rate : RATE_DEF;
-  if (!spr)  spr = mulu(P->song.khz,1000);
-  if (!spr)  spr = SPR_DEF;
-
-  if (rate < RATE_MIN || rate > RATE_MAX || spr < SPR_MIN || spr > SPR_MAX)
-    return ZZ_EARG;
-
-  P->rate       = rate;
-  P->spr        = spr;
-
-  if (!max_ticks && max_ms) {
-    max_ticks = ms_to_ticks(max_ms, rate);
-    dmsg("setup: %lu-ms@%hu-hz -> %lu-ticks\n",
-         LU(max_ms), HU(rate), LU(max_ticks));
-  }
-
-  P->max_ticks  = max_ticks;
-  P->end_detect = !!end_detect;
-
-  dmsg("setup: rate:%hu spr:%lu max-ticks:%lu end-detect:%s\n",
-       HU(P->rate), LU(P->spr),
-       LU(P->max_ticks), P->end_detect?"yes":"no" );
-
-  return ZZ_OK;
-}
-
 /* ---------------------------------------------------------------------- */
 
 static void chan_init(play_t * const P, u8_t k)
 {
   chan_t * const C = P->chan+k;
-  sequ_t * seq;
-  int cmd;
 
-  zz_memclr(C,sizeof(*C));
+  zz_memclr(C,sizeof(*C));              /* bad boy */
+
   C->bit = 1 << k;
   C->num = k;
   C->cur = C->seq = P->song.seq[k];
-  for ( seq = C->cur; (cmd=U16(seq->cmd)) != 'F' ; ++seq ) {
-    switch(cmd) {
-    case 'P': case 'R': case 'S':
-      /* Scoot first and last note sequence */
-      if (!C->sq0) C->sq0 = seq;
-      C->sqN = seq;
+  if (!C->end) {
+    sequ_t * seq;
+    int cmd;
+    for ( seq = C->seq; (cmd=U16(seq->cmd)) != 'F' ; ++seq ) {
+      switch(cmd) {
+      case 'P': case 'R': case 'S':
+        /* Scoot first and last note sequence */
+        if (!C->sq0) C->sq0 = seq;
+        C->sqN = seq;
+      }
     }
+    C->end = seq;
   }
   C->loop_sp = C->loops;
-  C->end = seq;
+  zz_assert(C->end);
   zz_assert(C->sq0);
   zz_assert(C->sqN);
 }
 
 /* ---------------------------------------------------------------------- */
 
-zz_err_t zz_play_init(play_t * const P)
+static zz_err_t play_init(play_t * const P)
 {
   u8_t k;
 
   for (k=0; k<4; ++k)
     chan_init(P, k);
-  P->has_loop = P->muted_voices;
+
+  P->has_loop = 15 & P->muted_voices;   /* set ignored voices */
   P->done = 0;
   P->tick = 0;
-  P->mix_ptr = P->mix_buf + P->pcm_per_tick;
+  P->ms_pos = 0;
+  P->ms_end = 0;
+  P->ms_err = 0;
+  P->pcm_cnt = 0;
+  P->pcm_err = 0;
 
-  return 0;
+  return P->code = ZZ_OK;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -200,11 +93,13 @@ sequ_t * loop_seq(const chan_t * const C, const uint16_t off)
   return (sequ_t *)&off[(int8_t *)C->seq];
 }
 
-int zz_play_chan(play_t * const P, const int _k)
+int play_chan(play_t * const P, chan_t * const C)
 {
-  chan_t * const C = P->chan+_k;
   sequ_t * seq = C->cur;
 
+  zz_assert( C->trig == TRIG_NOP );
+
+  /* Ignored voices ? */
   if ( P->muted_voices & C->bit )
     return E_OK;
 
@@ -243,7 +138,6 @@ int zz_play_chan(play_t * const P, const int _k)
     case 'F':                           /* End-Voice */
       seq = C->seq;
       P->has_loop |= C->bit;
-      C->has_loop++;
       C->loop_sp = C->loops;            /* Safety net */
       break;
 
@@ -369,110 +263,124 @@ int zz_play_chan(play_t * const P, const int _k)
   } /* while !wait */
   C->cur = seq;
 
+  /* Muted voices ? */
+  if ( (P->muted_voices>>4) & C->bit )
+    C->trig = TRIG_STOP;
+
   return E_OK;
 }
 
 /* ---------------------------------------------------------------------- */
 zz_err_t
-zz_tick(play_t * const P)
+play_tick(play_t * const P)
 {
-  zz_err_t ecode;
-  u8_t k;
+  chan_t * C;
 
-  ++P->tick;
-  for (k=0; k<4; ++k)
-    if (E_OK != (ecode = zz_play_chan(P,k)))
-      break;
+  /* Increment tick and ms */
+  ++ P->tick;
+  P->ms_pos  = P->ms_end;
+  P->ms_end += P->ms_per_tick;
+  P->ms_err += P->ms_err_tick;
+  if (P->ms_err >= P->rate) {
+    P->ms_err -= P->rate;
+    ++ P->ms_end;
+  }
+
+  for ( C=P->chan; C<P->chan+4; ++C ) {
+    zz_err_t ecode = play_chan(P,C);
+    if (E_OK != ecode) {
+      P->done |= C->bit << 4;
+      emsg("play: %c[%hu]@%lu: failed\n",
+           'A'+C->num, HU(seq_idx(C,C->cur)), LU(P->tick));
+      return ecode;
+    }
+  }
 
   P->done |= 0
     | ( 0x01 & -(P->end_detect && P->has_loop == 15) )
-    | ( 0x02 & -(P->max_ticks && P->tick > P->max_ticks) )
+    | ( 0x02 & -(P->ms_max && P->ms_pos > P->ms_max) )
     ;
 
-  if (ecode != E_OK) {
-    const chan_t * const C = P->chan+k; (void)C;
-    P->done |= C->bit << 4;
-    emsg("play: %c[%hu]@%lu: failed\n",
-         'A'+C->num, HU(seq_idx(C,C->cur)), LU(P->tick));
+  /* PCM this frame/tick */
+  P->pcm_cnt  = P->pcm_per_tick;
+  P->pcm_err += P->pcm_err_tick;
+  if (P->pcm_err >= P->rate) {
+    P->pcm_err -= P->rate;
+    ++P->pcm_cnt;
   }
 
-  return ecode;
+  return E_OK;
 }
 
 /* ---------------------------------------------------------------------- */
 
-int16_t * zz_play(play_t * P, zz_u16_t * ptr_n)
+i16_t zz_play(play_t * restrict P, void * restrict pcm, const i16_t n)
 {
-  int16_t * ptr = 0;
-  zz_u16_t n = *ptr_n;
-  zz_err_t ecode;
+  i16_t ret = 0;
 
-  zz_assert(P);
-  zz_assert(ptr_n);
+  zz_assert( P );
+  zz_assert( P->mixer );
 
-  if (!P->mix_buf) {
-    emsg("play: not initialized\n");
-    *ptr_n = E_PLA;
-    return 0;
-  }
+  /* Already done ? */
+  if (P->done)
+    return -P->code;
 
-  if (!P->mix_ptr) {
-    dmsg("play: rate:%huhz spr:%luhz pcm:%hu ticks:%lu end:%hu mute:%hX\n",
-         HU(P->rate), LU(P->spr), HU(P->pcm_per_tick),
-         LU(P->max_ticks),HU(P->end_detect), HU(P->muted_voices));
-    ecode = zz_play_init(P);
-    if (ecode)
-      goto error;
-  }
-  ecode = E_OK;
+  do {
+    i16_t cnt;
 
-  zz_assert( P->mix_ptr );
-  if (!n)
-    n = P->pcm_per_tick;
-  if (n > 0) {
-    zz_u16_t have = P->mix_buf + P->pcm_per_tick - P->mix_ptr;
-
-    if (!have) {
-      /* refill mix_buf[] */
-      ecode = zz_tick(P);
-      if (ecode != E_OK)
-        goto error;
-      if (P->done) {
-        n = 0;
-        goto error;
+    if (!P->pcm_cnt) {
+      P->code = play_tick(P);
+      if (P->code != E_OK) {
+        ret = -P->code;
+        break;
       }
+      if (P->done)
+        break;
 
-      ecode = E_MIX;
-      if (P->mixer && P->mixer->push(P))
-        goto error;
-      P->mix_ptr = P->mix_buf;
-      have = P->pcm_per_tick;
+    }
+    if (n == 0) {
+      zz_assert( P->pcm_cnt > 0 );
+      zz_assert( ! ret );
+      ret = P->pcm_cnt;
+      break;
     }
 
-    ptr = P->mix_ptr;
-    if (n > have)
-      n = have;
-    P->mix_ptr += n;
-  }
+    if ( n < 0 ) {
+      /* finish the tick */
+      zz_assert( !ret );
+      cnt = -n;
+    } else {
+      /* remain to mix */
+      cnt = n-ret;
+    }
+    if (cnt > P->pcm_cnt)
+      cnt = P->pcm_cnt;
+    P->pcm_cnt -= cnt;
 
-error:
-  *ptr_n = ptr ? n : ecode;
-  return ptr;
+    if (pcm) {
+      pcm = P->mixer->push(P, pcm, cnt);
+      if (!pcm) {
+        ret = -(P->code = E_MIX);
+        break;
+      }
+    }
+    ret += cnt;
+
+    /* Reset triggers for all channels. */
+    P->chan[0].trig = P->chan[1].trig =
+      P->chan[2].trig = P->chan[3].trig = TRIG_NOP;
+
+    zz_assert (  ret <= (n<0?-n:n) );
+  } while ( ret < n );
+
+  return ret;
 }
 
 
-zz_err_t
-zz_measure(play_t * P, zz_u32_t * restrict pticks, zz_u32_t * restrict pms)
+zz_u32_t
+zz_measure(play_t * P, u32_t ms_max)
 {
-  mixer_t * const save_mixer = P->mixer;
-  zz_err_t ecode = E_OK;
-  zz_u32_t ticks = pticks ? *pticks : 0;
-  zz_u32_t save_max_ticks = P->max_ticks;
-
-  if (!P->rate && P->song.rate) {
-    P->rate = P->song.rate;
-    dmsg("set tick-rate to song default -- %huhz\n", HU(P->rate));
-  }
+  const zz_u32_t save_ms_max = P->ms_max;
 
   if (!P->vset.bin) {
     /* If there is no voice set we still want to be able to measure
@@ -484,6 +392,7 @@ zz_measure(play_t * P, zz_u32_t * restrict pticks, zz_u32_t * restrict pms)
     P->vset.khz = P->song.khz;
     P->vset.nbi = 20;
     for (i=0; i<20; ++i) {
+      P->vset.inst[i].num = i;
       P->vset.inst[i].len = 2;
       P->vset.inst[i].lpl = 0;
       P->vset.inst[i].end = 2;
@@ -491,60 +400,43 @@ zz_measure(play_t * P, zz_u32_t * restrict pticks, zz_u32_t * restrict pms)
     }
   }
 
-  if (!ticks && pms && *pms) {
-    ticks = ms_to_ticks(*pms, P->rate);
-    dmsg("measure: set current max to -- %lu ms\n", LU(*pms));
-  }
-
-  if (ticks) {
-    dmsg("measure: set current max to -- %lu ticks\n", LU(ticks));
-    P->max_ticks = ticks;
-  }
-
-  P->mixer = 0;                         /* Remove mixer */
-  P->mix_ptr = 0;                       /* Reset player */
-  while (!P->done) {
-    zz_u16_t n = 0;                     /* play whole buffer */
-    if (!zz_play(P, &n)) {
-      ecode = n;
-      break;
-    }
-    zz_assert ( n > 0 || P->done );
-  }
-  dmsg("measure loop ended [done:%hu code:%hu ticks:%lu/%lu]\n",
-       HU(P->done), HU(ecode), LU(P->tick), LU(P->max_ticks));
+  play_init(P);
+  P->end_detect = 1;
+  P->ms_max = ms_max;
+  dmsg("measure: set current max to -- %lu ms\n", LU(P->ms_max));
+  do {
+    i16_t n = zz_play(P,0,0);    /* Get the number of PCM this tick */
+    if (n > 0)
+      n = zz_play(P,0,n);               /* Play without mixer */
+    zz_assert( n > 0 || P->done );
+  } while (!P->done);
+  dmsg("measure loop ended [done:%hu code:%hu ticks:%lu ms:%lu/%lu]\n",
+       HU(P->done),HU(P->code),LU(P->tick),LU(P->ms_pos),LU(P->ms_max));
 
   /* If everything went as planed and we were able to measure music
    * duration then set play_t::end_detect and play_t::max_ticks.
    */
-  P->end_detect = !ecode && (P->tick <= P->max_ticks);
+  P->end_detect = !P->code && (!P->ms_max || P->ms_pos <= P->ms_max);
   if (!P->end_detect) {
-    P->max_ticks = save_max_ticks;
-    ticks = 0;
-  }
-  else {
-    ticks = P->max_ticks = P->tick;
+    P->ms_max = save_ms_max;
+    P->ms_len = P->code ? ZZ_EOF : 0;
+  } else {
+    P->ms_max = P->ms_len = P->ms_pos;
   }
 
-  P->mix_ptr = 0;
-  P->mixer = save_mixer;
   if (!P->vset.bin)
     P->vset.nbi = 0;
 
-  if (pticks)
-    *pticks = ticks;
-  if (pms)
-    *pms = tick_to_ms(ticks, P->rate);
+  dmsg("measured (%s) -> ms:%lu\n",
+       P->code ? "ERR" : P->end_detect ? "OK" : "NOEND", LU(P->ms_len));
 
-  dmsg("measured (%s) -> ticks:%lu ms:%lu\n",
-        ecode ? "ERR" : P->end_detect ? "OK" : "NOEND",
-        LU(ticks), LU(pms?*pms:0));
-  return ecode;
+  play_init(P);
+  return P->ms_len;
 }
 
 /* ---------------------------------------------------------------------- */
 
-static void zz_rt_check(void)
+static void rt_check(void)
 {
 #ifndef NDEBUG
   static uint8_t bytes[4] = { 1, 2, 3, 4 };
@@ -553,7 +445,7 @@ static void zz_rt_check(void)
   /* constant check */
   zz_assert( ZZ_FORMAT_UNKNOWN == 0 );
   zz_assert( ZZ_OK == 0 );
-  zz_assert( ZZ_DEFAULT_MIXER > 0 );
+  zz_assert( ZZ_MIXER_DEF > 0 );
 
   /* built-in type check */
   zz_assert( sizeof(uint8_t)  == 1 );
@@ -583,59 +475,54 @@ static void zz_rt_check(void)
 }
 
 zz_err_t
-zz_init(play_t * P)
+zz_init(play_t * P, u8_t mid, u32_t spr, u16_t rate, i32_t maxms)
 {
   zz_err_t ecode = E_OK;
 
-  zz_rt_check();
+  rt_check();
 
-  zz_assert ( ! P->mix_buf );
-  zz_assert ( ! P->mixer_data );
-  zz_assert ( P->mixer );
-
-  if (!P->rate && P->song.rate) {
-    P->rate = P->song.rate;
-    dmsg("set tick-rate to song default -- %huhz\n", HU(P->rate));
-  }
-
-  if (!P->rate) {
-      P->rate = P->song.rate ? P->song.rate :RATE_DEF;
-      dmsg("replay rate not set to %sdefault %hu\n",
-           P->song.rate ? "song ":"", HU(P->rate));
-  }
-
-  if (!P->spr) {
-    P->spr = P->song.khz * 1000u;
-    dmsg("sampling rate not set -- default to %lu\n", LU(P->spr));
-  }
-
-  /* ----------------------------------------
-   *  Mix buffers
-   * ---------------------------------------- */
-
-  P->pcm_per_tick = divu(P->spr + (P->rate>>1), P->rate);
-  dmsg("pcm per tick: %lu (%lux%lu+%lu) %lu:%lu\n",
-       LU(P->pcm_per_tick),
-       LU(divu32(P->pcm_per_tick,MIXBLK)),
-       LU(MIXBLK), LU(P->pcm_per_tick%MIXBLK), /* GB: $$$ no good for m68k */
-       LU(P->spr), LU(P->rate));
-
-  ecode = E_PLA;
-  if (P->pcm_per_tick < MIXBLK)
-    emsg("not enough pcm per tick -- %lu\n", LU(P->pcm_per_tick));
-  else if (!P->mixer)
-    emsg("no mixer\n");
-  else
-    ecode = P->mixer->init(P);
-
-  if (ecode)
+  if (!P)
+    return E_ARG;
+  ecode = E_SNG;
+  if (!P->song.iused)
+    goto error;
+  ecode = E_SET;
+  if (!P->vset.iused)
     goto error;
 
-  P->mix_ptr = 0;
-  ecode = zz_memnew(&P->mix_buf, 2*P->pcm_per_tick, 0);
+  /* Setup player rate. */
+  if (!rate)
+    rate = P->song.rate ? P->song.rate : RATE_DEF;
+  if (rate < RATE_MIN) rate = RATE_MIN;
+  if (rate > RATE_MAX) rate = RATE_MAX;
+  P->rate = rate;
 
+  if (ecode = zz_mixer_set(P, mid), ecode)
+    goto error;
+  P->spr = 0;
+  if (ecode = P->mixer->init(P, spr), ecode)
+    goto error;
+  xdivu(P->spr, P->rate, &P->pcm_per_tick, &P->pcm_err_tick);
+  xdivu(1000u, P->rate, &P->ms_per_tick, &P->ms_err_tick);
+
+  dmsg("spr=%lu-hz rate=%hu-hz pcm:%hu(+%hu) ms:%hu(+%hu)\n",
+       LU(P->spr), HU(P->rate),
+       HU(P->pcm_per_tick), HU(P->pcm_err_tick),
+       HU(P->ms_per_tick), HU(P->ms_err_tick));
+
+  ecode = play_init(P);
 error:
+  P->done = -!!ecode;
+  P->code = ecode;
   return ecode;
+}
+
+uint8_t zz_mute(play_t * P, u8_t clr, u8_t set)
+{
+  const uint8_t old = P->muted_voices;
+  P->muted_voices = ((P->muted_voices) & ~clr) | set;
+  dmsg("mute %s instance %02X->%02X\n",P?"this":"all",old,P->muted_voices);
+  return old;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -649,20 +536,9 @@ const char * zz_version(void)
   return PACKAGE_STRING;
 }
 
-zz_u32_t zz_position(zz_play_t P, zz_u32_t * const pms)
+zz_u32_t zz_position(const zz_play_t P)
 {
-  zz_u32_t tick = 0, ms = 0;
-
-  if (P) {
-    tick = P->tick;
-    if (pms)
-      ms = tick_to_ms(tick, P->rate);
-  }
-
-  if (pms)
-    *pms = ms;
-
-  return tick;
+  return !P ? ZZ_EOF : P->ms_pos;
 }
 
 static void memb_free(struct memb_s * memb)
@@ -679,19 +555,26 @@ static void memb_wipe(struct memb_s * memb, int size)
   }
 }
 
-void zz_song_wipe(song_t * song)
+static void song_wipe(song_t * song)
 {
   memb_wipe((struct memb_s *)song, sizeof(*song));
 }
 
-void zz_vset_wipe(vset_t * vset)
+static void vset_wipe(vset_t * vset)
 {
   memb_wipe((struct memb_s *)vset, sizeof(*vset));
 }
 
-void zz_info_wipe(info_t * info)
+static void info_wipe(info_t * info)
 {
   memb_wipe((struct memb_s *)info, sizeof(*info));
+}
+
+void zz_wipe(zz_play_t P)
+{
+    song_wipe(&P->song);
+    vset_wipe(&P->vset);
+    info_wipe(&P->info);
 }
 
 zz_err_t zz_close(zz_play_t P)
@@ -703,16 +586,10 @@ zz_err_t zz_close(zz_play_t P)
       P->mixer->free(P);
       P->mixer = 0;
     }
-    zz_assert ( ! P->mixer_data ); /* miser::free() should have clean that */
+    zz_assert ( ! P->mixer_data ); /* mixer::free() should have clean that */
     P->mixer_data = 0;
 
-    P->mix_ptr = 0;
-    zz_memdel(&P->mix_buf);
-    zz_assert( !P->mix_buf );
-
-    zz_song_wipe(&P->song);
-    zz_vset_wipe(&P->vset);
-    zz_info_wipe(&P->info);
+    zz_wipe(P);
 
     zz_strdel(&P->songuri);
     zz_strdel(&P->vseturi);
@@ -721,8 +598,6 @@ zz_err_t zz_close(zz_play_t P)
     P->st_idx = 0;
     P->pcm_per_tick = 0;
     P->format = ZZ_FORMAT_UNKNOWN;
-
-    /* GB: $$$ XXX FIXME might have some more stuff to clear. */
 
     ecode = E_OK;
   }
@@ -740,9 +615,9 @@ void zz_del(zz_play_t * pP)
 
 zz_err_t zz_new(zz_play_t * pP)
 {
+  zz_assert( pP );
   return zz_calloc(pP,sizeof(**pP));
 }
-
 
 #ifdef ZZ_MINIMAL
 
@@ -765,7 +640,7 @@ const char * zz_formatstr(zz_u8_t fmt)
   case ZZ_FORMAT_4Q:      return "4q";
   case ZZ_FORMAT_QUAR:    return "quar";
   }
-  zz_assert( ! "unexpecter format" );
+  zz_assert( ! "unexpected format" );
   return "?";
 }
 
@@ -790,17 +665,16 @@ zz_err_t zz_info( zz_play_t P, zz_info_t * pinfo)
     /* rates */
     pinfo->len.rate  = P->rate = P->rate ? P->rate : P->song.rate;
     pinfo->mix.spr   = P->spr;
-    pinfo->len.ticks = P->max_ticks;
-    pinfo->len.ms    = tick_to_ms(pinfo->len.ticks, pinfo->len.rate);
+    pinfo->len.ms    = P->ms_max;
 
     /* mixer */
-    pinfo->mix.ppt = P->pcm_per_tick;
+    /* pinfo->mix.ppt = P->pcm_per_tick; */
     pinfo->mix.num = P->mixer_id;
     if (P->mixer) {
       pinfo->mix.name = P->mixer->name;
       pinfo->mix.desc = P->mixer->desc;
     } else {
-      zz_mixer_enum(pinfo->mix.num, &pinfo->mix.name, &pinfo->mix.desc);
+      zz_mixer_info(pinfo->mix.num, &pinfo->mix.name, &pinfo->mix.desc);
     }
 
     pinfo->sng.uri = ZZSTR_SAFE(P->songuri);

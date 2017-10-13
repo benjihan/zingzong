@@ -43,7 +43,7 @@ typedef uint_fast32_t zz_u32_t;
 #  define ZZ_ATTRIBUT
 # endif
 
-# define ZINGZONG_API(TYPE,NAME) ZZ_EXTERN_C TYPE ZZ_ATTRIBUT NAME
+# define ZINGZONG_API ZZ_EXTERN_C ZZ_ATTRIBUT
 
 #endif /* ZINGZONG_API */
 
@@ -58,8 +58,8 @@ enum {
   ZZ_ESYS,                     /**< System error (I/O, memory ...). */
   ZZ_EINP,                     /**< Problem with input.             */
   ZZ_EOUT,                     /**< Problem with output.            */
-  ZZ_ESNG,                     /**< Voice set error.                */
-  ZZ_ESET,                     /**< Song error.                     */
+  ZZ_ESNG,                     /**< Song error.                     */
+  ZZ_ESET,                     /**< Voice set error                 */
   ZZ_EPLA,                     /**< Player error.                   */
   ZZ_EMIX,                     /**< Mixer error.                    */
   ZZ_666 = 66                  /**< Internal error.                 */
@@ -76,16 +76,29 @@ enum zz_format_e {
   ZZ_FORMAT_QUAR,              /**< Multi song bundle (SC68).       */
 };
 
+/**
+ * Mixer identifiers.
+ */
 enum {
-  ZZ_EXTERN_MIXER = 254,       /**< External mixer.                 */
-  ZZ_DEFAULT_MIXER             /**< Default mixer id.               */
+  ZZ_MIXER_XTN = 254,          /**< External mixer.                 */
+  ZZ_MIXER_DEF = 255           /**< Default mixer id.               */
+};
+
+/**
+ * Sampler quality.
+ */
+enum zz_quality_e {
+  ZZ_FQ = 1,                            /**< Fastest quality. */
+  ZZ_LQ,                                /**< Low quality.     */
+  ZZ_MQ,                                /**< Medium quality.  */
+  ZZ_HQ                                 /**< High quality.v   */
 };
 
 typedef zz_i8_t zz_err_t;
-typedef struct vfs_s  * /* restrict */ zz_vfs_t;
-typedef struct vset_s * /* restrict */ zz_vset_t;
-typedef struct song_s * /* restrict */ zz_song_t;
-typedef struct play_s * /* restrict */ zz_play_t;
+typedef struct vfs_s  * zz_vfs_t;
+typedef struct vset_s * zz_vset_t;
+typedef struct song_s * zz_song_t;
+typedef struct play_s * zz_play_t;
 typedef const struct zz_vfs_dri_s * zz_vfs_dri_t;
 typedef zz_err_t (*zz_guess_t)(zz_play_t const, const char *);
 
@@ -99,16 +112,13 @@ struct zz_info_s {
     const char * str;         /**< format string.                   */
   } fmt;
 
-
   struct {
-    zz_u16_t     rate;       /**< player tick rate (200hz).         */
-    zz_u32_t     ms;         /**< song duration in ms.              */
-    zz_u32_t     ticks;      /**< song duration in ticks.           */
+    zz_u16_t     rate;        /**< player tick rate (200hz).        */
+    zz_u32_t     ms;          /**< song duration in ms.             */
   } len;
 
   struct {
     zz_u32_t     spr;         /**< sampling rate.                   */
-    zz_u16_t     ppt;         /**< pcm per tick.                    */
     zz_u8_t      num;         /**< mixer identifier.                */
     const char * name;        /**< mixer name or "".                */
     const char * desc;        /**< mixer description or "".         */
@@ -141,9 +151,9 @@ enum zz_log_e {
 /**
  * Zingzong log function type (printf-like).
  */
-
 typedef void (*zz_log_t)(zz_u8_t,void *,const char *,va_list);
 
+ZINGZONG_API
 /**
  * Get/Set zingzong active logging channels.
  *
@@ -151,10 +161,9 @@ typedef void (*zz_log_t)(zz_u8_t,void *,const char *,va_list);
  * @param  set  bit mask of channels to en able).
  * @return previous active logging channel mask.
  */
-ZINGZONG_API( zz_u8_t, zz_log_bit)
-        (const zz_u8_t clr, const zz_u8_t set)
-        ;
+zz_u8_t zz_log_bit(const zz_u8_t clr, const zz_u8_t set);
 
+ZINGZONG_API
 /**
  * Set Zingzong log function.
  *
@@ -162,9 +171,7 @@ ZINGZONG_API( zz_u8_t, zz_log_bit)
  * @param user  pointer user private data (parameter #2 of func).
  */
 
-ZINGZONG_API( void , zz_log_fun )
-        (zz_log_t func, void * user)
-        ;
+void zz_log_fun(zz_log_t func, void * user);
 
 /**
  * Memory allocation function types.
@@ -172,76 +179,156 @@ ZINGZONG_API( void , zz_log_fun )
 typedef void * (*zz_new_t)(zz_u32_t);
 typedef void   (*zz_del_t)(void *);
 
+ZINGZONG_API
 /**
  * Set Zingzong memory management function.
  *
  * @param  newf pointer to the memory allocation function.
  * @param  delf pointer to the memory free function.
  */
+void zz_mem(zz_new_t newf, zz_del_t delf);
 
-ZINGZONG_API( void , zz_mem )
-        (zz_new_t newf, zz_del_t delf)
-        ;
-
+ZINGZONG_API
 /**
  * Get zingzong version string.
+ *
  * @retval "zingzong MAJOR.MINOR.PATCH.TWEAK"
  */
-ZINGZONG_API( const char * , zz_version )
-        (void)
-        ;
+const char * zz_version(void);
 
-ZINGZONG_API( zz_err_t , zz_new )
-        (zz_play_t * pplay)
-        ;
-ZINGZONG_API( void , zz_del )
-        (zz_play_t * pplay)
-        ;
+ZINGZONG_API
+/**
+ * Create a new player instance.
+ *
+ * @param pplay pointer to player instance
+ * @return error code
+ * @retval ZZ_OK(0) on success
+ */
+zz_err_t zz_new(zz_play_t * pplay);
 
-ZINGZONG_API( zz_err_t , zz_setup )
-        (zz_play_t play, zz_u8_t mixerid,
-         zz_u32_t spr, zz_u16_t rate,
-         zz_u32_t max_ticks, zz_u32_t max_ms, zz_u8_t end_detect)
-        ;
+ZINGZONG_API
+/**
+ * Delete player instance.
+ * @param pplay pointer to player instance
+ */
+void zz_del(zz_play_t * pplay);
 
-ZINGZONG_API( zz_err_t , zz_info )
-        (zz_play_t play, zz_info_t * pinfo)
-        ;
 
-ZINGZONG_API( zz_err_t , zz_load )
-        (zz_play_t const play,
-         const char * song, const char * vset,
-         zz_u8_t * pfmt)
-        ;
-ZINGZONG_API( zz_err_t , zz_close)
-        (zz_play_t const play)
-        ;
-ZINGZONG_API( zz_guess_t , zz_set_guess )
-        (zz_guess_t)
-        ;
+ZINGZONG_API
+/**
+ * Load quartet song and voice-set.
+ *
+ * @param  play  player instance
+ * @param  song  song URI or path ("": skip).
+ * @param  vset  voice-set URI or path (0: guess voice-set "":skip)
+ * @param  pfmt  points to a variable to store file format (can be null).
+ * @return error code
+ * @retval ZZ_OK(0) on success
+ */
+zz_err_t zz_load(zz_play_t const play,
+                 const char * song, const char * vset,
+                 zz_u8_t * pfmt);
 
-ZINGZONG_API( zz_err_t , zz_init)
-        (zz_play_t P)
-        ;
-ZINGZONG_API( zz_err_t , zz_measure )
-        (zz_play_t P, zz_u32_t * pticks, zz_u32_t * pms)
-        ;
-ZINGZONG_API( zz_err_t , zz_tick )
-        (zz_play_t play)
-        ;
-ZINGZONG_API( int16_t * , zz_play )
-        (zz_play_t play, zz_u16_t * ptr_n)
-        ;
-ZINGZONG_API( zz_u32_t , zz_position )
-        (zz_play_t P, zz_u32_t * const pms)
-        ;
+ZINGZONG_API
+/**
+ * Close player (release allocated resources).
+ *
+ * @param  play  player instance
+ * @return error code
+ * @retval ZZ_OK(0) on success
+ */
+zz_err_t zz_close(zz_play_t const play);
 
-ZINGZONG_API( zz_u8_t , zz_mixer_enum )
-        (zz_u8_t id, const char **pname, const char **pdesc)
-        ;
-ZINGZONG_API( zz_u8_t , zz_mixer_set)
-        (zz_play_t P, zz_u8_t id)
-        ;
+ZINGZONG_API
+/**
+ * Get player info.
+ *
+ * @param  play  player instance
+ * @param  info  info to be fill.
+ * @return error code
+ * @retval ZZ_OK(0) on success
+ */
+zz_err_t zz_info(zz_play_t play, zz_info_t * pinfo);
+
+ZINGZONG_API
+/**
+ * Init player.
+ *
+ * @param  play  player instance
+ * @param  mixer mixer-id
+ * @param  spr   sampling rate or quality
+ * @param  rate  player tick rate (0:default)
+ * @param  maxms 0:infinite, (+):this number of ms , (-) max detect
+ * @return error code
+ * @retval ZZ_OK(0) on success
+ */
+zz_err_t zz_init(zz_play_t play,
+                 zz_u8_t mixer, zz_u32_t spr,
+                 zz_u16_t rate, zz_i32_t maxms);
+
+ZINGZONG_API
+/**
+ * Play.
+ *
+ * @param  play  player instance
+ * @param  pcm   pcm buffer (format might depend on mixer).
+ * @param  n     >0: number of pcm to fill
+ *                0: get number of pcm to complete the tick.
+ *               <0: complete the tick but not more than -n pcm.
+ *
+ * @return number of pcm.
+ * @retval 0 play is over
+ * @retval >0 number of pcm
+ * @retval <0 -error code
+ */
+zz_i16_t zz_play(zz_play_t play, void * pcm, zz_i16_t n);
+
+ZINGZONG_API
+/**
+ * Mute and ignore voices.
+ * - LSQ bits (0~3) are ignored channels.
+ * - MSQ bits (4-7) are muted channels.
+ *
+ * @param  play  player instance
+ * @param  clr   clear these bits
+ * @param  set   set these bits
+ * @return old bits
+ */
+uint8_t zz_mute(zz_play_t P, uint8_t clr, uint8_t set);
+
+ZINGZONG_API
+/**
+ * Init player.
+ *
+ * @param  play  player instance
+ * @param  ms    maximum ms for detection (0: infinite)
+ * @return duration in ms
+ * @retval ZZ_EOF on error
+ */
+zz_u32_t zz_measure(zz_play_t play, zz_u32_t ms);
+
+ZINGZONG_API
+/**
+ * Get current frame/tick position (in ms).
+ * @return a number of millisecond
+ * @retval ZZ_EOF on error
+ */
+zz_u32_t zz_position(zz_play_t play);
+
+ZINGZONG_API
+/**
+ * Get info mixer info.
+ *
+ * @param  id  mixer identifier (first is 0)
+ * @param  pname  receive a pointer to the mixer name
+ * @param  pdesc  receive a pointer to the mixer description
+ * @return mixer-id (usually id unless id is ZZ_MIXER_DEF)
+ * @retval ZZ_MIXER_DEF on error
+ *
+ * @notice The zz_mixer_info() function can be use to enumerate all
+ *         available mixers.
+ */
+zz_u8_t zz_mixer_info(zz_u8_t id, const char **pname, const char **pdesc);
 
 enum {
   ZZ_SEEK_SET, ZZ_SEEK_CUR, ZZ_SEEK_END
@@ -274,24 +361,22 @@ struct vfs_s {
   int err;                              /**< last error number. */
 };
 
+ZINGZONG_API
 /**
  * Register a VFS driver.
  * @param  dri  VFS driver
  * @return Number of time this driver is registered
  * @retval -1 on error
  */
-ZINGZONG_API( zz_err_t , zz_vfs_add )
-        (zz_vfs_dri_t dri)
-        ;
+zz_err_t zz_vfs_add(zz_vfs_dri_t dri);
 
+ZINGZONG_API
 /**
  * Unregister a VFS driver.
  * @param  dri  VFS driver
  * @return Number of time this driver is registered
  * @retval -1 on error
  */
-ZINGZONG_API( zz_err_t , zz_vfs_del )
-        (zz_vfs_dri_t dri)
-        ;
+zz_err_t zz_vfs_del(zz_vfs_dri_t dri);
 
 #endif /* #ifndef ZINGZONG_H */

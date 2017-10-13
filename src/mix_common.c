@@ -108,8 +108,8 @@ static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
   return res;
 }
 
-static zz_err_t
-push_cb(play_t * const P)
+static void *
+push_cb(play_t * const P, void * restrict mixbuf, i16_t npcm)
 {
   mix_fp_t * const M = (mix_fp_t *)P->mixer_data;
   int16_t  * restrict b;
@@ -117,9 +117,10 @@ push_cb(play_t * const P)
 
   zz_assert(P);
   zz_assert(M);
+  zz_assert(mixbuf);
 
   /* Clear mix buffer */
-  zz_memclr(P->mix_buf,P->pcm_per_tick<<1);
+  zz_memclr(mixbuf,npcm<<1);
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -135,7 +136,7 @@ push_cb(play_t * const P)
       K->len = C->note.ins->len << FP;
       K->lpl = C->note.ins->lpl << FP;
       K->end = C->note.ins->end + K->pcm;
-      C->note.ins = 0;
+
     case TRIG_SLIDE:
       K->xtp = xstep(C->note.cur, P->song.khz, P->spr);
       break;
@@ -144,22 +145,24 @@ push_cb(play_t * const P)
       break;
     default:
       zz_assert(!"wtf");
-      return E_MIX;
+      return 0;
     }
   }
 
   /* Mix per block of MIXBLK samples */
-  for (b=P->mix_buf, n=P->pcm_per_tick;
+  for (b=mixbuf, n=npcm;
        n >= MIXBLK;
        b += MIXBLK, n -= MIXBLK)
     for (k=0; k<4; ++k)
       mix_add1(M, k, b);
 
-  if (n > 0)
+  if (n > 0) {
     for (k=0; k<4; ++k)
       mix_addN(M, k, b, n);
+    b += n;
+  }
 
-  return E_OK;
+  return b;
 }
 
 
@@ -170,14 +173,23 @@ static void * local_calloc(u32_t size, zz_err_t * err)
   return ptr;
 }
 
-static zz_err_t init_cb(play_t * const P)
+static zz_err_t init_cb(play_t * const P, u32_t spr)
 {
   zz_err_t ecode = E_OK;
   mix_fp_t * M = local_calloc(sizeof(mix_fp_t), &ecode);
-
   if (likely(M)) {
     zz_assert(!P->mixer_data);
     P->mixer_data = M;
+    switch (spr) {
+    case 0:
+    case ZZ_LQ: spr = mulu(P->song.khz,1000u); break;
+    case ZZ_MQ: spr = SPR_DEF; break;
+    case ZZ_FQ: spr = SPR_MIN; break;
+    case ZZ_HQ: spr = SPR_MAX; break;
+    }
+    if (spr < SPR_MIN) spr = SPR_MIN;
+    if (spr > SPR_MAX) spr = SPR_MAX;
+    P->spr = spr;
   }
   return ecode;
 }

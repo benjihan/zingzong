@@ -151,17 +151,17 @@ zz_u8_t zz_mixer_set(play_t * P, zz_u8_t n)
   if (mixer)
     P->mixer = mixer;
   else
-    n = ZZ_DEFAULT_MIXER;
+    n = ZZ_MIXER_DEF;
   return P->mixer_id = n;
 }
 
 static mixer_t * get_mixer(zz_u8_t * const pn)
 {
   u8_t n = *pn;
-  if (n == ZZ_DEFAULT_MIXER)
+  if (n == ZZ_MIXER_DEF)
     n = guess_hardware();
   if (n >= MIXER_LAST)
-    n = ZZ_DEFAULT_MIXER;
+    n = ZZ_MIXER_DEF;
   *pn = n;
   return mixer_of(n);
 }

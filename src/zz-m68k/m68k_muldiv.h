@@ -53,6 +53,24 @@ m68k_modu(uint32_t v, uint16_t d)
   return v;
 }
 
+static inline void always_inline
+xdivu(uint32_t n, uint16_t d, zz_u16_t *q, zz_u16_t *r)
+{
+  union {
+    uint32_t l;
+    uint16_t w[2];
+  } reg;
+  reg.l = d;
+  asm(
+    "divu.w %[div],%[val]  \n\t"
+    : [val] "+d" (reg.l)
+    : [div] "idS" (d)
+    : "cc"
+    );
+  *r = reg.w[0];
+  *q = reg.w[1];
+}
+
 static inline uint32_t always_inline
 m68k_mulu32(uint32_t a, uint16_t b)
 {

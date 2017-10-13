@@ -54,7 +54,7 @@ static mixer_t * get_mixer(zz_u8_t * const pn)
   mixer_t * mixer = 0;
   u8_t n = *pn;
 
-  if (n == ZZ_DEFAULT_MIXER) {
+  if (n == ZZ_MIXER_DEF) {
     zz_u8_t i;
     mixer = default_mixer;
     for (i=0; i<max; ++i)
@@ -64,13 +64,13 @@ static mixer_t * get_mixer(zz_u8_t * const pn)
   }
   else if (n < max)
     mixer = zz_mixers[n];
-  else if (n != ZZ_EXTERN_MIXER)
-    n = ZZ_DEFAULT_MIXER;
+  else if (n != ZZ_MIXER_XTN)
+    n = ZZ_MIXER_DEF;
   *pn = n;
   return mixer;
 }
 
-zz_u8_t zz_mixer_enum(zz_u8_t n, const char ** pname, const char ** pdesc)
+zz_u8_t zz_mixer_info(zz_u8_t n, const char ** pname, const char ** pdesc)
 {
   const mixer_t * mixer;
 
@@ -85,13 +85,12 @@ zz_u8_t zz_mixer_set(play_t * P, zz_u8_t n)
 {
   mixer_t * mixer;
 
-
   dmsg("set %s#%hu\n", P?"":"default ",HU(n));
   mixer = get_mixer(&n);
   dmsg("found: #%hu <%s>\n", HU(n), mixer?mixer->name:"");
 
-  if (n != ZZ_DEFAULT_MIXER) {
-    /* mixer can be null if n is ZZ_EXTERN_MIXER. */
+  if (n != ZZ_MIXER_DEF) {
+    /* mixer can be null if n is ZZ_MIXER_XTN. */
     if (mixer)
       *( P ? &P->mixer : &default_mixer ) = mixer;
     if (P)

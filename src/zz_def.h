@@ -26,8 +26,8 @@
 #endif
 
 #define RATE_DEF 200
-#define RATE_MIN (RATE_DEF>>2)
-#define RATE_MAX (RATE_DEF<<2)
+#define RATE_MIN 20
+#define RATE_MAX 1000
 
 #ifndef zz_void
 # define zz_void ((void)0)
@@ -56,8 +56,10 @@
 # endif
 #endif
 
-#define LU(X) ((unsigned long)(X))     /* printf format shenanigans. */
-#define HU(X) ((unsigned short)(X))    /* printf format shenanigans. */
+#define LU(X) ((unsigned long)(X))    /* printf format shenanigans. */
+#define HU(X) ((unsigned short)(X))   /* printf format shenanigans. */
+#define LI(X) ((long)(X))             /* printf format shenanigans. */
+#define HI(X) ((short)(X))            /* printf format shenanigans. */
 
 #ifdef NO_LOG
 
@@ -185,6 +187,7 @@ ZZ_EXTERN_C zz_u16_t zz_strlen(str_t const str);
 
 /**
  * Audio output interface (out_ao.c and out_raw.c).
+ * @{
  */
 
 typedef struct zz_out_s zz_out_t;       /**< output. */
@@ -212,8 +215,9 @@ zz_out_t * out_raw_open(zz_u32_t hz, const char * uri);
 
 /* ---------------------------------------------------------------------- */
 
-/**
- * @}
- */
+ZZ_EXTERN_C
+zz_u8_t zz_mixer_set(zz_play_t play, zz_u8_t id);
+ZZ_EXTERN_C
+void zz_wipe(zz_play_t play);
 
 #endif /* ZZ_DEF_H */

@@ -80,11 +80,6 @@ static const char bugreport[] = \
 
 typedef uint_fast32_t uint_t;
 
-/* /\* libs *\/ */
-/* #ifndef NO_AO */
-/* # include <ao/ao.h>                     /\* Xiph ao *\/ */
-/* #endif */
-
 /* ----------------------------------------------------------------------
  * Globals
  * ---------------------------------------------------------------------- */
@@ -105,8 +100,8 @@ enum {
 /* Options */
 
 static int opt_splrate = SPR_DEF, opt_tickrate = 0;
-static int opt_mixerid = ZZ_DEFAULT_MIXER;
-static int8_t opt_mute, opt_help, opt_outtype;
+static int opt_mixerid = ZZ_MIXER_DEF;
+static int8_t opt_ignore, opt_mute, opt_help, opt_outtype;
 static char * opt_length, * opt_output;
 
 /* ----------------------------------------------------------------------
@@ -176,7 +171,7 @@ static void print_usage(int level)
 {
   int i;
   const char * name="?", * desc;
-  zz_mixer_enum(ZZ_DEFAULT_MIXER,&name,&desc);
+  zz_mixer_info(ZZ_MIXER_DEF,&name,&desc);
 
   printf (
     "Usage: zingzong [OPTIONS] <song.4v> [<inst.set>]" "\n"
@@ -199,7 +194,7 @@ static void print_usage(int level)
   if (!level)
     puts("                    Try `-hh' to print the list of [R]esampler.");
   else
-    for (i=0; i == zz_mixer_enum(i,&name,&desc); ++i) {
+    for (i=0; i == zz_mixer_info(i,&name,&desc); ++i) {
       printf("%6s `%s' %s %s.\n",
              i?"":" R :=", name,"............."+strlen(name),desc);
     }
@@ -207,6 +202,7 @@ static void print_usage(int level)
   puts(
     " -l --length=TIME   Set play time.\n"
     " -m --mute=ABCD     Mute selected channels (bit-field or string).\n"
+    " -i --ignore=ABCD   Ignore selected channels (bit-field or string).\n"
     " -o --output=URI    Set output file name (-w or -c).\n"
     " -c --stdout        Output raw PCM to stdout or file (native 16-bit).\n"
     " -n --null          Output to the void.\n"
@@ -241,7 +237,6 @@ static void print_usage(int level)
 
     "\n"
     "TIME:\n"
-    "  * pure integer number to represent a number of ticks\n"
     "  * comma `,' to separate seconds and milliseconds\n"
     "  * `h' to suffix hours; `m' to suffix minutes\n"
     " If time is not set the player tries to auto-detect the music duration.\n"
@@ -274,16 +269,16 @@ static void print_version(void)
  */
 
 #ifndef NO_LOG
-static const char * tickstr(uint_t ticks, uint_t rate)
+static const char * timestr(zz_u32_t ms)
 {
   static char s[80];
   const int max = sizeof(s)-1;
   int i=0, l=1;
-  uint_t ms;
 
-  if (!ticks)
-    return "infinity";
-  ms = (uint_least64_t) ticks * 1000u / rate;
+  switch (ms) {
+  case 0: return "infinity";
+  case ZZ_EOF: return "error";
+  }
   if (ms >= 3600000u) {
     i += snprintf(s+i,max-i,"%huh", HU(ms/3600000u));
     ms %= 3600000u;
@@ -300,10 +295,7 @@ static const char * tickstr(uint_t ticks, uint_t rate)
     if (ms)
       while (ms < 100) ms *= 10u;
     i += snprintf(s+i,max-i,"%0*hu,%03hu\"", l, HU(sec), HU(ms));
-
   }
-
-  i += snprintf(s+i,max-i," (+%lu ticks@%huhz)", LU(ticks), HU(rate));
   s[i] = 0;
   return s;
 }
@@ -538,10 +530,10 @@ static int find_mixer(char * arg, char ** pend)
   /* Get re-sampling mode */
   for (i=0, f=-1; ; ++i) {
     const char * name, * desc;
-    int res, id = zz_mixer_enum(i,&name,&desc);
+    int res, id = zz_mixer_info(i,&name,&desc);
 
-    if (id == ZZ_DEFAULT_MIXER) {
-      i = ZZ_DEFAULT_MIXER;
+    if (id == ZZ_MIXER_DEF) {
+      i = ZZ_MIXER_DEF;
       break;
     }
 
@@ -551,7 +543,7 @@ static int find_mixer(char * arg, char ** pend)
 
     if (res == 1) {
       /* prefect match */
-      f = i; i = ZZ_DEFAULT_MIXER;
+      f = i; i = ZZ_MIXER_DEF;
       dmsg("perfect match: %i \"%s\" == \"%s\"\n",f,name,arg);
       break;
     } else if (res) {
@@ -565,7 +557,7 @@ static int find_mixer(char * arg, char ** pend)
 
   if (f < 0)
     f = 0;                              /* not found */
-  else if (i != ZZ_DEFAULT_MIXER)
+  else if (i != ZZ_MIXER_DEF)
     f = -(f+1);                         /* ambiguous */
   else
     f = f+1;                            /* found */
@@ -609,8 +601,8 @@ static int uint_spr(char * arg, const char * name, int * prate, int * pmixer)
 }
 
 /**
- * Parse -m/--mute option argument. Either a string := [A-D]\+ or an
- * integer {0..15}
+ * Parse -m/--mute -i/--ignore option argument. Either a string :=
+ * [A-D]\+ or an integer {0..15}
  */
 static int uint_mute(char * arg, char * name)
 {
@@ -658,7 +650,7 @@ static zz_err_t too_many_arguments(void)
 
 int main(int argc, char *argv[])
 {
-  static char sopts[] = "hV" WAVOPT "cno:" "r:t:l:m:";
+  static char sopts[] = "hV" WAVOPT "cno:" "r:t:l:m:i:";
   static struct option lopts[] = {
     { "help",    0, 0, 'h' },
     { "usage",   0, 0, 'h' },
@@ -674,6 +666,7 @@ int main(int argc, char *argv[])
     { "rate=",   1, 0, 'r' },
     { "length=", 1, 0, 'l' },
     { "mute=",   1, 0, 'm' },
+    { "ignore=", 1, 0, 'i' },
     { 0 }
   };
   int c, ecode=ZZ_ERR, ecode2;
@@ -705,13 +698,18 @@ int main(int argc, char *argv[])
         RETURN (ZZ_EARG);
       break;
     case 't':
-      if (-1 == (opt_tickrate = uint_arg(optarg,"tick",RATE_MIN,200*4,0)))
+      if (-1 == (opt_tickrate = uint_arg(optarg,"tick",RATE_MIN,RATE_MAX,0)))
         RETURN (ZZ_EARG);
       break;
     case 'm':
       if (-1 == (opt_mute = uint_mute(optarg,"mute")))
         RETURN (ZZ_EARG);
       break;
+    case 'i':
+      if (-1 == (opt_ignore = uint_mute(optarg,"ignore")))
+        RETURN (ZZ_EARG);
+      break;
+
     case 0: break;
     case '?':
       if (optopt) {
@@ -754,7 +752,7 @@ int main(int argc, char *argv[])
 
   if (1) {
     const char * name = "?", * desc;
-    opt_mixerid = zz_mixer_enum( opt_mixerid,&name,&desc);
+    opt_mixerid = zz_mixer_info(opt_mixerid,&name,&desc);
     dmsg("requested mixer -- %d:%s (%s)\n", opt_mixerid, name, desc);
     zz_assert( opt_mixerid >= 0 );
   }
@@ -809,9 +807,9 @@ int main(int argc, char *argv[])
   if (!out)
     RETURN (ZZ_EOUT);
 
-  ecode = zz_setup(P, opt_mixerid,
-                   out->hz, opt_tickrate,
-                   max_ticks, max_ms, !opt_length);
+  zz_mute(P, 0xFF, (opt_mute<<4)|opt_ignore);
+  ecode = zz_init(P, opt_mixerid, out->hz, opt_tickrate,
+                  opt_length ? max_ms : -max_ms);
   if (ecode)
     goto error_exit;
 
@@ -820,15 +818,11 @@ int main(int argc, char *argv[])
     imsg("wave: \"%s\"\n", wavuri);
 #endif
 
-  if (!ecode)
-    ecode = zz_init(P);
-
-  if ( ! opt_length  ) {
-    zz_u32_t ticks = 0, ms = MAX_DETECT * 1000u;
-    ecode = zz_measure(P, &ticks, &ms);
-    if (ecode)
-      goto error_exit;
-    dmsg("measured: %lu-ticks, %lu-ms\n", LU(ticks), LU(ms));
+  if ( ! opt_length ) {
+    zz_i32_t ms = zz_measure(P, MAX_DETECT * 1000 );
+    if (ms == ZZ_EOF)
+      RETURN (ZZ_EPLA);
+    dmsg("measured: %lu-ms\n", LU(ms));
   }
 
   if (!ecode) {
@@ -838,24 +832,22 @@ int main(int argc, char *argv[])
     if (ecode)
       goto error_exit;
 
-    dmsg("info: rate:%hu spr:%lu ticks:%lu ms:%lu\n",
-         HU(info.len.rate), LU(info.mix.spr),
-         LU(info.len.ticks), LU(info.len.ms));
-
+    dmsg("info: rate:%hu spr:%lu ms:%lu\n",
+         HU(info.len.rate), LU(info.mix.spr), LU(info.len.ms));
 
     dmsg("Output via %s to \"%s\"\n", out->name, out->uri);
     imsg("Zing that zong\n"
          " with the \"%s\" mixer at %luhz\n"
-         " for %s%s\n"
+         " for %s%s @%huhz\n"
          " via \"%s\" at %luhz\n"
          "vset: \"%s\" (%hukHz)\n"
-         "song: \"%s\" (%hukHz)\n\n",
+         "song: \"%s\" (%hukHz)\n\n"
+         ,
          info.mix.name, LU(info.mix.spr),
-         opt_length ? "max " : "",
-         tickstr(info.len.ticks, info.len.rate),
+         opt_length ? "max " : "", timestr(info.len.ms), HU(info.len.rate),
          out->uri, LU(out->hz),
          basename(info.set.uri), HU(info.set.khz),
-         basename(info.sng.uri), HU(info.sng.khz)
+         basename(info.sng.uri), HU(info.sng.khz )
       );
 
     if (*info.tag.artist)
@@ -868,12 +860,12 @@ int main(int argc, char *argv[])
       imsg("Ripper  : %s\n", info.tag.ripper);
 
     do {
-      zz_u16_t n = 0;
-      int16_t * pcm;
+      static int8_t pcm[1000];
+      zz_i16_t n = sizeof(pcm)>>1;
 
-      pcm = zz_play(P,&n);
-      if (!pcm) {
-        ecode = n;
+      n = zz_play(P,pcm,n);
+      if (n < 0) {
+        ecode = -n;
         break;
       }
       if (!n)
@@ -883,9 +875,7 @@ int main(int argc, char *argv[])
       if (n != out->write(out,pcm,n))
         ecode = ZZ_EOUT;
       else {
-        zz_u32_t pos;
-        zz_position(P,&pos);
-        pos /= 1000u;
+        zz_u32_t pos = zz_position(P) / 1000u;
         if (pos != sec) {
           sec = pos;
           imsg("\n |> %02u:%02u\r"+newline,
@@ -896,8 +886,8 @@ int main(int argc, char *argv[])
     } while (!ecode);
 
     if (ecode) {
-      emsg("(%d) prematured end (tick: %lu) -- %s\n",
-           ecode, LU(zz_position(P,0)), songuri);
+      emsg("(%hu) prematured end (ms:%lu) -- %s\n",
+           HU(ecode), LU(zz_position(P)), songuri);
     }
   }
 

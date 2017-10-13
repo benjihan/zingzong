@@ -148,18 +148,19 @@ typedef zz_u16_t       u16_t;
 typedef zz_i16_t       i16_t;
 typedef zz_u8_t        u8_t;
 typedef zz_i8_t        i8_t;
+typedef unsigned int   uint_t;
 
-typedef struct bin_s   bin_t;     /**< binary data container. */
-typedef struct q4_s    q4_t;      /**< 4q header */
-typedef struct info_s  info_t;    /**< song info. */
-typedef struct vset_s  vset_t;    /**< voice set (.set file). */
-typedef struct inst_s  inst_t;    /**< instrument. */
-typedef struct song_s  song_t;    /**< song (.4v file). */
-typedef struct sequ_s  sequ_t;    /**< sequence definition. */
-typedef struct play_s  play_t;    /**< player. */
-typedef struct chan_s  chan_t;    /**< one channel. */
+typedef struct bin_s   bin_t;     /**< binary data container.     */
+typedef struct q4_s    q4_t;      /**< 4q header.                 */
+typedef struct info_s  info_t;    /**< song info.                 */
+typedef struct vset_s  vset_t;    /**< voice set (.set file).     */
+typedef struct inst_s  inst_t;    /**< instrument.                */
+typedef struct song_s  song_t;    /**< song (.4v file).           */
+typedef struct sequ_s  sequ_t;    /**< sequence definition.       */
+typedef struct play_s  play_t;    /**< player.                    */
+typedef struct chan_s  chan_t;    /**< one channel.               */
 typedef struct note_s  note_t;    /**< channel step (pitch) info. */
-typedef struct mixer_s mixer_t;   /**< channel mixer. */
+typedef struct mixer_s mixer_t;   /**< channel mixer.             */
 
 typedef struct vfs_s * vfs_t;
 typedef struct zz_vfs_dri_s vfs_dri_t;
@@ -169,18 +170,15 @@ struct str_s {
    * Pointer to the actual string.
    * @notice  ALWAYS FIRST
    */
-  char * ptr;                /**< buf: dynamic else: static. */
-#ifdef WITH_ZSTR_FCC
-  char fcc[4];               /**< "ZSTR". */
-#endif
-  zz_u16_t ref;              /**< number of reference. */
-  zz_u16_t max;              /**< 0: const static else buffer size. */
-  zz_u16_t len;              /**< 0: ndef else len+1. */
+  char * ptr;                /**< buf: dynamic else: static.        */
+  u16_t  ref;                /**< number of reference.              */
+  u16_t  max;                /**< 0: const static else buffer size. */
+  u16_t  len;                /**< 0: ndef else len+1.               */
   /**
    * buffer when dynamic.
    * @notice  ALWAYS LAST
    */
-  char buf[4];
+  char   buf[4];
 };
 
 struct bin_s {
@@ -194,9 +192,16 @@ struct bin_s {
 struct mixer_s {
   const char * name;                 /**< friendly name and method. */
   const char * desc;                 /**< mixer brief description.  */
-  zz_err_t (*init)(play_t * const);  /**< init mixer function.      */
-  void     (*free)(play_t * const);  /**< release mixer function.   */
-  zz_err_t (*push)(play_t * const);  /**< push PCM function.        */
+
+  /** init mixer function. */
+  zz_err_t (*init)(play_t * const, u32_t);
+
+  /** release mixer function. */
+  void (*free)(play_t * const);
+
+  /** push PCM function. */
+  void * (*push)(play_t * const, void *, i16_t);
+
 };
 
 /** Prepared instrument (sample). */
@@ -229,13 +234,12 @@ struct memb_s {
 /** Prepared song. */
 struct song_s {
   bin_t  *bin;               /**< song data container.              */
-  u16_t   rate;              /**< tick rate (0: unspecified).       */
-  u8_t    khz;               /**< header sampling rate (kHz).       */
-  u8_t    barm;              /**< header bar measure.               */
-  u8_t    tempo;             /**< header tempo.                     */
-  u8_t    sigm;              /**< header signature numerator.       */
-  u8_t    sigd;              /**< header signature denominator.     */
-
+  uint8_t rate;              /**< tick rate (0: unspecified).       */
+  uint8_t khz;               /**< header sampling rate (kHz).       */
+  uint8_t barm;              /**< header bar measure.               */
+  uint8_t tempo;             /**< header tempo.                     */
+  uint8_t sigm;              /**< header signature numerator.       */
+  uint8_t sigd;              /**< header signature denominator.     */
   u32_t   iused;             /**< mask of instrument really used.   */
   u32_t   stepmin;           /**< estimated minimal note been used. */
   u32_t   stepmax;           /**< estimated maximal note been used. */
@@ -273,14 +277,11 @@ struct chan_s {
   u8_t trig;                        /**< see TRIG_* enum.           */
   u8_t curi;                        /**< current instrument number. */
 
-  u16_t has_loop;                 /**< has loop (counter).          */
   u16_t wait;                     /**< number of tick left to wait. */
-
   note_t note;                          /**< note (and slide) info. */
-
   struct loop_s {
-    u16_t cnt;                       /**< loop count. */
-    u16_t off;                        /**< loop point. */
+    u16_t cnt;                          /**< loop count. */
+    u16_t off;                          /**< loop point. */
   }
   *loop_sp,                             /**< loop stack pointer.    */
   loops[MAX_LOOP];                      /**< loop stack.   */
@@ -312,26 +313,34 @@ struct play_s {
   vset_t vset;
   info_t info;
 
-  u32_t tick;                          /**< current tick */
-  u32_t max_ticks;                     /**< maximum tick to play ( */
-  u32_t spr;                           /**< sampling rate (hz) */
+  u32_t tick;            /**< current tick (0:init 1:first).        */
+  u32_t spr;             /**< sampling rate (hz).                   */
+  u32_t ms_pos;          /**< current frame start position (in ms). */
+  u32_t ms_end;          /**< current frame end position (in ms).   */
+  u32_t ms_max;          /**< maximum ms to play.                   */
+  u32_t ms_len;          /**< measured ms length.                   */
 
-  int16_t * mix_buf;                    /**< mix buffer [pcm_per_tick] */
-  int16_t * mix_ptr;                    /**< current pull pointer */
-
-  u16_t pcm_per_tick;                /**< pcm per tick */
-  u16_t rate;               /**< player rate (usually 200hz) */
-  u8_t  muted_voices;       /**< channels mask */
-  u8_t  has_loop;           /**< channels mask */
-  u8_t  end_detect;         /**< true if trying to auto detect end */
-  u8_t  done;               /**< true when done (GB: bits to be defined) */
-  u8_t  format;             /**< see ZZ_FORMAT_ enum */
-
-  u8_t      mixer_id;        /**< Mixer identifier.                 */
   mixer_t * mixer;           /**< Mixer to use (almost never null). */
   void    * mixer_data;      /**< Mixer private data (never null).  */
 
-  chan_t chan[4];                       /**< 4 channels info. */
+  u16_t pcm_cnt;                 /**< pcm remaining on this tick.   */
+  u16_t pcm_err;                 /**< pcm error accumulator.        */
+  u16_t pcm_per_tick;            /**< pcm per tick (integer).       */
+  u16_t pcm_err_tick;            /**< pcm per tick (correction).    */
+
+  u16_t rate;                        /**< tick rate (in hz).        */
+  u16_t ms_err;                      /**< ms error accumulator.     */
+  u16_t ms_per_tick;                 /**< ms per tick (integer).    */
+  u16_t ms_err_tick;                 /**< ms per tick (correction). */
+
+  uint8_t end_detect;           /**< try to detect music duration. */
+  uint8_t muted_voices;         /**< channels mask.                */
+  uint8_t has_loop;             /**< channels mask.                */
+  uint8_t done;                 /**< non zero when done.           */
+  uint8_t code;                 /**< error code.                   */
+  uint8_t format;               /**< see ZZ_FORMAT_ enum           */
+  uint8_t mixer_id;             /**< mixer identifier.             */
+  chan_t chan[4];               /**< 4 channels info.              */
 };
 
 typedef struct songhd songhd_t;
@@ -372,13 +381,16 @@ static inline u32_t always_inline c_divu(u32_t n, u16_t d)
 { return n / d; }
 static inline u32_t always_inline c_modu(u32_t n, u16_t d)
 { return n % d; }
+static inline void always_inline c_xdivu(u32_t n, u16_t d, u16_t *q, u16_t *r)
+{ *q = n / d; *r = n % d; }
 static inline u32_t always_inline c_divu32(u32_t n, u16_t d)
 { return n / d; }
-# define mulu(a,b)   c_mulu((a),(b))
-# define divu(a,b)   c_divu((a),(b))
-# define modu(a,b)   c_modu((a),(b))
-# define mulu32(a,b) c_mulu32((a),(b))
-# define divu32(a,b) c_divu32((a),(b))
+# define mulu(a,b)      c_mulu((a),(b))
+# define divu(a,b)      c_divu((a),(b))
+# define modu(a,b)      c_modu((a),(b))
+# define xdivu(a,b,q,r) c_xdivu((a),(b),(q),(r))
+# define mulu32(a,b)    c_mulu32((a),(b))
+# define divu32(a,b)    c_divu32((a),(b))
 
 #endif /* __m68k__ */
 
@@ -530,13 +542,6 @@ ZZ_EXTERN_C
 zz_err_t vset_load(vset_t *vset, const char *uri);
 ZZ_EXTERN_C
 zz_err_t q4_load(vfs_t vfs, q4_t *q4);
-
-ZZ_EXTERN_C
-void zz_song_wipe(song_t * song);
-ZZ_EXTERN_C
-void zz_vset_wipe(vset_t * vset);
-ZZ_EXTERN_C
-void zz_info_wipe(info_t * info);
 /**
  * @}
  */
