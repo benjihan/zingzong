@@ -165,11 +165,13 @@ push_soxr(play_t * const P, void * pcm, i16_t N)
 {
   soxr_error_t err;
   mix_data_t * const M = (mix_data_t *) P->mixer_data;
-//  const int N = P->pcm_per_tick;
   int k;
 
   zz_assert( P );
   zz_assert( M );
+  zz_assert( pcm );
+  zz_assert( N != 0 );
+  zz_assert( N > 0 );
   zz_assert( N <= M->flt_max );
 
   /* Setup channels */
@@ -310,6 +312,11 @@ push_soxr(play_t * const P, void * pcm, i16_t N)
         for (i=0; i<odone; ++i)
           *flt++ += K->oflt[i];
     }
+
+    /* $$$ TEST */
+    if (need != 0)
+      wmsg("need:%d\n", need);
+
     zz_assert( need == 0 );
     zz_assert( flt-N == M->flt_buf );
   }

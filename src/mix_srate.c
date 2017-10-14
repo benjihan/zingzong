@@ -151,6 +151,9 @@ push_cb(play_t * const P, void * pcm, i16_t N)
 
   zz_assert( P );
   zz_assert( M );
+  zz_assert( pcm );
+  zz_assert( N != 0 );
+  zz_assert( N > 0 );
   zz_assert( N <= M->flt_max );
 
   /* Setup channels */

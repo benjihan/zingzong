@@ -109,18 +109,20 @@ static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
 }
 
 static void *
-push_cb(play_t * const P, void * restrict mixbuf, i16_t npcm)
+push_cb(play_t * const P, void * restrict pcm, i16_t N)
 {
   mix_fp_t * const M = (mix_fp_t *)P->mixer_data;
   int16_t  * restrict b;
   int k, n;
 
-  zz_assert(P);
-  zz_assert(M);
-  zz_assert(mixbuf);
+  zz_assert( P );
+  zz_assert( M );
+  zz_assert( pcm );
+  zz_assert( N != 0 );
+  zz_assert( N > 0 );
 
   /* Clear mix buffer */
-  zz_memclr(mixbuf,npcm<<1);
+  zz_memclr(pcm,N<<1);
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -150,7 +152,7 @@ push_cb(play_t * const P, void * restrict mixbuf, i16_t npcm)
   }
 
   /* Mix per block of MIXBLK samples */
-  for (b=mixbuf, n=npcm;
+  for (b=pcm, n=N;
        n >= MIXBLK;
        b += MIXBLK, n -= MIXBLK)
     for (k=0; k<4; ++k)

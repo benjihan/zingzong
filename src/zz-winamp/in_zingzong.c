@@ -106,7 +106,7 @@ static volatile LONG g_playing;         /* true while playing      */
 static volatile LONG g_stopreq;         /* stop requested          */
 static volatile LONG g_paused;          /* pause status            */
 static int16_t g_pcm[576*2];            /* buffer for DSP filters  */
-static zz_u8_t g_mixerid = ZZ_DEFAULT_MIXER;
+static zz_u8_t g_mixerid = ZZ_MIXER_DEF;
 
 /*****************************************************************************
  * Declaration
@@ -414,7 +414,7 @@ static zz_err_t load(zz_play_t P, zz_info_t *I, const char * uri,
                      zz_u8_t measure, zz_u32_t sec)
 {
   zz_err_t ecode = E_INP;
-  zz_u32_t ticks = 0, ms = 0;
+  zz_u32_t ms = 0;
 
   zz_assert( P );
   zz_assert( I );
@@ -440,41 +440,36 @@ static zz_err_t load(zz_play_t P, zz_info_t *I, const char * uri,
 
   zz_assert( P->format != ZZ_FORMAT_UNKNOWN );
 
-  ecode = zz_setup(P, g_mixerid, g_spr, 0, 0, sec*1000u, 1);
-  if (ecode) {
-    dmsg("load: setup failed (%hu)\n", HU(ecode));
-    goto error_close;
-  }
-  dmsg("load: -> setup mixer:%hu spr:%lu rate:%hu ticks:%lu end-detect:%s\n",
-       HU(P->mixer_id), LU(P->spr), HU(P->rate),
-       LU(P->max_ticks), P->end_detect?"yes":"no");
+  /* ecode = zz_setup(P, g_mixerid, g_spr, 0, 0, sec*1000u, 1); */
+  /* if (ecode) { */
+  /*   dmsg("load: setup failed (%hu)\n", HU(ecode)); */
+  /*   goto error_close; */
+  /* } */
+  /* dmsg("load: -> setup mixer:%hu spr:%lu rate:%hu ticks:%lu end-detect:%s\n", */
+  /*      HU(P->mixer_id), LU(P->spr), HU(P->rate), */
+  /*      LU(P->max_ticks), P->end_detect?"yes":"no"); */
 
   dmsg("load: init\n");
-  ecode = zz_init(P);
+  ecode = zz_init(P, g_mixerid, g_spr, 0, sec*1000u);
   if (ecode) {
     dmsg("load: init failed (%hu)\n", HU(ecode));
     goto error_close;
   }
 
   if (measure != NO_MEASURE) {
-    zz_u32_t max_ticks = 0, max_ms = MEASURE_SEC * 1000u;
+    zz_u32_t max_ms = MEASURE_SEC * 1000u;
     dmsg("load: measure for max-ms:%lu\n", LU(max_ms));
-    ecode = zz_measure(P,&max_ticks,&max_ms);
-    if (ecode) {
-      dmsg("load: -> measure failed (%hu) @%lu done:%02hX\n",
-           HU(ecode), LU(P->tick), HU(P->done));
+    max_ms = zz_measure(P,max_ms);
+    if (max_ms == ZZ_EOF) {
+      ecode = E_PLA;
       goto error_close;
     } else {
-      dmsg("load: -> measure ticks:%lu ms:%lu\n",
-           LU(max_ticks), LU(max_ms));
+      dmsg("load: -> measure ms:%lu\n", LU(max_ms));
       if (max_ms) {
-        ms    = max_ms;
-        ticks = max_ticks;
+        ms = max_ms;
       } else {
-        ms    = PLAY_SEC * 1000u;
-        ticks = PLAY_SEC * P->rate;
-        dmsg("load: !! set default play time: ticks:%lu ms:%lu\n",
-             LU(ticks), LU(ms));
+        ms = PLAY_SEC * 1000u;
+        dmsg("load: !! set default play time: ms:%lu\n", LU(ms));
       }
     }
   }
@@ -490,14 +485,12 @@ error_no_close:
   if (I) {
     dmsg("load: info\n");
     zz_info(ecode ?0 : P, I);
-    I->len.ms    = ms;
-    I->len.ticks = ticks;
+    I->len.ms = ms;
     dmsg("load: info -> %s\n", I->fmt.str);
   }
 
-  dmsg("load (%s) -- <%s> \"%s\" %lu/%lu \n", ecode ? "ERR" :"OK",
-       I?I->fmt.str:"?", uri ? uri : "(nil)",
-       LU(ticks), LU(ms));
+  dmsg("load (%s) -- <%s> \"%s\" %lu ms \n", ecode ? "ERR" :"OK",
+       I?I->fmt.str:"?", uri ? uri : "(nil)", LU(ms));
 
   return ecode;
 }
@@ -658,11 +651,11 @@ void getfileinfo(const in_char *uri, in_char *title, int *msptr)
   zz_assert( P );
   zz_assert( I );
 
-  dmsg("getfileinfo: <%s> fmt:%s mixer:<%s> spr:%lu rate:%lu ticks:%lu ms:%lu\n",
+  dmsg("getfileinfo: <%s> fmt:%s mixer:<%s> spr:%lu rate:%lu ms:%lu\n",
        uri ? uri : "(current)",
        I->fmt.str ? I->fmt.str : "(nil)",
        I->mix.name ? I->mix.name : "(nil)",
-       LU(I->mix.spr), LU(I->len.rate), LU(I->len.ticks), LU(I->len.ms));
+       LU(I->mix.spr), LU(I->len.rate), LU(I->len.ms));
 
   if (msptr) *msptr = I->len.ms;
   if (title && I->fmt.num != ZZ_FORMAT_UNKNOWN) {
@@ -717,10 +710,9 @@ DWORD WINAPI playloop(LPVOID cookie)
       /* filling */
       n = 576 - npcm;
       if (n < 0) break;
-      pcm = zz_play(&g_play, &n);
-      if (!pcm || !n) break;
+      n = zz_play(&g_play, g_pcm+npcm, n);
+      if (n <= 0) break;
 
-      memcpy(g_pcm+npcm, pcm, n*2);
       npcm += n;
       if (npcm >= 576) {
         int vispos = g_mod.outMod->GetWrittenTime();
@@ -887,8 +879,8 @@ intptr_t winampGetExtendedRead_open(
   *spr = trc->info.mix.spr;
   *bps = 16;
 
-  bytes = ((uint_least64_t)trc->info.len.ticks * trc->info.mix.ppt) << 1;
-  /* GB: 32 bit kinda suxk here winamp team !!! At least can we have
+  bytes = (uint_least64_t) trc->info.len.ms * trc->info.mix.spr / 1000 * 2;
+  /* GB: 32 bit kinda sux here winamp team !!! At least can we have
    *     UINT_MAX ???
    */
   *siz = bytes > UINT_MAX ? UINT_MAX : bytes;
@@ -926,8 +918,7 @@ intptr_t winampGetExtendedRead_getData(
     return 0;
 
   for (cnt = 0; len >= 2; ) {
-    int16_t * pcm;
-    zz_u16_t n;
+    int n;
 
     if (*end) {
       dmsg("transcoder: winamp request to end\n");
@@ -943,10 +934,11 @@ intptr_t winampGetExtendedRead_getData(
       break;
     }
 
-    n = trc->play.pcm_per_tick;
-    if (n > (len>>1) ) n = len>>1;
-    pcm = zz_play(&trc->play, &n);
-    if (!pcm) {
+    n = len >> 1;
+    if ( n >= 0x8000 )
+      n = 0x7fff;
+    n = zz_play(&trc->play, dst+cnt, -n);
+    if (n <= 0) {
       trc->ecode = n;
       trc->done  = 1;
       if (!n)
@@ -956,9 +948,7 @@ intptr_t winampGetExtendedRead_getData(
       break;
     }
 
-
     n <<= 1;
-    zz_memcpy(dst+cnt,pcm,n);
     cnt += n;
     len -= n;
   }
