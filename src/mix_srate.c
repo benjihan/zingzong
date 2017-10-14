@@ -56,6 +56,7 @@ struct mix_data_s {
   /***********************
    * !!! ALWAYS LAST !!! *
    ***********************/
+  int        flt_max;
   float      flt_buf[1];
 };
 
@@ -142,15 +143,15 @@ restart_chan(mix_chan_t * const K)
 
    ---------------------------------------------------------------------- */
 
-static zz_err_t
-push_cb(play_t * const P)
+static void *
+push_cb(play_t * const P, void * pcm, i16_t N)
 {
   mix_data_t * const M = (mix_data_t *) P->mixer_data;
-  const int N = P->pcm_per_tick;
   int k;
 
   zz_assert( P );
   zz_assert( M );
+  zz_assert( N <= M->flt_max );
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -168,7 +169,7 @@ push_cb(play_t * const P)
       K->end = K->ptr + C->note.ins->end;
       C->note.ins = 0;
       if (restart_chan(K))
-        return E_MIX;
+        return 0;
 
     case TRIG_SLIDE:
       K->rate = rate_of_fp16(C->note.cur, M->rate);
@@ -193,7 +194,7 @@ push_cb(play_t * const P)
     default:
       emsg("INTERNAL ERROR: %c: invalid trigger -- %d\n", 'A'+k, C->trig);
       zz_assert( !"wtf" );
-      return E_MIX;
+      return 0;
     }
   }
 
@@ -242,8 +243,10 @@ push_cb(play_t * const P)
 #else
       idone = 0;
       odone = src_callback_read(K->st, RATIO(K->rate), want, K->oflt);
-      if (odone < 0)
-        return emsg_srate(K,src_error(K->st));
+      if (odone < 0) {
+        emsg_srate(K,src_error(K->st));
+        return 0;
+      }
 #endif
 
       if ( (idone+odone) > 0) {
@@ -251,7 +254,7 @@ push_cb(play_t * const P)
       } else {
         if (++zero > 7) {
           emsg("%c: too many loop without data -- %u\n",K->id, zero);
-          return E_MIX;
+          return 0;
         }
       }
 
@@ -268,9 +271,9 @@ push_cb(play_t * const P)
     zz_assert( flt-N == M->flt_buf );
   }
   /* Convert back to s16 */
-  fltoi16(P->mix_buf, M->flt_buf, N);
+  fltoi16(pcm, M->flt_buf, N);
 
-  return E_OK;
+  return (int16_t *)pcm+N;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -293,21 +296,34 @@ static void free_cb(play_t * const P)
 
 /* ---------------------------------------------------------------------- */
 
-static zz_err_t init_srate(play_t * const P, const int quality)
+static zz_err_t init_srate(play_t * const P, u32_t spr, const int quality)
 {
   zz_err_t ecode = E_SYS;
   int k;
-  const int N = P->pcm_per_tick;
-  const u32_t size = sizeof(mix_data_t) + sizeof(float)*N;
+  u32_t N, size;
   zz_assert( !P->mixer_data );
-  zz_assert( N > 0 );
   zz_assert( sizeof(float) == 4 );
 
+  switch (spr) {
+  case 0:
+  case ZZ_LQ: spr = mulu(P->song.khz,1000u); break;
+  case ZZ_MQ: spr = SPR_DEF; break;
+  case ZZ_FQ: spr = SPR_MIN; break;
+  case ZZ_HQ: spr = SPR_MAX; break;
+  }
+  if (spr < SPR_MIN) spr = SPR_MIN;
+  if (spr > SPR_MAX) spr = SPR_MAX;
+  P->spr = spr;
+
+  /* +1 float already allocated in mix_data_t struct */
+  N = P->spr/P->rate;
+  size = sizeof(mix_data_t) + sizeof(float)*N;
   ecode = zz_calloc(&P->mixer_data, size);
   if (likely(E_OK == ecode)) {
     mix_data_t * M = P->mixer_data;
     zz_assert( M );
-    M->quality = quality;
+    M->flt_max  = N+1;
+    M->quality  = quality;
     M->irate    = (double) P->song.khz * 1000.0;
     M->orate    = (double) P->spr;
     M->rate     = iorate(1, M->irate, M->orate);
@@ -351,14 +367,14 @@ static zz_err_t init_srate(play_t * const P, const int quality)
 #define XTR(A) #A
 #define STR(A) XTR(A)
 
-#define DECL_SRATE_MIXER(Q,QQ,D) \
-  static zz_err_t init_##Q(play_t * const P) \
-  {\
-    return init_srate(P, SRC_##QQ);\
-  }\
-  mixer_t mixer_srate_##Q = \
-  {\
-    "sinc:" XTR(Q), D, init_##Q, free_cb, push_cb\
+#define DECL_SRATE_MIXER(Q,QQ,D)                          \
+  static zz_err_t init_##Q(play_t * const P, u32_t spr)   \
+  {                                                       \
+    return init_srate(P, spr, SRC_##QQ);                  \
+  }                                                       \
+  mixer_t mixer_srate_##Q =                               \
+  {                                                       \
+    "sinc:" XTR(Q), D, init_##Q, free_cb, push_cb         \
   }
 
 DECL_SRATE_MIXER(best,SINC_BEST_QUALITY,

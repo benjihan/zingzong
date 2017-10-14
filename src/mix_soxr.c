@@ -53,6 +53,7 @@ struct mix_data_s {
   /***********************
    * !!! ALWAYS LAST !!! *
    ***********************/
+  int   flt_max;
   float flt_buf[1];
 };
 
@@ -159,16 +160,17 @@ rate_of_fp16(const u32_t fp16, const double rate) {
 
    ---------------------------------------------------------------------- */
 
-static zz_err_t
-push_cb(play_t * const P)
+static void *
+push_soxr(play_t * const P, void * pcm, i16_t N)
 {
   soxr_error_t err;
   mix_data_t * const M = (mix_data_t *) P->mixer_data;
-  const int N = P->pcm_per_tick;
+//  const int N = P->pcm_per_tick;
   int k;
 
   zz_assert( P );
   zz_assert( M );
+  zz_assert( N <= M->flt_max );
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -188,7 +190,7 @@ push_cb(play_t * const P)
       K->end = K->ptr + C->note.ins->end;
       C->note.ins = 0;
       if (restart_chan(K))
-        return E_MIX;
+        return 0;
       slew = -slew_val;                /* -X+X == 0 on note trigger */
 
     case TRIG_SLIDE:
@@ -210,15 +212,17 @@ push_cb(play_t * const P)
       /* dmsg("%c: trig=%d stp=%08X %.3lf\n", */
       /*      C->id, C->trig, C->note.cur, K->rate); */
 
-      if (err)
-        return emsg_soxr(K,err);
+      if (err) {
+        emsg_soxr(K,err);
+        return 0;
+      }
       break;
     case TRIG_STOP: K->ptr = 0;
     case TRIG_NOP:  break;
     default:
       emsg("INTERNAL ERROR: %c: invalid trigger -- %d\n", 'A'+k, C->trig);
       zz_assert( !"wtf" );
-      return E_MIX;
+      return 0;
     }
   }
 
@@ -256,8 +260,11 @@ push_cb(play_t * const P)
           K->oflt,
           want);
       err = soxr_error(K->soxr);
-      if (err || odone < 0)
-        return emsg_soxr(K,err);
+      if (err || odone < 0) {
+        emsg_soxr(K,err);
+        return 0;
+      }
+
 #else
       /* Fill input when it's empty */
       if (!K->ilen)
@@ -291,7 +298,7 @@ push_cb(play_t * const P)
              soxr_strerror(err));
         if (++zero > 7) {
           emsg("%c: too many loop without data -- %hu\n",K->id, HU(zero));
-          return E_MIX;
+          return 0;
         }
       }
 
@@ -308,14 +315,14 @@ push_cb(play_t * const P)
   }
 
   /* Convert back to s16 */
-  fltoi16(P->mix_buf, M->flt_buf, N);
+  fltoi16(pcm, M->flt_buf, N);
 
-  return E_OK;
+  return (int16_t *)pcm + N;
 }
 
 /* ---------------------------------------------------------------------- */
 
-static void free_cb(play_t * const P)
+static void free_soxr(play_t * const P)
 {
   mix_data_t * const M = (mix_data_t *) P->mixer_data;
   if (M) {
@@ -334,24 +341,37 @@ static void free_cb(play_t * const P)
 
 /* ---------------------------------------------------------------------- */
 
-static zz_err_t init_soxr(play_t * const P, const int quality)
+static zz_err_t init_soxr(play_t * const P, u32_t spr)
 {
   zz_err_t ecode = E_SYS;
   int k;
-  const int N = P->pcm_per_tick;
   soxr_error_t err;
-  const u32_t size = sizeof(mix_data_t) + sizeof(float)*N;
+  u32_t size, N;
 
   zz_assert( !P->mixer_data );
-  zz_assert( N > 0 );
   zz_assert( sizeof(float) == 4 );
 
+  switch (spr) {
+  case 0:
+  case ZZ_LQ: spr = mulu(P->song.khz,1000u); break;
+  case ZZ_MQ: spr = SPR_DEF; break;
+  case ZZ_FQ: spr = SPR_MIN; break;
+  case ZZ_HQ: spr = SPR_MAX; break;
+  }
+  if (spr < SPR_MIN) spr = SPR_MIN;
+  if (spr > SPR_MAX) spr = SPR_MAX;
+  P->spr = spr;
+
+  /* +1 float already allocated in mix_data_t struct */
+  N = P->spr/P->rate;
+  size = sizeof(mix_data_t) + sizeof(float)*N;
   ecode = zz_calloc(&P->mixer_data,size);
   if (likely(E_OK == ecode)) {
     mix_data_t * M = P->mixer_data;
     zz_assert( M );
-    M->qspec    = soxr_quality_spec(quality, SOXR_VR);
-    M->ispec    = soxr_io_spec(SOXR_FLOAT32_I,SOXR_FLOAT32_I);
+    M->flt_max  = N+1;
+    M->qspec    = soxr_quality_spec(SOXR_HQ, SOXR_VR);
+    M->ispec    = soxr_io_spec(SOXR_FLOAT32_I, SOXR_FLOAT32_I);
     M->irate    = (double) P->song.khz * 1000.0;
     M->orate    = (double) P->spr;
     M->rate     = iorate(1, M->irate, M->orate);
@@ -391,7 +411,7 @@ static zz_err_t init_soxr(play_t * const P, const int quality)
   }
 
   if (ecode)
-    free_cb(P);
+    free_soxr(P);
   else
     i8tofl(0,0,0);                    /* trick to pre-init LUT */
 
@@ -400,22 +420,12 @@ static zz_err_t init_soxr(play_t * const P, const int quality)
 
 /* ---------------------------------------------------------------------- */
 
-#define XONXAT(A,B) A##B
-#define CONCAT(A,B) XONXAT(A,B)
-#define XTR(A) #A
-#define STR(A) XTR(A)
-
-#define DECL_SOXR_MIXER(Q,QQ, D) \
-  static zz_err_t init_##Q(play_t * const P)\
-  {\
-    return init_soxr(P, SOXR_##QQ);\
-  }\
-  mixer_t mixer_soxr_##Q =\
-  {\
-    "soxr" , D, init_##Q, free_cb, push_cb \
-  }
-
-/* GB: when using variable rate soxr ignore quality. */
-DECL_SOXR_MIXER(hq,HQ,"high quality variable rate");
+mixer_t mixer_soxr = {
+  "soxr",
+  "high quality variable rate",
+  init_soxr,
+  free_soxr,
+  push_soxr
+};
 
 #endif /* WITH_SOXR == 1 */
