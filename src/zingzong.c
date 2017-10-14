@@ -364,10 +364,10 @@ static uint_t mystrtoul(char **s, const int base)
 /**
  * Parse time argument (a bit permissive)
  */
-static int time_parse(uint_t * pticks, uint_t * pms, char * time)
+static int time_parse(uint_t * pms, char * time)
 {
   int i;
-  uint_t ticks = 0, ms = 0, w = 1000;
+  uint_t ms = 0, w = 1000;
   char *s = time;
 
   if (!*s) {
@@ -383,15 +383,12 @@ static int time_parse(uint_t * pticks, uint_t * pms, char * time)
     uint_t v = mystrtoul(&s,10);
     if (v == (uint_t)-1)
       s = "?";
-    switch (*s) {
+    switch (tolower(*s)) {
     case 0:
-      if (!i)
-        ticks = v;
-      else
-        ms += v * w;
+      ms += v * w;
       goto done;
 
-    case ',': case '.':
+    case ',': case '.': case 's': case '"':
       ++s;
       ms += v * 1000u;
       v = mystrtoul(&s,10);
@@ -429,10 +426,8 @@ done:
     emsg("invalid argument -- length=%s\n", time);
     return ZZ_EARG;
   }
-  dmsg("parse_time: \"%s\" => %lu-ticks %lu-ms\n",
-       time,  LU(ticks), LU(ms));
-  zz_assert( ms == 0 || ticks == 0 );
-  *pticks = ticks;
+  dmsg("parse_time: \"%s\" => %lu-ms\n",
+       time, LU(ms));
   *pms    = ms;
   return ZZ_OK;
 }
@@ -673,7 +668,7 @@ int main(int argc, char *argv[])
   char * wavuri = 0;
   char * songuri = 0, * vseturi = 0;
   zz_play_t P = 0;
-  zz_u32_t max_ticks = 0, max_ms = 0;
+  zz_u32_t max_ms = 0;
   zz_u8_t format;
   zz_out_t * out = 0;
 
@@ -736,7 +731,7 @@ int main(int argc, char *argv[])
   }
 
   if (opt_length) {
-    ecode = time_parse(&max_ticks, &max_ms, opt_length);
+    ecode = time_parse(&max_ms, opt_length);
     if (ecode)
       goto error_exit;
   } else {
@@ -808,8 +803,7 @@ int main(int argc, char *argv[])
     RETURN (ZZ_EOUT);
 
   zz_mute(P, 0xFF, (opt_mute<<4)|opt_ignore);
-  ecode = zz_init(P, opt_mixerid, out->hz, opt_tickrate,
-                  opt_length ? max_ms : -max_ms);
+  ecode = zz_init(P, opt_mixerid, out->hz, opt_tickrate,max_ms);;
   if (ecode)
     goto error_exit;
 
@@ -819,7 +813,7 @@ int main(int argc, char *argv[])
 #endif
 
   if ( ! opt_length ) {
-    zz_i32_t ms = zz_measure(P, MAX_DETECT * 1000 );
+    zz_u32_t ms = zz_measure(P, MAX_DETECT * 1000 );
     if (ms == ZZ_EOF)
       RETURN (ZZ_EPLA);
     dmsg("measured: %lu-ms\n", LU(ms));
@@ -905,9 +899,24 @@ error_exit:
 
   zz_del(&P);
 
-  if (ecode && !errcnt)
-    emsg("unknown error (%i)\n", ecode);
-
+  if (ecode && !errcnt) {
+    const char *e;
+    switch ( ecode ) {
+    case ZZ_OK: e = "no"; break;
+    case ZZ_ERR: e = "unspecified"; break;
+    case ZZ_EARG: e = "argument"; break;
+    case ZZ_ESYS: e = "system"; break;
+    case ZZ_EINP: e = "input"; break;
+    case ZZ_EOUT: e = "output"; break;
+    case ZZ_ESNG: e = "song"; break;
+    case ZZ_ESET: e = "voiceset"; break;
+    case ZZ_EPLA: e = "player"; break;
+    case ZZ_EMIX: e = "mixer"; break;
+    case ZZ_666: e = "internal"; break;
+    default: e = "undef";
+    }
+    emsg("%s error (%hu)\n", e, HU(ecode));
+  }
   log_newline(ZZ_LOG_INF);
 
 #ifndef NDEBUG

@@ -475,7 +475,7 @@ static void rt_check(void)
 }
 
 zz_err_t
-zz_init(play_t * P, u8_t mid, u32_t spr, u16_t rate, i32_t maxms)
+zz_init(play_t * P, u8_t mid, u32_t spr, u16_t rate, u32_t maxms)
 {
   zz_err_t ecode = E_OK;
 
@@ -497,7 +497,8 @@ zz_init(play_t * P, u8_t mid, u32_t spr, u16_t rate, i32_t maxms)
   if (rate > RATE_MAX) rate = RATE_MAX;
   P->rate = rate;
 
-  if (ecode = zz_mixer_set(P, mid), ecode)
+  ecode = E_MIX;
+  if (zz_mixer_set(P, mid) == ZZ_MIXER_ERR)
     goto error;
   P->spr = 0;
   if (ecode = P->mixer->init(P, spr), ecode)
@@ -510,7 +511,9 @@ zz_init(play_t * P, u8_t mid, u32_t spr, u16_t rate, i32_t maxms)
        HU(P->pcm_per_tick), HU(P->pcm_err_tick),
        HU(P->ms_per_tick), HU(P->ms_err_tick));
 
+  P->ms_max = maxms;
   ecode = play_init(P);
+
 error:
   P->done = -!!ecode;
   P->code = ecode;
@@ -521,7 +524,6 @@ uint8_t zz_mute(play_t * P, u8_t clr, u8_t set)
 {
   const uint8_t old = P->muted_voices;
   P->muted_voices = ((P->muted_voices) & ~clr) | set;
-  dmsg("mute %s instance %02X->%02X\n",P?"this":"all",old,P->muted_voices);
   return old;
 }
 

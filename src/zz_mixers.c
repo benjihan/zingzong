@@ -15,9 +15,9 @@
 ZZ_EXTERN_C mixer_t mixer_zz_none, mixer_zz_lerp, mixer_zz_qerp;
 
 #if WITH_SOXR == 1
-ZZ_EXTERN_C mixer_t mixer_soxr_hq;
+ZZ_EXTERN_C mixer_t mixer_soxr;
 # ifndef DEFAULT_MIXER
-#  define DEFAULT_MIXER mixer_soxr_hq
+#  define DEFAULT_MIXER mixer_soxr
 # endif
 #endif
 
@@ -32,7 +32,7 @@ static mixer_t * const zz_mixers[] = {
   &mixer_zz_qerp, &mixer_zz_lerp, &mixer_zz_none,
 
 #if WITH_SOXR == 1
-  &mixer_soxr_hq,
+  &mixer_soxr,
 #endif
 
 #if WITH_SRATE == 1
@@ -65,7 +65,7 @@ static mixer_t * get_mixer(zz_u8_t * const pn)
   else if (n < max)
     mixer = zz_mixers[n];
   else if (n != ZZ_MIXER_XTN)
-    n = ZZ_MIXER_DEF;
+    n = ZZ_MIXER_ERR;
   *pn = n;
   return mixer;
 }
@@ -89,7 +89,7 @@ zz_u8_t zz_mixer_set(play_t * P, zz_u8_t n)
   mixer = get_mixer(&n);
   dmsg("found: #%hu <%s>\n", HU(n), mixer?mixer->name:"");
 
-  if (n != ZZ_MIXER_DEF) {
+  if (n != ZZ_MIXER_ERR) {
     /* mixer can be null if n is ZZ_MIXER_XTN. */
     if (mixer)
       *( P ? &P->mixer : &default_mixer ) = mixer;

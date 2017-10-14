@@ -81,7 +81,8 @@ enum zz_format_e {
  */
 enum {
   ZZ_MIXER_XTN = 254,          /**< External mixer.                 */
-  ZZ_MIXER_DEF = 255           /**< Default mixer id.               */
+  ZZ_MIXER_DEF = 255,          /**< Default mixer id.               */
+  ZZ_MIXER_ERR = ZZ_MIXER_DEF  /**< Error (alias for ZZ_MIXER_DEF). */
 };
 
 /**
@@ -258,13 +259,13 @@ ZINGZONG_API
  * @param  mixer mixer-id
  * @param  spr   sampling rate or quality
  * @param  rate  player tick rate (0:default)
- * @param  maxms 0:infinite, (+):this number of ms , (-) max detect
+ * @param  maxms playback duration (0:infinite)
  * @return error code
  * @retval ZZ_OK(0) on success
  */
 zz_err_t zz_init(zz_play_t play,
                  zz_u8_t mixer, zz_u32_t spr,
-                 zz_u16_t rate, zz_i32_t maxms);
+                 zz_u16_t rate, zz_u32_t maxms);
 
 ZINGZONG_API
 /**

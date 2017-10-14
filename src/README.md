@@ -13,6 +13,7 @@
 		               Try `-hh' to print the list of [R]esampler.
     -l --length=TIME   Set play time.
     -m --mute=ABCD     Mute selected channels (bit-field or string).
+    -i --ignore=ABCD   Ignore selected channels (bit-field or string).
     -o --output=URI    Set output file name (`-w` or `-c`).
     -c --stdout        Output raw PCM to stdout or file (native 16-bit).
     -n --null          Output to the void.
@@ -27,9 +28,9 @@ minutes.
 
 If time is set to zero `0` or `inf` the player will run forever.
 
-  * pure integer number to represent a number of ticks.
-  * comma `,` to separate seconds and milliseconds.
-  * `h` to suffix hours and `m` to suffix minutes.
+ * comma `,` dot `.` double quote `"` to separate seconds and milliseconds.
+ * `h` to suffix hours
+ * `m` or single quote `'` to suffix minutes.
 
 ### Output
 
