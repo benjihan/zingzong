@@ -846,7 +846,7 @@ struct transcon {
   zz_info_t info;                  /* zingzong info instance.       */
   size_t    pcm;                   /* pcm counter.                  */
   int       done;                  /* 0:running / 1:done / -1:error */
-  zz_err_t  ecode;                 /* error code                    */
+  zz_err_t  code;                  /* error code                    */
 };
 
 EXPORT
@@ -871,8 +871,8 @@ intptr_t winampGetExtendedRead_open(
   if (!trc)
     goto error_free_not;
 
-  trc->ecode = load(&trc->play, &trc->info, uri, MEASURE, 0);
-  if (trc->ecode != ZZ_OK)
+  trc->code = load(&trc->play, &trc->info, uri, MEASURE, 0);
+  if (trc->code != ZZ_OK)
     goto error_free_trc;    /* play should have been closed already */
 
   *nch = 1;
@@ -923,7 +923,7 @@ intptr_t winampGetExtendedRead_getData(
     if (*end) {
       dmsg("transcoder: winamp request to end\n");
       trc->done  = 0x04;                /* flag as done */
-      trc->ecode = E_ERR;               /* GB: is it an error ? */
+      trc->code = E_ERR;               /* GB: is it an error ? */
       cnt = 0;                          /* discard all */
       break;
     }
@@ -939,7 +939,7 @@ intptr_t winampGetExtendedRead_getData(
       n = 0x7fff;
     n = zz_play(&trc->play, dst+cnt, -n);
     if (n <= 0) {
-      trc->ecode = n;
+      trc->code = n;
       trc->done  = 1;
       if (!n)
         dmsg("transcoder: play done\n");
@@ -966,7 +966,7 @@ void winampGetExtendedRead_close(intptr_t hdl)
   struct transcon * trc = (struct transcon *) hdl;
   if (trc) {
     dmsg("transcoder: close (ecode:%hX done:%hX)\n",
-         HU(trc->ecode), HU(trc->done));
+         HU(trc->code), HU(trc->done));
     zz_close(&trc->play);
     zz_free(&trc);
   }

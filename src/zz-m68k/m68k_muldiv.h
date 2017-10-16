@@ -60,7 +60,7 @@ xdivu(uint32_t n, uint16_t d, zz_u16_t *q, zz_u16_t *r)
     uint32_t l;
     uint16_t w[2];
   } reg;
-  reg.l = d;
+  reg.l = n;
   asm(
     "divu.w %[div],%[val]  \n\t"
     : [val] "+d" (reg.l)

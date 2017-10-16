@@ -520,7 +520,7 @@ error:
   return ecode;
 }
 
-uint8_t zz_mute(play_t * P, u8_t clr, u8_t set)
+uint8_t zz_mute(play_t * P, uint8_t clr, uint8_t set)
 {
   const uint8_t old = P->muted_voices;
   P->muted_voices = ((P->muted_voices) & ~clr) | set;
@@ -676,7 +676,11 @@ zz_err_t zz_info( zz_play_t P, zz_info_t * pinfo)
       pinfo->mix.name = P->mixer->name;
       pinfo->mix.desc = P->mixer->desc;
     } else {
+#ifndef SC68
       zz_mixer_info(pinfo->mix.num, &pinfo->mix.name, &pinfo->mix.desc);
+#else
+      pinfo->mix.name = pinfo->mix.desc = "?";
+#endif
     }
 
     pinfo->sng.uri = ZZSTR_SAFE(P->songuri);

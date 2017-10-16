@@ -7,17 +7,17 @@
 
 #include "../zz_private.h"
 
-static zz_err_t init_stf_cb(play_t * const P);
-static void     free_stf_cb(play_t * const P);
-static zz_err_t push_stf_cb(play_t * const P);
+static zz_err_t init_stf(play_t * const P, u32_t spr);
+static void     free_stf(play_t * const P);
+static void    *push_stf(play_t * const P, void *pcm, i16_t npcm);
 
 mixer_t * mixer_stf(mixer_t * const M)
 {
   M->name = "ym2149";
   M->desc = "Atari ST via YM-2149";
-  M->init = init_stf_cb;
-  M->free = free_stf_cb;
-  M->push = push_stf_cb;
+  M->init = init_stf;
+  M->free = free_stf;
+  M->push = push_stf;
   return M;
 }
 
@@ -74,15 +74,15 @@ static void init_replay_table(void)
 
 }
 
-static zz_err_t push_stf_cb(play_t * const P)
+static void * push_stf(play_t * const P, void * pcm, i16_t n)
 {
   zz_assert( 0 );
-  return E_MIX;
+  return 0;
 }
 
 typedef void (* volatile interrupt_func)(void);
 
-static zz_err_t init_stf_cb(play_t * const P)
+static zz_err_t init_stf(play_t * const P, u32_t spr)
 {
   init_replay_table();
 
@@ -90,7 +90,7 @@ static zz_err_t init_stf_cb(play_t * const P)
   return E_666;
 }
 
-static void free_stf_cb(play_t * const P)
+static void free_stf(play_t * const P)
 {
   zz_assert( 0 );
 }

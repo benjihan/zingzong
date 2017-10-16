@@ -26,7 +26,7 @@ int vset_init(zz_vset_t const vset);
 static play_t play;
 static bin_t songbin, vsetbin;
 static volatile zz_err_t ready, ecode;
-static void * pcm;
+static void * pcm = (void *)1;
 
 static bin_t * set_bin(bin_t * bin, bin_t *src, int16_t off)
 {
@@ -54,9 +54,9 @@ logfunc(zz_u8_t chan, void * user, const char *fmt, va_list list)
   switch (chan)
   {
   case ZZ_LOG_ERR:
-  case ZZ_LOG_WRN:
     BRKMSG(fmt); break;
     break;
+  case ZZ_LOG_WRN:
   case ZZ_LOG_INF:
   case ZZ_LOG_DBG:
     DBGMSG(fmt);
@@ -72,10 +72,8 @@ void player_init(bin_t * song, bin_t * vset)
 {
   BRKMSG("player_init()");
 
-
   ready = 0;
   zz_memclr(&play,sizeof(play));
-
 
   /* Skip the headers */
   if (!song->ptr) song->ptr = song->_buf;

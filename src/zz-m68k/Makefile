@@ -77,6 +77,8 @@ JUMP_TABLE   = no-jump-tables
 zz_CPPFLAGS += -I$(srcdir) -DSC68
 ifdef DEBUG
 m68_pcrel    = no-pcrel
+m68_SHORT    = no-short
+
 zz_CFLAGS   += -g -Og
 zz_CPPFLAGS += -DNO_VFS -DDEBUG=1
 ELFLIBS      = --verbose -L$(shell $(LD) --print-sysroot)/usr/lib -lc

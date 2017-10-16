@@ -7,17 +7,17 @@
 
 #include "../zz_private.h"
 
-static zz_err_t init_aga_cb(play_t * const P);
-static void     free_aga_cb(play_t * const P);
-static zz_err_t push_aga_cb(play_t * const P);
+static zz_err_t init_aga(play_t * const, u32_t);
+static void     free_aga(play_t * const);
+static void    *push_aga(play_t * const, void *, i16_t);
 
 mixer_t * mixer_aga(mixer_t * const M)
 {
   M->name = "paula";
   M->desc = "Amiga hardware channels mixer";
-  M->init = init_aga_cb;
-  M->free = free_aga_cb;
-  M->push = push_aga_cb;
+  M->init = init_aga;
+  M->free = free_aga;
+  M->push = push_aga;
   return M;
 }
 
@@ -84,7 +84,7 @@ static uint16_t xstep(uint32_t stp, uint8_t khz)
 }
 
 
-static zz_err_t push_aga_cb(play_t * const P)
+static void *push_aga(play_t * const P, void * pcm, i16_t npcm)
 {
   mix_aga_t * const M = (mix_aga_t *)P->mixer_data;
   int k;
@@ -131,20 +131,22 @@ static zz_err_t push_aga_cb(play_t * const P)
 
     default:
       zz_assert(!"wtf");
-      return E_MIX;
+      return 0;
     }
   }
 
-  return E_OK;
+  return pcm;
 }
 
-static zz_err_t init_aga_cb(play_t * const P)
+static zz_err_t init_aga(play_t * const P, u32_t spr)
 {
   int ecode = E_OK;
   int16_t k;
   mix_aga_t * const M = &g_aga;
 
   P->mixer_data = M;
+  P->spr = mulu(P->song.khz,1000u);
+
   zz_memclr(M,sizeof(*M));
 
   DMACON = 0x000F;                    /* disable audio DMAs */
@@ -185,8 +187,7 @@ static zz_err_t init_aga_cb(play_t * const P)
   return ecode;
 }
 
-static void free_aga_cb(play_t * const P)
+static void free_aga(play_t * const P)
 {
   P->mixer_data = 0;
 }
-
