@@ -28,9 +28,10 @@ minutes.
 
 If time is set to zero `0` or `inf` the player will run forever.
 
- * comma `,` dot `.` double quote `"` to separate seconds and milliseconds.
- * `h` to suffix hours
- * `m` or single quote `'` to suffix minutes.
+ * 0 or `inf' represents an infinite duration
+ * comma `,' dot `.' or double-quote `\"' separates milliseconds
+ * `m' or quote to suffix minutes
+ * `h' to suffix hour
 
 ### Output
 

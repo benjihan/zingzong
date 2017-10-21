@@ -237,13 +237,15 @@ static void print_usage(int level)
 
     "\n"
     "TIME:\n"
-    "  * comma `,' to separate seconds and milliseconds\n"
-    "  * `h' to suffix hours; `m' to suffix minutes\n"
+    " . 0 or `inf' represents an infinite duration\n"
+    " . comma `,' dot `.' or double-quote `\"' separates milliseconds\n"
+    " . `m' or quote to suffix minutes\n"
+    " . `h' to suffix hour\n"
+    "\n"
     " If time is not set the player tries to auto-detect the music duration.\n"
     " However a number of musics are going into unnecessary loops which make\n"
     " it harder to properly detect. Detection threshold is set to 30 minutes'.\n"
-    " If time is set to `0` or `inf` the player will run forever.");
-  puts("");
+    );
   puts(copyright);
   puts(license);
   puts(bugreport);
@@ -304,7 +306,8 @@ static const char * timestr(zz_u32_t ms)
 
 #ifndef NO_AO
 
-static char * fileext(char * s)
+/* GB: could probably use some portability work. */
+static char * baseext(char * s)
 {
   int i, l = strlen(s);
   for ( i=l-2; i>=1; --i )
@@ -320,7 +323,7 @@ static zz_err_t
 wav_filename(char ** pwavname, char * sngname)
 {
   zz_err_t ecode;
-  char *leaf = basename(sngname), *ext = fileext(leaf);
+  char *leaf = basename(sngname), *ext = baseext(leaf);
   const int l = ext - leaf;
 
   ecode = zz_malloc(pwavname, l+8);

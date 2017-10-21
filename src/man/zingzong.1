@@ -44,6 +44,9 @@ Set play time.
 \fB\-m\fR \fB\-\-mute\fR=\fI\,ABCD\/\fR
 Mute selected channels (bit\-field or string).
 .TP
+\fB\-i\fR \fB\-\-ignore\fR=\fI\,ABCD\/\fR
+Ignore selected channels (bit\-field or string).
+.TP
 \fB\-o\fR \fB\-\-output\fR=\fI\,URI\/\fR
 Set output file name (\fB\-w\fR or \fB\-c\fR).
 .TP
@@ -74,17 +77,17 @@ output to the specified file instead of `stdout`.
 unless set output is a file based on song filename.
 .SS "TIME:"
 .IP \[bu] 2
-pure integer number to represent a number of ticks
+0 or inf represents infinite duration
 .IP \[bu]
-comma `,' to separate seconds and milliseconds
+comma(,) dot(.) or double-quote(\(dq) separates milliseconds
 .IP \[bu]
-`h' to suffix hours; `m' to suffix minutes
+`m' or quote(') to suffix minutes
+.IP \[bu]
+`h' to suffix hours
 .P
 If time is not set the player tries to auto\-detect the music duration.
 However a number of musics are going into unnecessary loops which make
 it harder to properly detect. Detection threshold is set to 30 minutes'.
-.br
-If time is set to `0` or `inf` the player will run forever.
 .SH "REPORTING BUGS"
 Report bugs to <https://github.com/benjihan/zingzong/issues>
 .SH COPYRIGHT
