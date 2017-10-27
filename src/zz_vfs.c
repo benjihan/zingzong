@@ -13,7 +13,7 @@
 #endif
 
 
-static inline int valid_vfs(const vfs_t const vfs) { return vfs != 0; }
+static inline int valid_vfs(const vfs_t vfs) { return vfs != 0; }
 
 #define VFS_OR(E,X) if (!valid_vfs((E))) { return (X); } else (E)->err=0
 #define VFS_OR_EOF(E) VFS_OR( (E) , ZZ_EOF    )
