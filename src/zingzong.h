@@ -92,7 +92,7 @@ enum zz_quality_e {
   ZZ_FQ = 1,                            /**< Fastest quality. */
   ZZ_LQ,                                /**< Low quality.     */
   ZZ_MQ,                                /**< Medium quality.  */
-  ZZ_HQ                                 /**< High quality.v   */
+  ZZ_HQ                                 /**< High quality.    */
 };
 
 typedef zz_i8_t zz_err_t;
@@ -102,40 +102,44 @@ typedef struct song_s * zz_song_t;
 typedef struct play_s * zz_play_t;
 typedef const struct zz_vfs_dri_s * zz_vfs_dri_t;
 typedef zz_err_t (*zz_guess_t)(zz_play_t const, const char *);
-
 typedef struct zz_info_s zz_info_t;
 
+/**
+ * zingzong info.
+ */
 struct zz_info_s {
 
-  /** format info. */
   struct {
-    zz_u8_t      num;         /**< format (@see zz_format_e).       */
-    const char * str;         /**< format string.                   */
-  } fmt;
+    zz_u8_t      num;               /**< format (@see zz_format_e). */
+    const char * str;               /**< format string.             */
+  } fmt;                            /**< format info.               */
 
   struct {
-    zz_u16_t     rate;        /**< player tick rate (200hz).        */
-    zz_u32_t     ms;          /**< song duration in ms.             */
-  } len;
+    zz_u16_t     rate;              /**< player tick rate (200hz).  */
+    zz_u32_t     ms;                /**< song duration in ms.       */
+  } len;                            /**< replay info.               */
+
+  /** mixer info. */
+  struct {
+    zz_u32_t     spr;               /**< sampling rate.             */
+    zz_u8_t      num;               /**< mixer identifier.          */
+    const char * name;              /**< mixer name or "".          */
+    const char * desc;              /**< mixer description or "".   */
+  } mix;                            /**< mixer related info.        */
 
   struct {
-    zz_u32_t     spr;         /**< sampling rate.                   */
-    zz_u8_t      num;         /**< mixer identifier.                */
-    const char * name;        /**< mixer name or "".                */
-    const char * desc;        /**< mixer description or "".         */
-  } mix;                      /**< mixer related info.              */
+    const char * uri;               /**< URI or path.               */
+    zz_u32_t     khz;               /**< sampling rate reported.    */
+  }
+  set,                              /**< voice set info.            */
+  sng;                              /**< song info.                 */
 
   struct {
-    const char * uri;         /**< URI or path.                     */
-    zz_u32_t     khz;         /**< sampling rate reported.          */
-  } set, sng;
-
-  struct {
-    const char * album;       /**< album or "".                     */
-    const char * title;       /**< title or "".                     */
-    const char * artist;      /**< artist or "".                    */
-    const char * ripper;      /**< ripper or "".                    */
-  } tag;
+    const char * album;             /**< album or "".               */
+    const char * title;             /**< title or "".               */
+    const char * artist;            /**< artist or "".              */
+    const char * ripper;            /**< ripper or "".              */
+  } tag;                            /**< meta tags.                 */
 
 };
 
@@ -177,8 +181,8 @@ void zz_log_fun(zz_log_t func, void * user);
 /**
  * Memory allocation function types.
  */
-typedef void * (*zz_new_t)(zz_u32_t);
-typedef void   (*zz_del_t)(void *);
+typedef void * (*zz_new_t)(zz_u32_t); /**< New memory function type. */
+typedef void   (*zz_del_t)(void *);   /**< Del memory function type. */
 
 ZINGZONG_API
 /**
@@ -221,8 +225,8 @@ ZINGZONG_API
  *
  * @param  play  player instance
  * @param  song  song URI or path ("": skip).
- * @param  vset  voice-set URI or path (0: guess voice-set "":skip)
- * @param  pfmt  points to a variable to store file format (can be null).
+ * @param  vset  voice-set URI or path (0:guess "":skip)
+ * @param  pfmt  points to a variable to store file format (can be 0).
  * @return error code
  * @retval ZZ_OK(0) on success
  */
@@ -245,7 +249,7 @@ ZINGZONG_API
  * Get player info.
  *
  * @param  play  player instance
- * @param  info  info to be fill.
+ * @param  info  info filled by zz_info().
  * @return error code
  * @retval ZZ_OK(0) on success
  */
@@ -255,11 +259,11 @@ ZINGZONG_API
 /**
  * Init player.
  *
- * @param  play  player instance
- * @param  mixer mixer-id
- * @param  spr   sampling rate or quality
- * @param  rate  player tick rate (0:default)
- * @param  maxms playback duration (0:infinite)
+ * @param  play   player instance
+ * @param  mixer  mixer-id
+ * @param  spr    sampling rate or quality
+ * @param  rate   player tick rate (0:default)
+ * @param  maxms  playback duration (0:infinite)
  * @return error code
  * @retval ZZ_OK(0) on success
  */
@@ -288,7 +292,7 @@ ZINGZONG_API
 /**
  * Mute and ignore voices.
  * - LSQ bits (0~3) are ignored channels.
- * - MSQ bits (4-7) are muted channels.
+ * - MSQ bits (4~7) are muted channels.
  *
  * @param  play  player instance
  * @param  clr   clear these bits
@@ -310,8 +314,8 @@ zz_u32_t zz_measure(zz_play_t play, zz_u32_t ms);
 
 ZINGZONG_API
 /**
- * Get current frame/tick position (in ms).
- * @return a number of millisecond
+ * Get current play position (in ms).
+ * @return number of millisecond
  * @retval ZZ_EOF on error
  */
 zz_u32_t zz_position(zz_play_t play);
@@ -320,7 +324,7 @@ ZINGZONG_API
 /**
  * Get info mixer info.
  *
- * @param  id  mixer identifier (first is 0)
+ * @param  id     mixer identifier (first is 0)
  * @param  pname  receive a pointer to the mixer name
  * @param  pdesc  receive a pointer to the mixer description
  * @return mixer-id (usually id unless id is ZZ_MIXER_DEF)
@@ -337,6 +341,9 @@ enum {
 
 #define ZZ_EOF ((zz_u32_t)-1)
 
+/**
+ * Virtual filesystem driver.
+ */
 struct zz_vfs_dri_s {
   const char * name;                      /**< friendly name.      */
   zz_err_t (*reg)(zz_vfs_dri_t);          /**< register driver.    */
@@ -366,8 +373,8 @@ ZINGZONG_API
 /**
  * Register a VFS driver.
  * @param  dri  VFS driver
- * @return Number of time this driver is registered
- * @retval -1 on error
+ * @return error code
+ * @retval ZZ_OK(0) on success
  */
 zz_err_t zz_vfs_add(zz_vfs_dri_t dri);
 
@@ -375,8 +382,8 @@ ZINGZONG_API
 /**
  * Unregister a VFS driver.
  * @param  dri  VFS driver
- * @return Number of time this driver is registered
- * @retval -1 on error
+ * @return error code
+ * @retval ZZ_OK(0) on success
  */
 zz_err_t zz_vfs_del(zz_vfs_dri_t dri);
 

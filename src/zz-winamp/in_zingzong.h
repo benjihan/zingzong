@@ -39,9 +39,8 @@
 #define WIN32_LEAN_AND_MEAN
 
 /* Remove unused API */
-#if 1
 #define NOCOMM
-#define NOGDI
+/* #define NOGDI */
 #define NOGDICAPMASKS
 #define NOMETAFILE
 #define NOMINMAX
@@ -58,13 +57,20 @@
 #define NOCRYPT
 #define NOMCX
 
-#define NTDDI_VERSION 0x05010000        /* XP */
-#define _WIN32_WINNT  0x0501            /* XP */
+#if 0
+/* XP */
+#define NTDDI_VERSION 0x05010000        /* NTDDI_WINXP XP */
+#define _WIN32_WINNT  0x0501            /* _WIN32_WINNT_WINXP */
 #define _WIN32_IE     0x0400            /* IE4 */
-
+#else
+/* VISTA */
+#define NTDDI_VERSION 0x06000000        /* NTDDI_VISTA */
+#define _WIN32_WINNT  0x0600            /* _WIN32_WINNT_VISTA */
+#define _WIN32_IE     0x0500            /* _WIN32_IE_IE50 */
 #endif
 
 #include <windows.h>
+#include <Shellapi.h>
 
 #ifndef NOVTABLE
 # define NOVTABLE
@@ -77,4 +83,15 @@
 #define DLGHWND  g_mod.hMainWindow
 #define DLGHINST g_mod.hDllInstance
 
+typedef struct  {
+  int mid, spr, dms;
+} config_t;
+
+/* defined in dialogs.c */
+EXTERN_C void AboutDialog(HINSTANCE hinst, HWND parent);
+EXTERN_C int ConfigDialog(HINSTANCE hinst, HWND parent, config_t * cfg);
+EXTERN_C int ConfigLoad(config_t * cfg);
+EXTERN_C int ConfigSave(config_t * cfg);
+
 #endif
+

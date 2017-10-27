@@ -246,13 +246,15 @@ clean_files += $(zz_lib) $(zz_exe) $(zz_dll)
 dist_top_lst = LICENSE README.md vcversion.sh
 dist_src_lst = README.md Makefile $(sources) $(headers) make.clean	\
 make.depend make.dist
-dist_amp_lst = README.md Makefile in_zingzong.c in_zingzong.h
+dist_rsc_lst = zingzong.rc resource.h
+dist_amp_lst = README.md Makefile in_zingzong.c in_zingzong.h dialogs.c
 dist_68k_lst = README.md Makefile m68k_muldiv.h m68k_stf.S mix_aga.c	\
 mix_fal.c mix_ste.c mix_stf.c player.c player_start.S sc68_debug.h	\
 sc68_start.S song.S test_sc68.s vset.S ym10_pack.h zz_m68k.c zingzong.x
 
 dist_lst = $(sort \
  $(addprefix ./,$(dist_top_lst)) \
+ $(addprefix rsc/,$(dist_rsc_lst)) \
  $(addprefix src/,$(dist_src_lst)) \
  $(addprefix src/zz-winamp/,$(dist_amp_lst)) \
  $(addprefix src/zz-m68k/,$(dist_68k_lst)) )

@@ -19,7 +19,8 @@ pkgconfig  = $(shell $(PKGCONFIG) $(1) || echo n/a)
 
 # ----------------------------------------------------------------------
 
-vpath %.c $(srcdir) $(srcdir)/..
+vpath %.c $(srcdir) $(srcdir)/..	
+vpath %.rc $(srcdir)/../../rsc
 
 # ----------------------------------------------------------------------
 
@@ -38,6 +39,14 @@ ifeq ($(CC:%gcc=gcc),gcc)
 STRIP = $(CC:%gcc=%strip)
 else
 STRIP = strip
+endif
+endif
+
+ifndef WINDRES
+ifeq ($(CC:%gcc=gcc),gcc)
+WINDRES = $(CC:%gcc=%windres)
+else
+WINDRES = windres
 endif
 endif
 
@@ -96,12 +105,6 @@ endif
 l_patterns := -l% -Wl,-l%
 filter-L    = $(strip $(filter-out $(l_patterns),$1))
 filter-l    = $(strip $(filter     $(l_patterns),$1))
-
-# ----------------------------------------------------------------------
-#  No libao
-# ----------------------------------------------------------------------
-
-override gb_CPPFLAGS += -DNO_AO=1
 
 # ----------------------------------------------------------------------
 #  samplerate (NO_SRATE=0 to enable)
@@ -185,18 +188,18 @@ all: $(targets)
 
 mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
 zz  := zz_load zz_init zz_play zz_bin zz_str zz_vfs zz_mixers zz_log zz_mem
-src := in_zingzong vfs_file
+src := in_zingzong dialogs vfs_file
 
 sources := $(addsuffix .c,$(src) $(zz) $(mix))
-objects := $(sources:.c=.o)
+objects := $(sources:.c=.o) rc_zingzong.o
 depends := $(sources:.c=.d)
 
 override CPPFLAGS += $(gb_CPPFLAGS)
 override CFLAGS   += $(gb_CFLAGS)
 override LDFLAGS  += $(gb_LDFLAGS)
-override LDLIBS   += $(gb_LDLIBS)
+override LDLIBS   += $(gb_LDLIBS) -lgdi32
 
-in_zingzong.o zz_play.o: CPPFLAGS += $(PACKAGE_CPPFLAGS)
+in_zingzong.o zz_play.o dialogs.o: CPPFLAGS += $(PACKAGE_CPPFLAGS)
 in_zingzong.dll: $(objects)
 	@echo "[DLL] $@";\
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@
@@ -204,6 +207,12 @@ in_zingzong.dll: $(objects)
 %.o: %.c
 	@echo "[GCC] $* [$(patsubst -m%,%,$(filter -m%,$(CFLAGS)))]";\
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+
+rc_%.o: %.rc
+	@echo "[RES] $*";\
+	$(WINDRES) $(CPPFLAGS) $< $@
+
+rc_zingzong.o: $(topdir)/rsc/resource.h
 
 # ----------------------------------------------------------------------
 #  Install / Uninstall

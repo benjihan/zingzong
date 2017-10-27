@@ -70,8 +70,8 @@ zz_vfs_dri_t zz_file_vfs(void);
 
 const char me[] = "in_zingzong";
 
-#define PLAY_SEC       (2*60+30)        /*  2'30" */
-#define MEASURE_SEC    (12*60)          /* 12'00" */
+#define PLAY_MS    (1000*(2*60+30))     /*  2'30" */
+#define MEASURE_MS (1000*(12*60))       /* 12'00" */
 
 #define USE_LOCK 1
 
@@ -98,15 +98,15 @@ static HANDLE    g_thdl;                /* thread handle           */
 static play_t    g_play;                /* play emulator instance  */
 static zz_info_t g_info;                /* current file info.      */
 static xinfo_t   x_info;                /* unique x_info           */
-static int g_spr  = SPR_DEF;            /* sampling rate in hz     */
-/* static int g_rate = 0;                  /\* player tick rate in hz  *\/
- */
-static int g_maxlatency;                /* max latency in ms       */
+static zz_u32_t  g_spr = SPR_DEF;       /* sampling rate (hz)      */
+static int       g_maxlatency;          /* max latency in ms       */
+static zz_u8_t   g_mid = ZZ_MIXER_DEF;  /* mixer id */
+static zz_u8_t   g_tr_cfg = 1;          /* transcoder config       */
+static zz_u32_t  g_dms;                 /* default play time (ms)  */
+static int16_t   g_pcm[576*2];          /* buffer for DSP filters  */
 static volatile LONG g_playing;         /* true while playing      */
 static volatile LONG g_stopreq;         /* stop requested          */
 static volatile LONG g_paused;          /* pause status            */
-static int16_t g_pcm[576*2];            /* buffer for DSP filters  */
-static zz_u8_t g_mixerid = ZZ_MIXER_DEF;
 
 /*****************************************************************************
  * Declaration
@@ -230,7 +230,18 @@ static
  ****************************************************************************/
 void config(HWND hwnd)
 {
-  /* $$$ XXX TO DO */
+  config_t cfg;
+
+  cfg.mid = g_mid;
+  cfg.spr = g_spr;
+  cfg.dms = g_dms;
+
+  if (0x1337 == ConfigDialog(g_mod.hDllInstance, hwnd, &cfg)) {
+    ConfigSave(&cfg);              /* Save might re-check the value */
+    g_mid = cfg.mid;
+    g_spr = cfg.spr;
+    g_dms = cfg.dms;
+  }
 }
 
 static
@@ -239,21 +250,7 @@ static
  ****************************************************************************/
 void about(HWND hwnd)
 {
-  char temp[512];
-  snprintf(temp,sizeof(temp),
-           "ZingZong for Winamp\n"
-           "\na Microdeal Quartet music player\n"
-           "\n"
-#ifdef DEBUG
-           "!!! DEBUG !!! "
-#endif
-           "Version " PACKAGE_VERSION "\n"
-           "\n(c) 2017 Benjamin Gerard AKA Ben/OVR");
-
-  MessageBox(hwnd,
-             temp,
-             "About zingzong for winamp",
-             MB_OK);
+  AboutDialog(g_mod.hDllInstance, hwnd);
 }
 
 static
@@ -407,14 +404,14 @@ void stop()
 }
 
 enum {
-  NO_MEASURE=0, MEASURE, MEASURE_ONLY
+  NO_MEASURE=0, MEASURE, MEASURE_ONLY, MEASURE_CONFIG
 };
 
 static zz_err_t load(zz_play_t P, zz_info_t *I, const char * uri,
-                     zz_u8_t measure, zz_u32_t sec)
+                     zz_u8_t measure, zz_u32_t dms)
 {
   zz_err_t ecode = E_INP;
-  zz_u32_t ms = 0;
+  zz_u32_t ms = PLAY_MS, spr = g_spr, mid = g_mid;
 
   zz_assert( P );
   zz_assert( I );
@@ -422,11 +419,13 @@ static zz_err_t load(zz_play_t P, zz_info_t *I, const char * uri,
   zz_assert( uri );
   zz_assert( *uri );
 
-  if (!sec) sec = PLAY_SEC;
+  /* $$$ GB: verify that */
+  if (!dms) dms = g_dms;
+  if (!dms) dms = PLAY_MS;
 
-  dmsg ("load: (%s) measure:%hu sec:%lu fmt:%u \"%s\"\n",
-        P == &g_play ? "current" : "other",
-        HU(measure), LU(sec),  HU(P->format), uri);
+  dmsg ("load: (%s) fmt:%hu dms:<%hu>%lu \"%s\"\n",
+        P == &g_play ? "play" : measure == MEASURE_ONLY ? "info" : "code",
+        HU(P->format), HU(measure), LU(dms), uri);
 
   zz_assert( P->format == ZZ_FORMAT_UNKNOWN );
   zz_assert( P->vset.bin == 0 );
@@ -434,59 +433,47 @@ static zz_err_t load(zz_play_t P, zz_info_t *I, const char * uri,
   zz_assert( P->info.bin == 0 );
   zz_memclr(P,sizeof(*P));
 
+  /* Measure-only mode don't need to load voice-set */
   ecode = zz_load(P, uri, measure == MEASURE_ONLY ? "" : 0, 0);
   if (ecode)
     goto error_no_close;
-
   zz_assert( P->format != ZZ_FORMAT_UNKNOWN );
 
-  /* ecode = zz_setup(P, g_mixerid, g_spr, 0, 0, sec*1000u, 1); */
-  /* if (ecode) { */
-  /*   dmsg("load: setup failed (%hu)\n", HU(ecode)); */
-  /*   goto error_close; */
-  /* } */
-  /* dmsg("load: -> setup mixer:%hu spr:%lu rate:%hu ticks:%lu end-detect:%s\n", */
-  /*      HU(P->mixer_id), LU(P->spr), HU(P->rate), */
-  /*      LU(P->max_ticks), P->end_detect?"yes":"no"); */
-
-  dmsg("load: init\n");
-  ecode = zz_init(P, g_mixerid, g_spr, 0, sec*1000u);
-  if (ecode) {
-    dmsg("load: init failed (%hu)\n", HU(ecode));
-    goto error_close;
-  }
-
-  if (measure != NO_MEASURE) {
-    zz_u32_t max_ms = MEASURE_SEC * 1000u;
-    dmsg("load: measure for max-ms:%lu\n", LU(max_ms));
-    max_ms = zz_measure(P,max_ms);
-    if (max_ms == ZZ_EOF) {
-      ecode = E_PLA;
-      goto error_close;
-    } else {
-      dmsg("load: -> measure ms:%lu\n", LU(max_ms));
-      if (max_ms) {
-        ms = max_ms;
-      } else {
-        ms = PLAY_SEC * 1000u;
-        dmsg("load: !! set default play time: ms:%lu\n", LU(ms));
-      }
+  /* Run config dialog (transcoder) */
+  if (measure == MEASURE_CONFIG) {
+    config_t cfg;
+    cfg.mid = mid;
+    cfg.spr = spr;
+    cfg.dms = 0;
+    if (0x1337 != ConfigDialog(DLGHINST, DLGHWND, &cfg)) {
+      mid = cfg.mid;
+      spr = cfg.spr;
+      dms = cfg.dms;
     }
   }
 
-error_close:
-  if (ecode) {
-    dmsg("load: close (%hu)\n", HU(ecode));
-    zz_close(P);
-    dmsg("load: -> closed\n");
+  ecode = zz_init(P, mid, spr, 0, dms);
+  if (ecode)
+    goto error_close;
+
+  if (measure != NO_MEASURE) {
+    zz_u32_t max_ms = MEASURE_MS;
+    max_ms = zz_measure(P,MEASURE_MS);
+    if (max_ms == ZZ_EOF) {
+      ecode = E_PLA;
+      goto error_close;
+    }
+    ms = max_ms ? max_ms : PLAY_MS;
   }
+
+error_close:
+  if (ecode)
+    zz_close(P);
 
 error_no_close:
   if (I) {
-    dmsg("load: info\n");
-    zz_info(ecode ?0 : P, I);
+    zz_info(ecode ? 0 : P, I);
     I->len.ms = ms;
-    dmsg("load: info -> %s\n", I->fmt.str);
   }
 
   dmsg("load (%s) -- <%s> \"%s\" %lu ms \n", ecode ? "ERR" :"OK",
@@ -516,7 +503,7 @@ int play(const char * uri)
     goto cantlock;
 
   /* Safety net */
-  if (g_thdl)
+  if (g_thdl || atomic_get(&g_playing))
     goto inused;
 
   /* cleanup */
@@ -524,6 +511,7 @@ int play(const char * uri)
   g_stopreq    = 0;
   g_paused     = 0;
 
+  /* Load and initialize file */
   err = -1;
   if (load(&g_play, &g_info, uri, MEASURE, 0))
     goto exit;
@@ -533,7 +521,7 @@ int play(const char * uri)
   if (g_maxlatency < 0)
     goto exit;
 
-  /* set default volume */
+  /* Set default volume */
   g_mod.outMod->SetVolume(-666);
 
   /* Init info and visualization stuff */
@@ -543,16 +531,15 @@ int play(const char * uri)
 
   /* Init play thread */
   g_thdl = (HANDLE)
-    CreateThread(NULL,                  /* Default Security Attributs */
-                 0,                     /* Default stack size         */
-                 (LPTHREAD_START_ROUTINE)playloop, /* Thread function */
-                 (LPVOID) 0,          /* Thread Cookie              */
-                 0,                     /* Thread status              */
-                 &g_tid                 /* Thread Id                  */
+    CreateThread(NULL,                /* Default Security Attributs */
+                 0,                   /* Default stack size         */
+                 (LPTHREAD_START_ROUTINE)playloop, /* Thread call   */
+                 (LPVOID) 0,          /* Thread cookie              */
+                 0,                   /* Thread status              */
+                 &g_tid               /* Thread id                  */
       );
+  err = !g_thdl;
 
-  if (err = !g_thdl, !err)
-    atomic_set(&g_playing,1);
 exit:
   if (err)
     clean_close();
@@ -701,6 +688,7 @@ DWORD WINAPI playloop(LPVOID cookie)
   zz_u16_t npcm = 0, n;
   int16_t * pcm;
 
+  atomic_set(&g_playing,1);
   for (;;) {
 
     if (atomic_get(&g_stopreq))
@@ -807,18 +795,25 @@ static
  ****************************************************************************/
 void init()
 {
+  config_t cfg;
 #ifdef NDEBUG
   zz_log_fun(0,0);
 #else
   zz_log_fun(msg_handler,0);
 #endif
   zz_vfs_add(zz_file_vfs());
-  dmsg("init\n");
   /* clear and init private */
 #ifdef USE_LOCK
   g_lock = CreateMutex(NULL, FALSE, NULL);
 #endif
   x_info.lock = CreateMutex(NULL, FALSE, NULL);
+
+  /* Load config from registry */
+  ConfigLoad(&cfg);
+  g_mid = cfg.mid;
+  g_spr = cfg.spr;
+  g_dms = cfg.dms;
+  dmsg("init mixer:%hu spr:%lu dms:%lu\n", HU(g_mid), LU(g_spr), LU(g_dms));
 }
 
 static
@@ -871,7 +866,8 @@ intptr_t winampGetExtendedRead_open(
   if (!trc)
     goto error_free_not;
 
-  trc->code = load(&trc->play, &trc->info, uri, MEASURE, 0);
+  trc->code = load(&trc->play, &trc->info, uri,
+                   g_tr_cfg ? MEASURE_CONFIG : MEASURE, 0);
   if (trc->code != ZZ_OK)
     goto error_free_trc;    /* play should have been closed already */
 

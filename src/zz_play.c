@@ -670,7 +670,6 @@ zz_err_t zz_info( zz_play_t P, zz_info_t * pinfo)
     pinfo->len.ms    = P->ms_max;
 
     /* mixer */
-    /* pinfo->mix.ppt = P->pcm_per_tick; */
     pinfo->mix.num = P->mixer_id;
     if (P->mixer) {
       pinfo->mix.name = P->mixer->name;
