@@ -49,10 +49,10 @@
 #define NORASTEROPS
 #define NOSCROLL
 #define NOSOUND
-#define NOSYSMETRICS
-#define NOTEXTMETRIC
+/* #define NOSYSMETRICS */
+/* #define NOTEXTMETRIC */
 #define NOWH
-#define NOCOMM
+/* #define NOCOMM */
 #define NOKANJI
 #define NOCRYPT
 #define NOMCX
@@ -69,8 +69,9 @@
 #define _WIN32_IE     0x0500            /* _WIN32_IE_IE50 */
 #endif
 
-#include <windows.h>
+#include <Windows.h>
 #include <Shellapi.h>
+#include <Commctrl.h>
 
 #ifndef NOVTABLE
 # define NOVTABLE
@@ -94,4 +95,3 @@ EXTERN_C int ConfigLoad(config_t * cfg);
 EXTERN_C int ConfigSave(config_t * cfg);
 
 #endif
-

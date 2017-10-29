@@ -59,33 +59,6 @@
 
 static INT_PTR CALLBACK AboutProc(HWND,UINT,WPARAM,LPARAM);
 
-
-#if 0
-static BOOL CALLBACK PrintResourceCb(
-  HMODULE hmod, LPCTSTR lpszType, LPTSTR lpszName, LONG_PTR lParam)
-{
-  dmsg("HMOD: %p\n", (void*) hmod);
-  if (IS_INTRESOURCE(lpszType)) {
-    dmsg("TYPE: (int) %d\n", (int) lpszType);
-  } else {
-    dmsg("TYPE: (str) \"%s\"\n", (char *) lpszType);
-  }
-  if (IS_INTRESOURCE(lpszName)) {
-    dmsg("NAME: (int) %d\n", (int) lpszName);
-  } else {
-    dmsg("NAME: (str) \"%s\"\n", (char *) lpszName);
-  }
-  return TRUE;
-}
-
-static void PrintResource(HMODULE hmod)
-{
-  BOOL res =
-    EnumResourceNames(hmod,RT_ICON, PrintResourceCb,0);
-  dmsg("EnumResourceNames => %d\n",(int)res);
-}
-#endif
-
 static char about_text[] =
   "ZingZong for Winamp\n"
   "\n"
@@ -106,8 +79,6 @@ void AboutDialog(HINSTANCE hinst, HWND parent)
       MAKEINTRESOURCE(IDD_ABOUT),       /* lpTemplate */
       parent,                           /* hWndParent */
       AboutProc);
-
-  dmsg("AboutDialog => %d\n", (int)res);
   if (res == -1 || (!res && GetLastError())) {
     MessageBoxA(
       parent, about_text,
@@ -125,12 +96,11 @@ static struct {
 };
 
 typedef struct {
-  HICON wa_icon;
   HFONT font[ARRAYSIZE(fontspec)];
 
   short nblines;
   struct {
-    uint8_t f,r,g,b,l;
+    uint8_t f,l;
     SIZE sz;
     const char * t;
   } line[5];
@@ -164,55 +134,7 @@ static void CreateFonts(about_t * about)
   for (i=0; i<max_font; ++i) {
     about->font[i] =
       MyCreateFont(fontspec[i].size, fontspec[i].bold, fontspec[i].italic);
-    dmsg("font #%d = %p\n", i, about->font[i]);
   }
-}
-
-static void CreateIcons(about_t * about)
-{
-#if 0
-  HRSRC hResource;
-  HRSRC hMem;
-  BYTE *lpResource;
-  int   nID;
-  const int w=256, h=w;
-
-  hResource = FindResourceA(
-    0,
-    MAKEINTRESOURCE(102),
-    MAKEINTRESOURCE(RT_GROUP_ICON));
-  zz_assert(hResource);
-
-  hMem = LoadResource(0, hResource);
-  zz_assert(hMem);
-
-  lpResource = LockResource(hMem);
-  zz_assert(lpResource);
-  nID = LookupIconIdFromDirectoryEx(
-    (PBYTE) lpResource, TRUE,
-    w, h, LR_DEFAULTCOLOR);
-  dmsg("about: winamp icon found #%d\n", nID);
-
-  hResource = FindResource(
-    0,
-    MAKEINTRESOURCE(nID),
-    MAKEINTRESOURCE(RT_ICON));
-  zz_assert(hResource);
-
-  hMem = LoadResource(0, hResource);
-  zz_assert(hMem);
-
-  lpResource = LockResource(hMem);
-  zz_assert(lpResource);
-
-  about->wa_icon
-    = CreateIconFromResourceEx((PBYTE) lpResource,
-                               SizeofResource(0, hResource),
-                               TRUE,
-                               0x00030000,
-                               w,h,LR_DEFAULTCOLOR|LR_SHARED);
-  zz_assert(about->wa_icon);
-#endif
 }
 
 static INT_PTR CALLBACK
@@ -225,10 +147,8 @@ AboutProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
   case WM_INITDIALOG: {
     zz_calloc(&about, sizeof(about_t));
     SetWindowLongPtrA(hdlg, GWLP_USERDATA, (LONG_PTR) about);
-    if (about) {
+    if (about)
       CreateFonts(about);
-      CreateIcons(about);
-    }
     SetDlgItemTextA(hdlg, IDC_ABOUTTEXT, about_text);
   } return TRUE;
 
@@ -256,79 +176,58 @@ AboutProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
   case WM_DRAWITEM: {
     LPDRAWITEMSTRUCT pDIS = (LPDRAWITEMSTRUCT)lp;
     if (wp == IDC_ABOUTTEXT) {
+      int i, y, x, y2 = 0;
+      SIZE sz;
 
       if (!about)
         break;
 
-      DrawIcon(pDIS->hDC, pDIS->rcItem.left, pDIS->rcItem.top, about->wa_icon);
+      if (!about->nblines) {
+        char *s;
 
-      if (1) {
-        int i, y, x, y2 = 0;
-        SIZE sz;
+        strcpy(about->text, about_text);
 
-        if (!about->nblines) {
-          char *s;
+        for (i=0, s=strtok(about->text,"\n");
+             i<ARRAYSIZE(about->line);
+             s=strtok(0,"\n")) {
+          uint8_t f;
+          if (!s) break;
+          if (!*s) continue;
 
-          strcpy(about->text, about_text);
-
-          for (i=0, s=strtok(about->text,"\n");
-               i<ARRAYSIZE(about->line);
-               s=strtok(0,"\n")) {
-            uint8_t f, r, g, b;
-            if (!s) break;
-            if (!*s) continue;
-
-            if ( i == 0) {
-              f = 0; r = g = b = 0;
-            } else if (i == 3) {
-              f = 2; r = g = b = 0;
-            } else {
-              f = 1; r = g = b = 0;
-            }
-
-            about->line[i].t = s;
-            about->line[i].l = strlen(s);
-            about->line[i].f = f;
-            about->line[i].r = r;
-            about->line[i].g = g;
-            about->line[i].b = b;
-
-            zz_assert( about->line[i].t );
-            zz_assert( about->line[i].l );
-            zz_assert( about->line[i].f < ARRAYSIZE(about->font) );
-
-            ++i;
+          switch (i) {
+          case 0:  f = 0; break;
+          case 3:  f = 2; break;
+          default: f = 1;
           }
-          about->nblines = !i ? -1 : i;
-          dmsg("lines: %d\n", about->nblines);
+
+          about->line[i].t = s;
+          about->line[i].l = strlen(s);
+          about->line[i].f = f;
+
+          zz_assert( about->line[i].t );
+          zz_assert( about->line[i].l );
+          zz_assert( about->line[i].f < ARRAYSIZE(about->font) );
+
+          ++i;
         }
-
-        for (y=y2=i=0; i<about->nblines; ++i) {
-          HGDIOBJ old =
-            SelectObject(pDIS->hDC,
-                         about->font[ about->line[i].f ]);
-
-          SetTextColor(pDIS->hDC,
-                       RGB(about->line[i].r,about->line[i].g,about->line[i].b));
-
-          GetTextExtentPoint32(pDIS->hDC,about->line[i].t,about->line[i].l,&sz);
-
-          y2 = sz.cy >> 1;
-
-          x = ( pDIS->rcItem.right - pDIS->rcItem.left - sz.cx ) >> 1;
-
-          dmsg("[%d] %d %d \"%s\"\n",
-               i, x, y, about->line[i].t);
-
-          TextOutA(pDIS->hDC,
-                   pDIS->rcItem.left+x, pDIS->rcItem.top+y,
-                   about->line[i].t, about->line[i].l);
-
-          y += sz.cy+y2;
-          SelectObject(pDIS->hDC, old);
-        }
-
+        about->nblines = !i ? -1 : i;
       }
+
+      for (y=y2=i=0; i<about->nblines; ++i) {
+        HGDIOBJ old =
+          SelectObject(pDIS->hDC,
+                       about->font[ about->line[i].f ]);
+
+        GetTextExtentPoint32(pDIS->hDC,about->line[i].t,about->line[i].l,&sz);
+        y2 = sz.cy >> 1;
+        x = ( pDIS->rcItem.right - pDIS->rcItem.left - sz.cx ) >> 1;
+        TextOutA(pDIS->hDC,
+                 pDIS->rcItem.left+x, pDIS->rcItem.top+y,
+                 about->line[i].t, about->line[i].l);
+        y += sz.cy+y2;
+        SelectObject(pDIS->hDC, old);
+      }
+
     }
     return TRUE;
   } break; /* WM_DRAWITEM */
@@ -337,15 +236,9 @@ AboutProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
   case WM_DESTROY:
     if (about) {
       int i;
-
-      if (about->wa_icon)
-        DestroyIcon(about->wa_icon);
-      about->wa_icon = 0;
-
       for (i=0; i<ARRAYSIZE(about->font); ++i)
         if (about->font[i])
           DeleteObject(about->font[i]);
-
       zz_free(&about);
     }
     break;
@@ -448,18 +341,6 @@ static BOOL SetSampling(HWND hdlg, int spr)
   return TRUE;
 }
 
-static BOOL SetTime(HWND hdlg, int dms)
-{
-  /* $$$ TODO */
-  return TRUE;
-}
-
-static int GetDms(HWND hdlg)
-{
-  /* $$$ TODO */
-  return 0;
-}
-
 static int GetUserSpr(HWND hdlg, int * ret)
 {
   BOOL done = FALSE;
@@ -483,52 +364,111 @@ static int GetSpr(HWND hdlg)
   return spr;
 }
 
+static const unsigned weight[] = {
+  /* Weight of time digits in ms */
+  600000,60000, 10000,1000, 100,10,1
+};
+
+static int SetRawDms(HWND hdlg, int dms)
+{
+  int i;
+  if (dms < 0) dms = 0;
+  else if (dms >= 6000000) dms = 6000000-1;
+  for (i=0; i<7; ++i) {
+    const int d = dms/weight[i]%((i==2)?6:10);
+    SendDlgItemMessageA(hdlg, IDC_M1+i, LB_SETTOPINDEX, d, 0);
+  }
+  return dms;
+}
+
+static int SetDms(HWND hdlg, int dms)
+{
+  int check = BST_UNCHECKED;
+  if (dms < 0) {
+    check = BM_SETCHECK;
+    dms = ~dms;
+  }
+  SendDlgItemMessage(hdlg,IDC_FORCE,BM_SETCHECK,check,0);
+  dms = SetRawDms(hdlg,dms);
+  return dms;
+}
+
+static int GetRawDms(HWND hdlg)
+{
+  int i, dms;
+  for (i=dms=0; i<7; ++i) {
+    /* BOOL ok = FALSE; */
+    int digit =
+      SendDlgItemMessageA(hdlg,IDC_M1+i,LB_GETTOPINDEX,0,0);
+    dms += (digit % 10u) * weight[i];
+  }
+  return dms;
+}
+
+static int GetDms(HWND hdlg)
+{
+  int dms = GetRawDms(hdlg);
+  if (SendDlgItemMessage(hdlg,IDC_FORCE,BM_GETCHECK,0,0) == BST_CHECKED)
+    dms = ~dms;
+  return dms;
+}
+
 static INT_PTR CALLBACK
 ConfigProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
 {
+  int i;
+  config_t * cfg = (void *) GetWindowLongPtr(hdlg, GWLP_USERDATA);
+  static config_t dummy;
+  if (!cfg) cfg = &dummy;
+
   switch (msg) {
 
   case WM_INITDIALOG: {
-    config_t * const cfg = (config_t *) lp;
+    cfg = (config_t *) lp;
+
+    for (i=IDC_M1; i<=IDC_MS0; ++i) {
+      int j, k = i == IDC_S1 ? 5 : 9;
+      SendDlgItemMessageA(hdlg,i,LB_RESETCONTENT,0,0);
+      for (j=0; j<=k; ++j) {
+        char s[2]; s[0] = '0'+j; s[1] = 0;
+        SendDlgItemMessageA(hdlg,i,LB_ADDSTRING,0,(LPARAM)s);
+        SendDlgItemMessageA(hdlg,i,LB_SETITEMDATA,j,j);
+      }
+    }
+
     SetMixers(hdlg, cfg->mid);
     SetSampling(hdlg, cfg->spr);
-    SetTime(hdlg, cfg->dms);
+    SetDms(hdlg, cfg->dms);
     SetWindowLongPtr(hdlg, GWLP_USERDATA, (LONG_PTR) cfg);
+    /* cfg->focus = 0; */
   } return TRUE;
 
   case WM_COMMAND: {
     const int wlo = LOWORD(wp), whi = HIWORD(wp);
+    switch (wlo) {
 
-    if (wlo == IDCANCEL) {
+    case IDCANCEL:
       EndDialog(hdlg, 0xD207);
       return TRUE;
-    } else if (wlo == IDOK) {
-      INT_PTR ret = 0xDEAD;
-      config_t * cfg = (config_t*)GetWindowLongPtr(hdlg,GWLP_USERDATA);
-      if (cfg) {
-        cfg->mid = GetMid(hdlg);
-        cfg->spr = GetSpr(hdlg);
-        cfg->dms = GetDms(hdlg);
-        ret = 0x1337;
-      }
-      EndDialog(hdlg, ret);
+
+    case IDOK:
+      cfg->mid = GetMid(hdlg);
+      cfg->spr = GetSpr(hdlg);
+      cfg->dms = GetDms(hdlg);
+      EndDialog(hdlg, 0x1337);
       return TRUE;
-    } else if (wlo == IDC_SPR) {
+
+    case IDC_SPR:
       if (whi == CBN_SELCHANGE) {
         int i = SendMessageA((HWND)lp,CB_GETCURSEL,0,0);
         EnableWindow(GetDlgItem(hdlg, IDC_SPRVAL), !i);
-        dmsg ( "SELCHANGE TO %d (%d)\n", i, wlo);
       }
-    }/*  else if (wlo == IDC_SPRVAL) { */
-    /*   if (whi == EN_CHANGE) { */
-    /*     int ret, spr = GetUserSpr(hdlg, &ret); */
-    /*     if (spr > 0 && spr != ret) */
-    /*       SetDlgItemInt(hdlg,IDC_SPRVAL,spr,FALSE); */
-    /*   } */
-    /* } */
+      break;
 
+    } /* switch(wlo) */
   } break; /* WM_COMMAND */
-  }
+
+  } /* switch (msg) */
 
   return FALSE;
 }

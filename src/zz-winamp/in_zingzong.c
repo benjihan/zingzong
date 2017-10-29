@@ -46,9 +46,6 @@
 #include "../zz_private.h"
 
 /* libc */
-/* #include <stdio.h> */
-/* #include <string.h> */
-/* #include <ctype.h> */
 #include <malloc.h>                     /* malloca */
 #include <libgen.h>
 #include <limits.h>
