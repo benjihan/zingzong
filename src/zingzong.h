@@ -52,17 +52,17 @@ typedef uint_fast32_t zz_u32_t;
  * Zingzong error codes.
  */
 enum {
-  ZZ_OK,                       /**< No error.                       */
-  ZZ_ERR,                      /**< Unspecified error.              */
-  ZZ_EARG,                     /**< Argument error.                 */
-  ZZ_ESYS,                     /**< System error (I/O, memory ...). */
-  ZZ_EINP,                     /**< Problem with input.             */
-  ZZ_EOUT,                     /**< Problem with output.            */
-  ZZ_ESNG,                     /**< Song error.                     */
-  ZZ_ESET,                     /**< Voice set error                 */
-  ZZ_EPLA,                     /**< Player error.                   */
-  ZZ_EMIX,                     /**< Mixer error.                    */
-  ZZ_666 = 66                  /**< Internal error.                 */
+  ZZ_OK,                   /**< (0) No error.                       */
+  ZZ_ERR,                  /**< (1) Unspecified error.              */
+  ZZ_EARG,                 /**< (2) Argument error.                 */
+  ZZ_ESYS,                 /**< (3) System error (I/O, memory ...). */
+  ZZ_EINP,                 /**< (4) Problem with input.             */
+  ZZ_EOUT,                 /**< (5) Problem with output.            */
+  ZZ_ESNG,                 /**< (6) Song error.                     */
+  ZZ_ESET,                 /**< (7) Voice set error                 */
+  ZZ_EPLA,                 /**< (8) Player error.                   */
+  ZZ_EMIX,                 /**< (9) Mixer error.                    */
+  ZZ_666 = 66              /**< Internal error.                     */
 };
 
 /**
@@ -260,16 +260,25 @@ ZINGZONG_API
  * Init player.
  *
  * @param  play   player instance
- * @param  mixer  mixer-id
- * @param  spr    sampling rate or quality
  * @param  rate   player tick rate (0:default)
  * @param  maxms  playback duration (0:infinite)
  * @return error code
  * @retval ZZ_OK(0) on success
  */
-zz_err_t zz_init(zz_play_t play,
-                 zz_u8_t mixer, zz_u32_t spr,
-                 zz_u16_t rate, zz_u32_t maxms);
+zz_err_t zz_init(zz_play_t play, zz_u16_t rate, zz_u32_t maxms);
+
+ZINGZONG_API
+/**
+ * Setup mixer.
+ *
+ * @param  play   player instance
+ * @param  mixer  mixer-id
+ * @param  spr    sampling rate or quality
+ * @return error code
+ * @retval ZZ_OK(0) on success
+ * @notice Call zz_init() before zz_setup().
+ */
+zz_err_t zz_setup(zz_play_t play, zz_u8_t mixer, zz_u32_t spr);
 
 ZINGZONG_API
 /**

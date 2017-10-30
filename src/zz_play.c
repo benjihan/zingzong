@@ -15,7 +15,6 @@ static void chan_init(play_t * const P, u8_t k)
   chan_t * const C = P->chan+k;
 
   zz_memclr(C,sizeof(*C));              /* bad boy */
-
   C->bit = 1 << k;
   C->num = k;
   C->cur = C->seq = P->song.seq[k];
@@ -46,7 +45,6 @@ static zz_err_t play_init(play_t * const P)
 
   for (k=0; k<4; ++k)
     chan_init(P, k);
-
   P->has_loop = 15 & P->muted_voices;   /* set ignored voices */
   P->done = 0;
   P->tick = 0;
@@ -319,7 +317,7 @@ i16_t zz_play(play_t * restrict P, void * restrict pcm, const i16_t n)
   i16_t ret = 0;
 
   zz_assert( P );
-  zz_assert( P->mixer );
+  zz_assert( P->mixer || !pcm );
 
   /* Already done ? */
   if (P->done)
@@ -475,49 +473,73 @@ static void rt_check(void)
 }
 
 zz_err_t
-zz_init(play_t * P, u8_t mid, u32_t spr, u16_t rate, u32_t maxms)
+zz_init(play_t * P, u16_t rate, u32_t maxms)
 {
-  zz_err_t ecode = E_OK;
+  zz_err_t ecode;
 
   rt_check();
-
   if (!P)
     return E_ARG;
+
+  P->rate = 0;
   ecode = E_SNG;
   if (!P->song.iused)
     goto error;
-  ecode = E_SET;
-  if (!P->vset.iused)
+
+  P->ms_max = maxms;
+  ecode = play_init(P);
+  if (ecode)
     goto error;
 
-  /* Setup player rate. */
   if (!rate)
     rate = P->song.rate ? P->song.rate : RATE_DEF;
   if (rate < RATE_MIN) rate = RATE_MIN;
   if (rate > RATE_MAX) rate = RATE_MAX;
   P->rate = rate;
+  xdivu(1000u, P->rate, &P->ms_per_tick, &P->ms_err_tick);
+  dmsg("rate=%hu-hz ms:%hu(+%hu)\n",
+       HU(P->rate), HU(P->ms_per_tick), HU(P->ms_err_tick));
+  P->pcm_per_tick = 1; /* in case zz_setup() is not call for measuring only */
+  P->pcm_err_tick = 0;
+
+error:
+  return P->code = ecode;
+}
+
+zz_err_t
+zz_setup(play_t * P, u8_t mid, u32_t spr)
+{
+  zz_err_t ecode;
+
+  if (!P)
+    return E_ARG;
+  if (P->code)
+    return P->code;
+
+  ecode = E_PLA;
+  if (!P->rate)
+    goto error;
+
+  ecode = E_SET;
+  if (!P->vset.iused)
+    goto error;
 
   ecode = E_MIX;
   if (zz_mixer_set(P, mid) == ZZ_MIXER_ERR)
     goto error;
+
   P->spr = 0;
   if (ecode = P->mixer->init(P, spr), ecode)
     goto error;
+  zz_assert( P->spr );
+
   xdivu(P->spr, P->rate, &P->pcm_per_tick, &P->pcm_err_tick);
-  xdivu(1000u, P->rate, &P->ms_per_tick, &P->ms_err_tick);
-
-  dmsg("spr=%lu-hz rate=%hu-hz pcm:%hu(+%hu) ms:%hu(+%hu)\n",
-       LU(P->spr), HU(P->rate),
-       HU(P->pcm_per_tick), HU(P->pcm_err_tick),
-       HU(P->ms_per_tick), HU(P->ms_err_tick));
-
-  P->ms_max = maxms;
-  ecode = play_init(P);
+  dmsg("spr=%lu-hz pcm:%hu(+%hu)\n",
+       LU(P->spr), HU(P->pcm_per_tick), HU(P->pcm_err_tick));
 
 error:
   P->done = -!!ecode;
-  P->code = ecode;
-  return ecode;
+  return P->code = ecode;
 }
 
 uint8_t zz_mute(play_t * P, uint8_t clr, uint8_t set)
@@ -574,9 +596,9 @@ static void info_wipe(info_t * info)
 
 void zz_wipe(zz_play_t P)
 {
-    song_wipe(&P->song);
-    vset_wipe(&P->vset);
-    info_wipe(&P->info);
+  song_wipe(&P->song);
+  vset_wipe(&P->vset);
+  info_wipe(&P->info);
 }
 
 zz_err_t zz_close(zz_play_t P)
@@ -600,6 +622,7 @@ zz_err_t zz_close(zz_play_t P)
     P->st_idx = 0;
     P->pcm_per_tick = 0;
     P->format = ZZ_FORMAT_UNKNOWN;
+    P->rate = 0;
 
     ecode = E_OK;
   }

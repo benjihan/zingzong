@@ -67,15 +67,16 @@ zz_vfs_dri_t zz_file_vfs(void);
 
 const char me[] = "in_zingzong";
 
-#define PLAY_MS    (1000*(2*60+30))     /*  2'30" */
-#define MEASURE_MS (1000*(12*60))       /* 12'00" */
+enum {
+  PLAY_MS    = 1000*(2*60+30),          /* default play time    */
+  MEASURE_MS = 1000*(12*60)             /* default measure time */
+};
 
-#define USE_LOCK 1
+enum {
+  NO_MEASURE=0, MEASURE, MEASURE_ONLY, MEASURE_CONFIG
+};
 
-#ifdef USE_LOCK
 static HANDLE g_lock;                   /* mutex handle            */
-#endif
-
 struct xinfo_s {
   HANDLE lock;                          /* mutex for extended info */
   unsigned int ready:1, fail:1;         /* status flags.           */
@@ -98,8 +99,8 @@ static xinfo_t   x_info;                /* unique x_info           */
 static zz_u32_t  g_spr = SPR_DEF;       /* sampling rate (hz)      */
 static int       g_maxlatency;          /* max latency in ms       */
 static zz_u8_t   g_mid = ZZ_MIXER_DEF;  /* mixer id */
-static zz_u8_t   g_tr_cfg = 1;          /* transcoder config       */
-static zz_u32_t  g_dms;                 /* default play time (ms)  */
+static zz_u8_t   g_tr_measure = MEASURE_CONFIG;
+static zz_i32_t  g_dms;                 /* default play time (ms)  */
 static int16_t   g_pcm[576*2];          /* buffer for DSP filters  */
 static volatile LONG g_playing;         /* true while playing      */
 static volatile LONG g_stopreq;         /* stop requested          */
@@ -133,7 +134,6 @@ static void seteq(int, char *, int);
 /*****************************************************************************
  * LOCKS
  ****************************************************************************/
-#ifdef USE_LOCK
 
 static inline int lock(HANDLE h)
 { return WaitForSingleObject(h, INFINITE) == WAIT_OBJECT_0; }
@@ -143,14 +143,6 @@ static inline int lock_noblock(HANDLE h)
 
 static inline void unlock(HANDLE h)
 { ReleaseMutex(h); }
-
-#else
-
-static inline int lock(HANDLE h) { return 1; }
-static inline int lock_noblock(HANDLE h) { return 1; }
-static inline HANDLE h unlock(HANDLE h) { }
-
-#endif
 
 static inline LONG atomic_set(LONG volatile * ptr, LONG v)
 { return InterlockedExchange(ptr,v); }
@@ -400,15 +392,12 @@ void stop()
   }
 }
 
-enum {
-  NO_MEASURE=0, MEASURE, MEASURE_ONLY, MEASURE_CONFIG
-};
-
-static zz_err_t load(zz_play_t P, zz_info_t *I, const char * uri,
-                     zz_u8_t measure, zz_u32_t dms)
+static zz_err_t
+load(zz_play_t P, zz_info_t *I, const char * uri, zz_u8_t measure)
 {
   zz_err_t ecode = E_INP;
-  zz_u32_t ms = PLAY_MS, spr = g_spr, mid = g_mid;
+  zz_i32_t dms=g_dms, spr=g_spr, mid=g_mid;
+  zz_u8_t forced;
 
   zz_assert( P );
   zz_assert( I );
@@ -416,13 +405,12 @@ static zz_err_t load(zz_play_t P, zz_info_t *I, const char * uri,
   zz_assert( uri );
   zz_assert( *uri );
 
-  /* $$$ GB: verify that */
-  if (!dms) dms = g_dms;
-  if (!dms) dms = PLAY_MS;
-
-  dmsg ("load: (%s) fmt:%hu dms:<%hu>%lu \"%s\"\n",
-        P == &g_play ? "play" : measure == MEASURE_ONLY ? "info" : "code",
-        HU(P->format), HU(measure), LU(dms), uri);
+  dmsg("load: <%hu>(%s) fmt:%hu mid:%hu spr:%lu %sdms:%lu\n    \"%s\"\n",
+       HU(measure),
+       P == &g_play ? "play" : measure == MEASURE_ONLY ? "info" : "code",
+       HU(P->format), HU(mid), LU(spr),
+       dms<0?"forced-":"", LU(dms<0?~dms:dms),
+       uri);
 
   zz_assert( P->format == ZZ_FORMAT_UNKNOWN );
   zz_assert( P->vset.bin == 0 );
@@ -441,26 +429,44 @@ static zz_err_t load(zz_play_t P, zz_info_t *I, const char * uri,
     config_t cfg;
     cfg.mid = mid;
     cfg.spr = spr;
-    cfg.dms = 0;
-    if (0x1337 != ConfigDialog(DLGHINST, DLGHWND, &cfg)) {
+    cfg.dms = dms;
+    if (0x1337 == ConfigDialog(DLGHINST, DLGHWND, &cfg)) {
       mid = cfg.mid;
       spr = cfg.spr;
       dms = cfg.dms;
     }
   }
 
-  ecode = zz_init(P, mid, spr, 0, dms);
+  ;
+  if ( (forced = dms < 0) ) {
+    /* Forced time: no measure */
+    dms = ~dms;
+    dmsg("FORCED TIME: %lu-ms\n", LU(dms));
+  }
+  if (dms == 0)                         /* We don't do infinite */
+    dms = PLAY_MS;
+
+  ecode = zz_init(P, 0, dms);
+  dmsg("zz_init(rate:0 dms:%lu) -> [%hu]\n", LU(dms), HU(ecode));
+
+  if (!ecode && measure != MEASURE_ONLY) {
+    ecode = zz_setup(P, mid, spr);
+    dmsg("zz_setup(mid:%hu spr:%lu) -> [%hu]\n",
+         HU(mid), LU(spr), HU(ecode));
+  }
+
   if (ecode)
     goto error_close;
 
-  if (measure != NO_MEASURE) {
-    zz_u32_t max_ms = MEASURE_MS;
-    max_ms = zz_measure(P,MEASURE_MS);
+  if (!forced && measure != NO_MEASURE) {
+    zz_u32_t max_ms = zz_measure(P,MEASURE_MS);
     if (max_ms == ZZ_EOF) {
+      dmsg("measure failed\n");
       ecode = E_PLA;
       goto error_close;
     }
-    ms = max_ms ? max_ms : PLAY_MS;
+    if (max_ms)
+      dms = max_ms;
   }
 
 error_close:
@@ -470,11 +476,11 @@ error_close:
 error_no_close:
   if (I) {
     zz_info(ecode ? 0 : P, I);
-    I->len.ms = ms;
+    I->len.ms = dms;
   }
 
   dmsg("load (%s) -- <%s> \"%s\" %lu ms \n", ecode ? "ERR" :"OK",
-       I?I->fmt.str:"?", uri ? uri : "(nil)", LU(ms));
+       I?I->fmt.str:"?", uri ? uri : "(nil)", LU(dms));
 
   return ecode;
 }
@@ -510,7 +516,7 @@ int play(const char * uri)
 
   /* Load and initialize file */
   err = -1;
-  if (load(&g_play, &g_info, uri, MEASURE, 0))
+  if (load(&g_play, &g_info, uri, MEASURE))
     goto exit;
 
   /* Init output module */
@@ -548,42 +554,6 @@ cantlock:
   return err;
 }
 
-
-#if 0
-static void xinfo_set_info(struct xinfo_s * XI)
-{
-  const int max = sizeof(XI->data)-1;
-  zz_assert( XI );
-  zz_assert( XI == &x_info );
-  zz_assert( XI->ready );
-  zz_assert (!XI->Fail );
-  zz_assert( !XI->data[0] );
-  zz_assert( !XI->data[max] );
-
-  XI->data[0] = XI->data[max] = 0;
-
-  if (!XI->format) XI->format = XI->data;
-  I->fmt.str = XI->format;
-
-  if (!XI->uri) XI->uri = XI->data;
-  I->uri = XI->uri;
-
-  if (!XI->album) XI->album = XI->data;
-  I->tag.album = XI->album;
-
-
-  char * title;                         /* title (in data[])       */
-  char * artist;                        /* artist (in data[])      */
-  char * ripper;                        /* ripper (in data[])      */
-
-
-
-
-
-  I
-  I->
-  I->
-#endif
 
 static
 /*****************************************************************************
@@ -628,7 +598,7 @@ void getfileinfo(const in_char *uri, in_char *title, int *msptr)
     zz_assert( tmp );
     P = &tmp->play;
     I = &tmp->info;
-    if (load(P,I,uri,MEASURE_ONLY,0))
+    if (load(P,I,uri,MEASURE_ONLY))
       goto error_exit;
   }
 
@@ -703,9 +673,8 @@ DWORD WINAPI playloop(LPVOID cookie)
         int vispos = g_mod.outMod->GetWrittenTime();
         g_mod.SAAddPCMData (g_pcm, 1, 16, vispos);
         g_mod.VSAAddPCMData(g_pcm, 1, 16, vispos);
-        if (g_mod.dsp_isactive()) {
-          npcm = g_mod.dsp_dosamples(g_pcm, n = npcm, 16, 1, g_play.spr);
-        }
+        if (g_mod.dsp_isactive())
+          npcm = g_mod.dsp_dosamples(g_pcm, n=npcm, 16, 1, g_play.spr);
         filling = 0;
         pcm = g_pcm;
       }
@@ -727,9 +696,7 @@ DWORD WINAPI playloop(LPVOID cookie)
     }
 
   }
-  atomic_set(&g_playing,0);
 
-  dmsg("end of playloop\n");
   /* Wait buffered output to be processed */
   while (!atomic_get(&g_stopreq)) {
     g_mod.outMod->CanWrite();           /* needed by some out mod */
@@ -741,9 +708,8 @@ DWORD WINAPI playloop(LPVOID cookie)
       Sleep(15);
     }
   }
-  dmsg("end of waitloop\n");
 
-
+  atomic_set(&g_playing,0);
   return 0;
 }
 
@@ -800,9 +766,7 @@ void init()
 #endif
   zz_vfs_add(zz_file_vfs());
   /* clear and init private */
-#ifdef USE_LOCK
   g_lock = CreateMutex(NULL, FALSE, NULL);
-#endif
   x_info.lock = CreateMutex(NULL, FALSE, NULL);
 
   /* Load config from registry */
@@ -819,15 +783,14 @@ static
  ****************************************************************************/
 void quit()
 {
-#ifdef USE_LOCK
-  CloseHandle(g_lock); g_lock = 0;
-#endif
-  CloseHandle(x_info.lock); x_info.lock = 0;
+  CloseHandle(g_lock);
+  g_lock = 0;
+  CloseHandle(x_info.lock);
+  x_info.lock = 0;
   dmsg("quit\n");
   if (zz_memchk_calls())
     emsg("memory check has failed\n");
 }
-
 
 /*****************************************************************************
  * TRANSCODER
@@ -857,33 +820,24 @@ intptr_t winampGetExtendedRead_open(
   const char *uri,int *siz, int *bps, int *nch, int *spr)
 {
   struct transcon * trc = 0;
-  uint_least64_t bytes;
+
   dmsg("transcoder: -- '%s'\n", uri);
-  zz_calloc(&trc,sizeof(struct transcon));
-  if (!trc)
-    goto error_free_not;
-
-  trc->code = load(&trc->play, &trc->info, uri,
-                   g_tr_cfg ? MEASURE_CONFIG : MEASURE, 0);
-  if (trc->code != ZZ_OK)
-    goto error_free_trc;    /* play should have been closed already */
-
-  *nch = 1;
-  *spr = trc->info.mix.spr;
-  *bps = 16;
-
-  bytes = (uint_least64_t) trc->info.len.ms * trc->info.mix.spr / 1000 * 2;
-  /* GB: 32 bit kinda sux here winamp team !!! At least can we have
-   *     UINT_MAX ???
-   */
-  *siz = bytes > UINT_MAX ? UINT_MAX : bytes;
-
+  if (ZZ_OK == zz_calloc(&trc,sizeof(struct transcon))) {
+    zz_assert(trc);
+    trc->code = load(&trc->play, &trc->info, uri, g_tr_measure);
+    if (trc->code != ZZ_OK) {
+      zz_free(&trc);
+      zz_assert(!trc);
+    } else {
+      uint_least64_t bytes;
+      *nch = 1;
+      *spr = trc->info.mix.spr;
+      *bps = 16;
+      bytes = (uint_least64_t) trc->info.len.ms*trc->info.mix.spr/1000u*2u;
+      *siz = bytes > UINT_MAX ? UINT_MAX : bytes;
+    }
+  }
   return (intptr_t) trc;
-
-error_free_trc:
-  zz_free(&trc);
-error_free_not:
-  return 0;
 }
 
 EXPORT
@@ -915,8 +869,8 @@ intptr_t winampGetExtendedRead_getData(
 
     if (*end) {
       dmsg("transcoder: winamp request to end\n");
-      trc->done  = 0x04;                /* flag as done */
-      trc->code = E_ERR;               /* GB: is it an error ? */
+      trc->done = 0x04;                 /* flag as done */
+      trc->code = E_ERR;                /* GB: is it an error ? */
       cnt = 0;                          /* discard all */
       break;
     }
@@ -933,7 +887,7 @@ intptr_t winampGetExtendedRead_getData(
     n = zz_play(&trc->play, dst+cnt, -n);
     if (n <= 0) {
       trc->code = n;
-      trc->done  = 1;
+      trc->done = 1;
       if (!n)
         dmsg("transcoder: play done\n");
       else
@@ -1137,9 +1091,9 @@ got_value:
   if (X)
     info_unlock(X);
   if (P)
-    play_unlock( P );
+    play_unlock(P);
 
-  dmsg("%c [%s]=<%s>\n", ret?'*':'!',data,dest);
+  /* dmsg("%c [%s]=<%s>\n", ret?'*':'!',data,dest); */
 
   return ret;
 }

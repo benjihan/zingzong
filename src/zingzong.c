@@ -806,7 +806,11 @@ int main(int argc, char *argv[])
     RETURN (ZZ_EOUT);
 
   zz_mute(P, 0xFF, (opt_mute<<4)|opt_ignore);
-  ecode = zz_init(P, opt_mixerid, out->hz, opt_tickrate,max_ms);;
+
+  ecode = zz_init(P, opt_tickrate, max_ms);
+  if (ecode)
+    goto error_exit;
+  ecode = zz_setup(P, opt_mixerid, out->hz);;
   if (ecode)
     goto error_exit;
 
