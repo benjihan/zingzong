@@ -175,7 +175,6 @@ ZINGZONG_API
  * @param func  pointer to the new log function (0: to disable all).
  * @param user  pointer user private data (parameter #2 of func).
  */
-
 void zz_log_fun(zz_log_t func, void * user);
 
 /**

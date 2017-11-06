@@ -11,7 +11,7 @@
 
 /* [0,50,200] not official, it's an extension of qts file. */
 static int is_valid_tck(const uint16_t tck) {
-  return tck == 0 || tck == 50 || tck == 200;
+  return tck == 0 || (tck >= RATE_MIN && tck <= RATE_MAX);
 }
 
 /* {4..20} as defined as by the original replay routine. */
@@ -123,6 +123,7 @@ song_init(song_t * song)
     case 'P':                           /* Play-Note */
       has_note = 1;
       song->iused |= (u32_t)1 << ins;
+
     case 'S':
       if (stp < SEQ_STP_MIN || stp > SEQ_STP_MAX) {
         emsg("song: %c[%hu] step out of range -- %08lx\n",
@@ -135,8 +136,15 @@ song_init(song_t * song)
         song->stepmax = stp;
       else if (stp < song->stepmin)
         song->stepmin = stp;
+
     case 'R':
+      if (!len) {
+        emsg("song: %c[%hu] length out of range -- %08lx\n",
+             'A'+k, HU(seq_idx(song->seq[k],seq)), LU(len));
+        goto error;
+      }
       break;
+
     case 'l': case 'L':
       break;
     case 'V':

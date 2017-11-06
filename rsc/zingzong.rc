@@ -21,7 +21,7 @@ FONT 8, "Ms Shell Dlg"
 {
     CONTROL         "Button", IDC_ABOUTTEXT, WC_BUTTON, WS_DISABLED | BS_OWNERDRAW | BS_MULTILINE, 7, 7, 160, 55, WS_EX_LEFT
     DEFPUSHBUTTON   "OK", IDOK, 44, 82, 86, 14, WS_GROUP, WS_EX_LEFT
-    PUSHBUTTON      "https://github.com/benjihan/zingzong/", IDC_URI, 8, 63, 159, 14, BS_CENTER | BS_VCENTER, WS_EX_LEFT
+    PUSHBUTTON      "https://github.com/benjihan/zingzong/", IDC_URI, 7, 63, 160, 14, BS_CENTER | BS_VCENTER, WS_EX_LEFT
 }
 
 

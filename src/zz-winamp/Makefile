@@ -214,6 +214,50 @@ rc_%.o: %.rc
 
 rc_zingzong.o: $(topdir)/rsc/resource.h
 
+
+# ----------------------------------------------------------------------
+#  Nullsoft Installer
+# ----------------------------------------------------------------------
+
+installer_exe = zingzong-$(VERSION)-for-winamp.exe
+installer_dll = zingzing-$(VERSION).dll
+
+installer: $(installer_exe)
+.PHONY: installer
+
+ifneq (,$(filter %-cygwin,$(MAKE_HOST)))
+cygpath=$(shell cygpath -au '$(1)')
+winpath=$(shell cygpath -aw '$(1)')
+regtool=$(shell regtool -W get '$(1)')
+else
+cygpath=$(1)
+winpath=$(1)
+regtool=
+endif
+
+ifndef MAKENSIS
+NSISDIR := $(call regtool,/HKLM/SOFTWARE/NSIS/)
+ifeq (,$(NSISDIR))
+MAKENSIS := $(error Can not locate makensis. Set MAKENSIS to fix)
+else
+MAKENSIS := $(call cygpath,$(NSISDIR)\makensis.exe)
+endif
+endif
+
+NSISDEF = \
+ -DWMPDLL='$(installer_dll)'\
+ -DSRCDIR='$(call winpath,'$(topdir)')'\
+ -DOUTFILE='$@'\
+ -DVERSION='$(VERSION)'
+
+$(installer_exe): $(srcdir)/in_zingzong.nsi $(installer_dll)
+	@echo "[NSI] $@"
+	@'$(MAKENSIS)' /V2 /NOCD $(NSISDEF) "$(call winpath,$<)"
+
+$(installer_dll): $(targets)
+	@echo "[NUD] $@"
+	@$(STRIP) --strip-unneeded -o $@ $<
+
 # ----------------------------------------------------------------------
 #  Install / Uninstall
 # ----------------------------------------------------------------------
@@ -244,6 +288,8 @@ uninstall:
 # ----------------------------------------------------------------------
 #  Includes
 # ----------------------------------------------------------------------
+
+clean_files += $(installer_exe) $(installer_dll)
 
 include $(topdir)/src/make.clean
 include $(topdir)/src/make.depend
