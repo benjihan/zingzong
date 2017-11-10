@@ -277,15 +277,28 @@ else
 PREFIX = $(prefix)
 endif
 
-bindir  = $(call PREFIX)/bin
+ifndef datadir
+DATADIR = $(PREFIX)/share
+else
+DATADIR = $(datadir)
+endif
+
+bindir  = $(PREFIX)/bin
+mandir  = $(DATADIR)/man/man1
+docdir  = $(DATADIR)/$(PACKAGE)-$(VERSION)
 INSTALL = install $(INSTALL_OPT)
 
 INSTALL_EXEC   = \
 mkdir -p -- "$(DESTDIR)$(1)" && \
 $(INSTALL) -t "$(DESTDIR)$(1)" $(foreach f,$(2),"$(f)")
 UNINSTALL_EXEC = rm -f -- $(foreach f,$(2),"$(DESTDIR)$(1)/$(f)")
-INSTALL_DATA   =
-UNINSTALL_DATA =
+INSTALL_MAN    = \
+mkdir -p -- "$(DESTDIR)$(1)" && \
+sed -e 's/@VERSION@/$(VERSION)/' "$(2)" >"$(DESTDIR)$(1)/$(notdir $(2))"
+
+INSTALL_DOC    = \
+mkdir -p -- "$(DESTDIR)$(1)" && \
+$(INSTALL) -t "$(DESTDIR)$(1)" $(foreach f,$(2),"$(f)")
 
 install-strip: INSTALL_OPT = --strip-program=$(STRIP) -s
 install-strip: install
@@ -296,26 +309,32 @@ install-exec: $(bin_targets)
 	$(call INSTALL_EXEC,$(bindir),$^)
 	@echo $@ done
 
-install-data:
-	$(call INSTALL_DATA)
+install-data: install-man install-doc
 	@echo $@ done
 
-.PHONY: install-strip install install-exec install-data
+install-man: $(srcdir)/man/zingzong.1
+	$(call INSTALL_MAN,$(mandir),$<)
+	@echo $@ done
 
+install-doc: INSTALL_OPT = --mode=644
+install-doc: $(topdir)/README.md
+	@$(call INSTALL_DOC,$(docdir),$<)
+
+.PHONY: install-strip install install-exec
+.PHONY: install-data install-man install-doc
 
 uninstall-exec:
-	$(call UNINSTALL_EXEC,$(bindir),$(bin_targets))
-	@echo $@ done
+	@$(call UNINSTALL_EXEC,$(bindir),$(bin_targets))
 
-uninstall-data:
-	$(call UNINSTALL_DATA)
-	@echo $@ done
+uninstall-data: uninstall-man uninstall-doc
+
+uninstall-man: ; @rm -f -- $(DESTDIR)$(mandir)/zingzong.1
+uninstall-doc: ; @rm -f -- $(DESTDIR)$(docdir)/README.md
 
 uninstall: uninstall-exec uninstall-data
-	@echo $@ done
+	@echo "$(PACKAGE) $(VERSION) should be uninstalled"
 
-
-.PHONY: uninstall uninstall-exec uninstall-data
+.PHONY: uninstall uninstall-exec uninstall-data uninstall-man uninstall-doc
 
 # ----------------------------------------------------------------------
 #  Includes
