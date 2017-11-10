@@ -303,18 +303,15 @@ $(INSTALL) -t "$(DESTDIR)$(1)" $(foreach f,$(2),"$(f)")
 install-strip: INSTALL_OPT = --strip-program=$(STRIP) -s
 install-strip: install
 install: install-exec install-data 
-	@echo $@ done
+	@echo "$(PACKAGE) $(VERSION) should be installed"
 
 install-exec: $(bin_targets)
-	$(call INSTALL_EXEC,$(bindir),$^)
-	@echo $@ done
+	@$(call INSTALL_EXEC,$(bindir),$^)
 
 install-data: install-man install-doc
-	@echo $@ done
 
 install-man: $(srcdir)/man/zingzong.1
-	$(call INSTALL_MAN,$(mandir),$<)
-	@echo $@ done
+	@$(call INSTALL_MAN,$(mandir),$<)
 
 install-doc: INSTALL_OPT = --mode=644
 install-doc: $(topdir)/README.md
@@ -327,7 +324,6 @@ uninstall-exec:
 	@$(call UNINSTALL_EXEC,$(bindir),$(bin_targets))
 
 uninstall-data: uninstall-man uninstall-doc
-
 uninstall-man: ; @rm -f -- $(DESTDIR)$(mandir)/zingzong.1
 uninstall-doc: ; @rm -f -- $(DESTDIR)$(docdir)/README.md
 
