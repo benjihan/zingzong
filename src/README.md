@@ -12,8 +12,8 @@
     -r --rate=[R,]HZ   Set re-sampling method and rate (qerp,48K).
 		               Try `-hh` to print the list of [R]esampler.
     -l --length=TIME   Set play time.
-    -m --mute=ABCD     Mute selected channels (bit-field or string).
-    -i --ignore=ABCD   Ignore selected channels (bit-field or string).
+    -m --mute=CHANS    Mute selected channels (bit-field or string).
+    -i --ignore=CHANS  Ignore selected channels (bit-field or string).
     -o --output=URI    Set output file name (`-w` or `-c`).
     -c --stdout        Output raw PCM to stdout or file (native 16-bit).
     -n --null          Output to the void.
@@ -46,3 +46,10 @@ type.
  * `-n/--null` output is ignored.
  * `-c/--stdout` output to the specified file instead of `stdout`.
  * `-w/--wav` unless set output is a file based on song filename.
+
+### Channel selection
+
+ Select channels to be either muted or ignored. It can be either:
+ 
+ * an integer representing a mask of selected channels (C-style prefix).
+ * a string containing the letter A to D (case insensitive) in any order.

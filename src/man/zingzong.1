@@ -41,10 +41,10 @@ Set re\-sampling method and rate (soxr,48K).
 \fB\-l\fR \fB\-\-length\fR=\fI\,TIME\/\fR
 Set play time.
 .TP
-\fB\-m\fR \fB\-\-mute\fR=\fI\,ABCD\/\fR
+\fB\-m\fR \fB\-\-mute\fR=\fI\,CHANS\/\fR
 Mute selected channels (bit\-field or string).
 .TP
-\fB\-i\fR \fB\-\-ignore\fR=\fI\,ABCD\/\fR
+\fB\-i\fR \fB\-\-ignore\fR=\fI\,CHANS\/\fR
 Ignore selected channels (bit\-field or string).
 .TP
 \fB\-o\fR \fB\-\-output\fR=\fI\,URI\/\fR
@@ -88,6 +88,12 @@ comma(,) dot(.) or double-quote(\(dq) separates milliseconds
 If time is not set the player tries to auto\-detect the music duration.
 However a number of musics are going into unnecessary loops which make
 it harder to properly detect. Detection threshold is set to 30 minutes'.
+.SS "CHANS:"
+Select channels to be either muted or ignored. It can be either:
+.IP \[bu] 2
+an integer representing a mask of selected channels (C-style prefix)
+.IP \[bu]
+a string containing the letter A to D (case insensitive) in any order
 .SH "REPORTING BUGS"
 Report bugs to <https://github.com/benjihan/zingzong/issues>
 .SH COPYRIGHT

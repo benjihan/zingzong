@@ -201,8 +201,8 @@ static void print_usage(int level)
 
   puts(
     " -l --length=TIME   Set play time.\n"
-    " -m --mute=ABCD     Mute selected channels (bit-field or string).\n"
-    " -i --ignore=ABCD   Ignore selected channels (bit-field or string).\n"
+    " -m --mute=CHANS    Mute selected channels (bit-field or string).\n"
+    " -i --ignore=CHANS  Ignore selected channels (bit-field or string).\n"
     " -o --output=URI    Set output file name (-w or -c).\n"
     " -c --stdout        Output raw PCM to stdout or file (native 16-bit).\n"
     " -n --null          Output to the void.\n"
@@ -213,7 +213,7 @@ static void print_usage(int level)
 
   puts(
     !level ?
-    "Try `-hh' for more details on OUTPUT and TIME." :
+    "Try `-hh' for more details on OUTPUT/TIME/CHANS." :
 
     "OUTPUT:\n"
     " Options `-n/--null`,'-c/--stdout' and `-w/--wav` are used to set the\n"
@@ -245,6 +245,11 @@ static void print_usage(int level)
     " If time is not set the player tries to auto-detect the music duration.\n"
     " However a number of musics are going into unnecessary loops which make\n"
     " it harder to properly detect. Detection threshold is set to 30 minutes'.\n"
+    "\n"
+    "CHANS:\n"
+    " Select channels to be either muted or ignored. It can be either:\n"
+    " . an integer representing a mask of selected channels (C-style prefix)\n"
+    " . a string containing the letter A to D (case insensitive) in any order\n"
     );
   puts(copyright);
   puts(license);
@@ -436,7 +441,8 @@ done:
 }
 
 /**
- * Parse integer argument with range check.
+ * Parse integer argument with (optional) range check.
+ * @retcal -1 on error
  */
 static int uint_arg(char * arg, const char * name,
                     uint_t min, uint_t max, int base)
@@ -475,7 +481,6 @@ static char * xtrbrk(char * s, const char * tok)
  * @retval 1 perfect match
  * @retval 2 partial match
  */
-
 static int modecmp(const char * mix, char * arg,  char ** pend)
 {
   const char *eng, *qua;
