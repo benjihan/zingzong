@@ -104,7 +104,7 @@ int zz_fast_chan(play_t * const P, const u8_t k)
   chan_t * const C = P->chan+k;
   sequ_t * seq = C->cur;
 
-  if ( P->muted_voices & C->bit )
+  if ( 0x0F & P->muted_voices & C->msk )
     return E_OK;
 
   C->trig = TRIG_NOP;
@@ -135,7 +135,7 @@ int zz_fast_chan(play_t * const P, const u8_t k)
 
     case ZZ_FAST_END:                   /* End-Voice */
       seq = C->seq;
-      P->has_loop |= C->bit;
+      P->has_loop |= C->msk;
       C->loop_sp = C->loops;
       break;
 
@@ -198,6 +198,9 @@ int zz_fast_chan(play_t * const P, const u8_t k)
     } /* switch */
   } /* while !wait */
   C->cur = seq;
+
+  if ( 0x0F0 & P->muted_voices & C->msk )
+    C->trig = TRIG_STOP;
 
   return E_OK;
 }

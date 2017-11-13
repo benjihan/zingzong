@@ -212,7 +212,7 @@ vset_init_header(zz_vset_t vset, const void * _hd)
   if (is_valid_khz(vset->khz) && is_valid_ins(vset->nbi)) {
     i8_t i;
     for (i=0; i<20; ++i) {
-      vset->inst[i].num = i;
+      /* vset->inst[i].num = i; */
       vset->inst[i].len = U32(&hd[142+4*i]);
       dmsg("I#%02i [%7s] %08lx\n", i+1, hd+2+7*i, LU(vset->inst[i].len));
     }
@@ -246,6 +246,7 @@ vset_init(zz_vset_t const vset)
   i32_t tot, unroll, j, imask;
   u8_t nused, i;
   uint8_t idx[20];
+  uint16_t sum[20];
 
   zz_assert( nbi > 0 && nbi <= 20 );
 
@@ -296,6 +297,13 @@ vset_init(zz_vset_t const vset)
 
     if ( !(1 & (vset->iused>>i)) )
       pcm = 0, len = lpl = 0;           /* If not used mark dirty */
+
+    sum[i] = 0;
+    if (pcm) {
+      int32_t k;
+      for (k=0; k<len; ++k)
+        sum[i] = sum[i]*3^ ( 255 & pcm[k] );
+    }
 
     zz_assert( (!!len) == (1 & (vset->iused>>i)) );
     zz_assert( len < 0x10000 );
@@ -353,6 +361,13 @@ vset_init(zz_vset_t const vset)
 
     inst->end = a_len+unroll;
 
+    dmsg("#%02hu I#%02hu %06lx %c %06lx %lu\n",
+         HU(i),HU(idx[i]),
+         LU(pcm-beg),
+         "><"[pcm<=inst->pcm],
+         LU(inst->pcm-beg),
+         LU(inst->len));
+
     /* Copy and sign PCMs */
     if (pcm <= inst->pcm)
       for (j=0; j<r_len; ++j) {
@@ -370,8 +385,8 @@ vset_init(zz_vset_t const vset)
 
     if (!inst->lpl) {
       /* Instrument does not loop -- smooth to middle point */
-      int8_t v = (int8_t)pcm[r_len-1];
-      for (j=r_len; j<inst->end && (pcm[j++] = v = 3*v/4););
+      int8_t v = (int8_t)pcm[r_len-1]; const i16_t c = -(v<0) & 3;
+      for (j=r_len; j<inst->end && (v=(3*v+c)>>2); ) pcm[j++] = v;
       for (; j<inst->end; ) pcm[j++] = v;
     } else {
       int lpi;
@@ -385,6 +400,19 @@ vset_init(zz_vset_t const vset)
       }
     }
     e = pcm;
+  }
+
+  for (i=0; i<20; ++i) {
+    uint16_t s2 = 0;
+    inst_t * const inst = vset->inst+i;
+
+    if (inst->len) {
+      int32_t k;
+      for (k=0; k<inst->len; ++k)
+        s2 = s2 * 3 ^ ( 255 & (0x80^inst->pcm[k]) );
+    }
+    dmsg("I#%02hu sum: %04X %04X\n", HU(i), HU(s2), HU(sum[i]));
+    zz_assert( s2 == sum[i] );
   }
 
   return E_OK;

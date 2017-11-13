@@ -281,6 +281,17 @@ zz_err_t zz_setup(zz_play_t play, zz_u8_t mixer, zz_u32_t spr);
 
 ZINGZONG_API
 /**
+ * Play a tick.
+ *
+ * @param  play   player instance
+ * @return error code
+ * @retval ZZ_OK(0) on success
+ * @notice zz_tick() is called by zz_play().
+ */
+zz_err_t zz_tick(zz_play_t play);
+
+ZINGZONG_API
+/**
  * Play.
  *
  * @param  play  player instance

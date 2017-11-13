@@ -120,7 +120,7 @@
 #endif
 
 #define MIXBLK        16u               /*  */
-#define VSET_UNROLL   1024u             /* Over estimated */
+#define VSET_UNROLL   128u              /* Over estimated */
 #define VSET_XSIZE    (20u*VSET_UNROLL) /* Additional space for loops  */
 #define VSET_MAX_SIZE (1<<19) /* arbitrary .set max size */
 #define SONG_MAX_SIZE 0xFFF0  /* arbitrary .4v max size  */
@@ -206,7 +206,7 @@ struct mixer_s {
 
 /** Prepared instrument (sample). */
 struct inst_s {
-  u8_t      num;             /**< instrument number.                */
+  /* u8_t      num; */       /**< instrument number.                */
   u32_t     len;             /**< size in bytes.                    */
   u32_t     lpl;             /**< loop length in bytes.             */
   u32_t     end;             /**< unrolled end.                     */
@@ -263,6 +263,7 @@ struct note_s {
   inst_t *ins;               /**< Current instrument.               */
 };
 
+
 /** Played channel. */
 struct chan_s {
   sequ_t  *seq;                       /**< sequence address.        */
@@ -273,7 +274,7 @@ struct chan_s {
   inst_t  *ins;                       /**< instrument (fast)        */
 
   u8_t num;                         /**< channel number [0..3].     */
-  u8_t bit;                         /**< channel bit {1,2,4,8}.     */
+  u8_t msk;                         /**< {0x11,0x22,0x44,0x88}.     */
   u8_t trig;                        /**< see TRIG_* enum.           */
   u8_t curi;                        /**< current instrument number. */
 

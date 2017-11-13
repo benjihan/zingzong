@@ -15,7 +15,7 @@ static void chan_init(play_t * const P, u8_t k)
   chan_t * const C = P->chan+k;
 
   zz_memclr(C,sizeof(*C));              /* bad boy */
-  C->bit = 1 << k;
+  C->msk = 0x11 << k;                   /* channel bit duplicated */
   C->num = k;
   C->cur = C->seq = P->song.seq[k];
   if (!C->end) {
@@ -45,7 +45,7 @@ static zz_err_t play_init(play_t * const P)
 
   for (k=0; k<4; ++k)
     chan_init(P, k);
-  P->has_loop = 15 & P->muted_voices;   /* set ignored voices */
+  P->has_loop = 0x0F & P->muted_voices; /* set ignored voices */
   P->done = 0;
   P->tick = 0;
   P->ms_pos = 0;
@@ -91,21 +91,27 @@ sequ_t * loop_seq(const chan_t * const C, const uint16_t off)
   return (sequ_t *)&off[(int8_t *)C->seq];
 }
 
+static int is_valid_note(const i32_t stp)
+{
+  return stp >= SEQ_STP_MIN && stp <= SEQ_STP_MAX;
+}
+
 int play_chan(play_t * const P, chan_t * const C)
 {
-  sequ_t * seq = C->cur;
+  sequ_t * seq;
 
   zz_assert( C->trig == TRIG_NOP );
 
   /* Ignored voices ? */
-  if ( P->muted_voices & C->bit )
+  if ( 0x0F & P->muted_voices & C->msk )
     return E_OK;
 
   C->trig = TRIG_NOP;
 
   /* Portamento */
   if (C->note.stp) {
-    zz_assert(C->note.cur);
+    zz_assert(is_valid_note(C->note.cur));
+    zz_assert(is_valid_note(C->note.aim));
     if (!C->note.cur)
       C->note.cur = C->note.aim; /* safety net */
     C->trig = TRIG_SLIDE;
@@ -121,21 +127,25 @@ int play_chan(play_t * const P, chan_t * const C)
     }
   }
 
+  seq = C->cur;
   if (C->wait) --C->wait;
   while (!C->wait) {
     /* This could be an endless loop on empty track but it should
      * have been checked earlier ! */
-    u32_t const cmd = U16(seq->cmd);
-    u32_t const len = U16(seq->len);
+    u16_t const cmd = U16(seq->cmd);
+    u16_t const len = U16(seq->len);
     u32_t const stp = U32(seq->stp);
     u32_t const par = U32(seq->par);
     ++seq;
+
+    /* dmsg("%c cmd:%c len:%04hX stp:%08lX par:%08lX\n", */
+    /*      'A'+C->num, (int)cmd, HU(len), LU(stp), LU(par)); */
 
     switch (cmd) {
 
     case 'F':                           /* End-Voice */
       seq = C->seq;
-      P->has_loop |= C->bit;
+      P->has_loop |= C->msk;            /* Set has_loop flags */
       C->loop_sp = C->loops;            /* Safety net */
       break;
 
@@ -162,8 +172,6 @@ int play_chan(play_t * const P, chan_t * const C)
       C->note.cur = C->note.aim = stp;
       C->note.stp = 0;
       C->wait     = len;
-
-      /* triggered |= 1<<(k<<3); */
       break;
 
     case 'S':                       /* Slide-to-note */
@@ -171,8 +179,9 @@ int play_chan(play_t * const P, chan_t * const C)
       /* GB: This actually happened (e.g. Wrath of the demon - tune 1)
        *     I'm not sure what the original quartet player does.
        *     Here I'm just starting the goal note.
+       *
+       * zz_assert(C->note.cur);
        */
-      /*zz_assert(C->note.cur); */
       if (!C->note.cur) {
         C->trig     = TRIG_NOTE;
         C->note.ins = P->vset.inst + C->curi;
@@ -180,7 +189,7 @@ int play_chan(play_t * const P, chan_t * const C)
       }
       C->wait     = len;
       C->note.aim = stp;
-      C->note.stp = (int32_t)par;   /* sign extend, slide are signed */
+      C->note.stp = (int32_t)par; /* sign extend, slides are signed */
       break;
 
     case 'R':                       /* Rest */
@@ -192,8 +201,9 @@ int play_chan(play_t * const P, chan_t * const C)
        *     possible. We'll see if it triggers the zz_assert.
        *
        * GB: See note above. It happens so I shouldn't !
+       *
+       * C->note.cur = 0;
        */
-      /* C->note.cur = 0; */
       break;
 
     case 'l':                       /* Set-Loop-Point */
@@ -262,7 +272,7 @@ int play_chan(play_t * const P, chan_t * const C)
   C->cur = seq;
 
   /* Muted voices ? */
-  if ( (P->muted_voices>>4) & C->bit )
+  if (0xF0 & P->muted_voices & C->msk)
     C->trig = TRIG_STOP;
 
   return E_OK;
@@ -270,7 +280,7 @@ int play_chan(play_t * const P, chan_t * const C)
 
 /* ---------------------------------------------------------------------- */
 zz_err_t
-play_tick(play_t * const P)
+zz_tick(play_t * const P)
 {
   chan_t * C;
 
@@ -284,10 +294,11 @@ play_tick(play_t * const P)
     ++ P->ms_end;
   }
 
+  P->has_loop &= 0x0F; /* clear non-persistent part */
   for ( C=P->chan; C<P->chan+4; ++C ) {
     zz_err_t ecode = play_chan(P,C);
     if (E_OK != ecode) {
-      P->done |= C->bit << 4;
+      P->done |= C->msk & 0xF0;
       emsg("play: %c[%hu]@%lu: failed\n",
            'A'+C->num, HU(seq_idx(C,C->cur)), LU(P->tick));
       return ecode;
@@ -295,7 +306,7 @@ play_tick(play_t * const P)
   }
 
   P->done |= 0
-    | ( 0x01 & -(P->end_detect && P->has_loop == 15) )
+    | ( 0x01 & -(P->end_detect && (15&P->has_loop) == 15) )
     | ( 0x02 & -(P->ms_max && P->ms_pos > P->ms_max) )
     ;
 
@@ -312,7 +323,8 @@ play_tick(play_t * const P)
 
 /* ---------------------------------------------------------------------- */
 
-i16_t zz_play(play_t * restrict P, void * restrict pcm, const i16_t n)
+i16_t
+zz_play(play_t * restrict P, void * restrict pcm, const i16_t n)
 {
   i16_t ret = 0;
 
@@ -327,7 +339,7 @@ i16_t zz_play(play_t * restrict P, void * restrict pcm, const i16_t n)
     i16_t cnt;
 
     if (!P->pcm_cnt) {
-      P->code = play_tick(P);
+      P->code = zz_tick(P);
       if (P->code != E_OK) {
         ret = -P->code;
         break;
@@ -390,7 +402,7 @@ zz_measure(play_t * P, u32_t ms_max)
     P->vset.khz = P->song.khz;
     P->vset.nbi = 20;
     for (i=0; i<20; ++i) {
-      P->vset.inst[i].num = i;
+      /* P->vset.inst[i].num = i; */
       P->vset.inst[i].len = 2;
       P->vset.inst[i].lpl = 0;
       P->vset.inst[i].end = 2;
@@ -688,9 +700,9 @@ zz_err_t zz_info( zz_play_t P, zz_info_t * pinfo)
     pinfo->fmt.str = zz_formatstr(pinfo->fmt.num);
 
     /* rates */
-    pinfo->len.rate  = P->rate = P->rate ? P->rate : P->song.rate;
-    pinfo->mix.spr   = P->spr;
-    pinfo->len.ms    = P->ms_max;
+    pinfo->len.rate = P->rate = P->rate ? P->rate : P->song.rate;
+    pinfo->mix.spr  = P->spr;
+    pinfo->len.ms   = P->ms_max;
 
     /* mixer */
     pinfo->mix.num = P->mixer_id;
@@ -711,10 +723,10 @@ zz_err_t zz_info( zz_play_t P, zz_info_t * pinfo)
     pinfo->set.khz = P->vset.khz;
 
     /* meta-tags */
-    pinfo->tag.album   = P->info.album;
-    pinfo->tag.title   = P->info.title;
-    pinfo->tag.artist  = P->info.artist;
-    pinfo->tag.ripper  = P->info.ripper;
+    pinfo->tag.album  = P->info.album;
+    pinfo->tag.title  = P->info.title;
+    pinfo->tag.artist = P->info.artist;
+    pinfo->tag.ripper = P->info.ripper;
   }
 
   /* Ensure no strings are nil */

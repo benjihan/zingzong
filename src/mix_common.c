@@ -2,7 +2,7 @@
  * @file   mix_common.c
  * @author Benjamin Gerard AKA Ben/OVR
  * @date   2017-07-04
- * @brief  common parts for mix_qerp.c and mix_none.c
+ * @brief  common parts for none, lerp and qerp mixer.
  */
 
 #ifndef NAME
@@ -18,7 +18,7 @@
 #endif
 
 #if !defined (FP) || (FP > 16) || (FP < 7)
-# error undefined of invalid FP define
+# error undefined of invalid FP
 #endif
 
 #define xtr(X) str(X)
@@ -128,8 +128,10 @@ push_cb(play_t * const P, void * restrict pcm, i16_t N)
   for (k=0; k<4; ++k) {
     mix_chan_t * const K = M->chan+k;
     chan_t     * const C = P->chan+k;
+    const u8_t trig = C->trig;
 
-    switch (C->trig) {
+    C->trig = TRIG_NOP;
+    switch (trig) {
     case TRIG_NOTE:
 
       zz_assert(C->note.ins);
