@@ -39,57 +39,60 @@ struct mix_fp_s {
 };
 
 static inline void
-mix_gen(mix_fp_t * const M, const int k, int16_t * restrict b, int n)
+mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
 {
-  mix_chan_t * const restrict K = M->chan+k;
   const int8_t * const pcm = (const int8_t *)K->pcm;
+  u32_t idx = K->idx, stp = K->xtp;
 
-  zz_assert(n > 0 && n <= MIXBLK);
-  zz_assert(k >= 0 && k < 4);
+  if (n <= 0 || !K->xtp)
+    return;
 
-  if (K->xtp) {
-    u32_t idx = K->idx;
-    const u32_t stp = K->xtp;
+  zz_assert( K->pcm );
+  zz_assert( K->end > K->pcm );
+  zz_assert( K->idx >= 0 && K->idx < K->len );
 
-    zz_assert(K->pcm);
-    zz_assert(K->end > K->pcm);
-    zz_assert(idx >= 0 && idx < K->len);
-
-    /* Add N PCM */
+  if (!K->lpl) {
+    /* Instrument does not loop */
     do {
+      zz_assert( K->pcm+(idx>>FP) < K->end );
       ADDPCM();
+      /* Have reach end ? */
+      if (idx >= K->len) {
+        dmsg("stop at %lx\n", idx>>FP);
+        idx = stp = 0;
+        break;
+      }
     } while(--n);
-
-    zz_assert( K->pcm+(idx>>FP) <= K->end );
-
-    /* Have reach end ? */
-    if (idx >= K->len) {
-      /* Have loop ? */
-      if (!K->lpl) {
-        idx = K->xtp = 0;
+  } else {
+    const u32_t off = K->len - K->lpl;  /* loop start index */
+    /* Instrument does loop */
+    do {
+      zz_assert( K->pcm+(idx>>FP) < K->end );
+      ADDPCM();
+      /* Have reach end ? */
+      if (idx >= K->len) {
+        u32_t ovf = idx - K->len;
+        if (ovf >= K->lpl) ovf %= K->lpl;
+        dmsg("loop at %lx -> %lx\n", idx>>FP, (off+ovf)>>FP);
+        idx = off+ovf;
+        zz_assert( idx >= off && idx < K->len );
       }
-      else {
-        const u32_t ovf = (idx - K->len) % K->lpl;
-        idx = K->len - K->lpl + ovf;
-        zz_assert( idx >= K->len-K->lpl && idx < K->len );
-      }
-    }
-
-    zz_assert(idx >= 0 && idx < K->len);
-    K->idx = idx;
+    } while(--n);
   }
+  K->idx = idx;
+  K->xtp = stp;
 }
 
-static void
-mix_add1(mix_fp_t * const M, const int k, int16_t * b)
-{
-  mix_gen(M,k,b,MIXBLK);
-}
+/* static void */
+/* mix_add1(mix_fp_t * const M, const int k, int16_t * b) */
+/* { */
+/*   mix_gen(M,k,b,MIXBLK); */
+/* } */
 
-static void mix_addN(mix_fp_t * const M, const int k, int16_t * b, const int n)
-{
-  mix_gen(M,k,b,n);
-}
+/* static void mix_addN(mix_fp_t * const M, const int k, int16_t * b, const int n) */
+/* { */
+/*   mix_gen(M,k,b,n); */
+/* } */
 
 
 static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
@@ -112,8 +115,8 @@ static void *
 push_cb(play_t * const P, void * restrict pcm, i16_t N)
 {
   mix_fp_t * const M = (mix_fp_t *)P->mixer_data;
-  int16_t  * restrict b;
-  int k, n;
+  /* int16_t  * restrict b = pcm; */
+  int k;
 
   zz_assert( P );
   zz_assert( M );
@@ -153,20 +156,23 @@ push_cb(play_t * const P, void * restrict pcm, i16_t N)
     }
   }
 
+  for (k=0; k<4; ++k)
+    mix_add1(M->chan+k, pcm, N);
+
   /* Mix per block of MIXBLK samples */
-  for (b=pcm, n=N;
-       n >= MIXBLK;
-       b += MIXBLK, n -= MIXBLK)
-    for (k=0; k<4; ++k)
-      mix_add1(M, k, b);
+  /* for (b=pcm, n=N; */
+  /*      n >= MIXBLK; */
+  /*      b += MIXBLK, n -= MIXBLK) */
+  /*   for (k=0; k<4; ++k) */
+  /*     mix_add1(M, k, b); */
 
-  if (n > 0) {
-    for (k=0; k<4; ++k)
-      mix_addN(M, k, b, n);
-    b += n;
-  }
+  /* if (n > 0) { */
+  /*   for (k=0; k<4; ++k) */
+  /*     mix_addN(M, k, b, n); */
+  /*   b += n; */
+  /* } */
 
-  return b;
+  return ( (int16_t *) pcm ) + N;
 }
 
 
