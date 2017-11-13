@@ -84,7 +84,6 @@ u16_t seq_off(const chan_t * const C, const sequ_t * const seq)
   return ptr_off(C->seq, seq);
 }
 
-
 static inline
 sequ_t * loop_seq(const chan_t * const C, const uint16_t off)
 {
@@ -164,7 +163,7 @@ int play_chan(play_t * const P, chan_t * const C)
         dmsg("%c[%hu]@%lu: using tainted instrument -- I#%02hu\n",
              'A'+C->num, HU(seq_idx(C,seq-1)), LU(P->tick),
              HU(C->curi+1));
-        return E_SET;
+        return E_SNG;
       }
 
       C->trig     = TRIG_NOTE;

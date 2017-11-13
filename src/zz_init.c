@@ -84,8 +84,9 @@ zz_err_t
 song_init(song_t * song)
 {
   zz_err_t ecode = E_SNG;
-  u8_t  ins, has_note, k;
+  u8_t  ins, has_note, has_wait, k;
   u16_t off, size;
+  u32_t iref = 0;
 
   /* sequence to use in case of empty sequence to avoid endless loop
    * condition and allow to properly measure music length.
@@ -99,7 +100,8 @@ song_init(song_t * song)
    * empty sequences by something that won't loop endlessly and won't
    * disrupt the end of music detection.
    */
-  for (k=has_note=ins=0, off=11, size=song->bin->len, song->iused=0;
+  has_note = has_wait = ins = 0;
+  for (k=0, off=11, size=song->bin->len, song->iused=0;
        k<4 && off<size;
        off += 12)
   {
@@ -122,9 +124,13 @@ song_init(song_t * song)
 
     case 'P':                           /* Play-Note */
       has_note = 1;
-      song->iused |= (u32_t)1 << ins;
 
-    case 'S':
+      if ( ! (song->iused & (1l << ins)) )
+        dmsg("I#%02hu used for the first time @%c[%hu]\n",
+             HU(ins+1), 'A'+k, HU(seq_idx(song->seq[k],seq)));
+      song->iused |= 1l << ins;
+
+    case 'S':                           /* Slide-To-Note */
       if (stp < SEQ_STP_MIN || stp > SEQ_STP_MAX) {
         emsg("song: %c[%hu] step out of range -- %08lx\n",
              'A'+k, HU(seq_idx(song->seq[k],seq)), LU(stp));
@@ -137,7 +143,7 @@ song_init(song_t * song)
       else if (stp < song->stepmin)
         song->stepmin = stp;
 
-    case 'R':
+    case 'R':                           /* Rest */
       if (!len) {
         emsg("song: %c[%hu] length out of range -- %08lx\n",
              'A'+k, HU(seq_idx(song->seq[k],seq)), LU(len));
@@ -145,11 +151,17 @@ song_init(song_t * song)
       }
       break;
 
-    case 'l': case 'L':
+    case 'l':                           /* Set-Loop-Point */
+    case 'L':                           /* Loop-To-Point */
       break;
-    case 'V':
-      if ( (ins = par >> 2) < 20u && ! (par & ~(31u<<2) ) )
+    case 'V':                           /* Voice change */
+      if ( (ins = par >> 2) < 20u && ! (par & ~(31u<<2) ) ) {
+        if (! (iref & (1l << ins)) )
+          dmsg("I#%02hu refenced for the first time @%c[%hu]\n",
+               HU(ins+1), 'A'+k, HU(seq_idx(song->seq[k],seq)));
+        iref |= 1l << ins;
         break;
+      }
       emsg("song: %c[%hu] instrument out of range -- %08lx\n",
            'A'+k, HU(seq_idx(song->seq[k],seq)), LU(par));
       goto error;
@@ -182,7 +194,8 @@ song_init(song_t * song)
   }
 
   dmsg("song steps: %08lx .. %08lx\n", LU(song->stepmin), LU(song->stepmax));
-  dmsg("song iused: %05lx\n", LU(song->iused));
+  dmsg("song iused: %05lx iref:%05lx diff:%lx\n",
+       LU(song->iused), LU(iref), LU(iref^song->iused));
   ecode = E_OK;
 
 error:
@@ -257,18 +270,34 @@ vset_init(zz_vset_t const vset)
    * Unfortunately the way the loader work at the moment does not
    * really help with that.
    */
-  imask = vset->iused ? vset->iused : (1 << nbi) - 1;
+  imask = vset->iused ? vset->iused : (1l<<nbi)-1;
+#ifdef DEBUG
+  if (1) {
+    char t[21];
+    for (i=0; i<20; ++i)
+      t[i] = ( 1 & (imask>>i) ) ? '-' : '0'+(i+1)%10u;
+    t[20] = 0;
+    dmsg("Used mask: %s\n", t);
+  }
+#endif
 
   for (i=nused=vset->iused=0; i<20; ++i) {
     const i32_t off = vset->inst[i].len - 222 + 8;
     u32_t len = 0, lpl = 0;
     uint8_t * pcm = 0;
 
+#ifdef DEBUG
+    const char * tainted = 0;
+#   define TAINTED(COND) if ( COND ) { tainted = #COND; break; } else
+#else
+#   define TAINTED(COND) if ( COND ) { break; } else
+#endif
+
     do {
       /* Sanity tests */
-      if (!(1&(imask>>i)))   break;     /* Used ? */
-      if (off < 8)           break;     /* inside ?  */
-      if (off >= bin->len)   break;     /* inside ?  */
+      TAINTED (!(1&(imask>>i)));        /* Used ? */
+      TAINTED (off < 8);                /* inside ?  */
+      TAINTED (off >= bin->len);        /* inside ?  */
 
       /* Get sample info */
       pcm = bin->ptr + off;
@@ -281,13 +310,13 @@ vset_init(zz_vset_t const vset)
        * Currently I haven't found a music file that is valid and does
        * not pass them.
        */
-      if (len & 0xFFFF)       break;
-      if (lpl & 0xFFFF)       break;
-      if ((len >>= 16) == 0)  break;
-      if ((lpl >>= 16) > len) break;
-      if (off+len > bin->len) break;
+      TAINTED (len & 0xFFFF);
+      TAINTED (lpl & 0xFFFF);
+      TAINTED ((len >>= 16) == 0);
+      TAINTED ((lpl >>= 16) > len);
+      TAINTED (off+len > bin->len);
 
-      vset->iused |= 1l<<i;
+      vset->iused |= 1l << i;
       ++nused;
       dmsg("I#%02hu [$%05lX:$%05lX:$%05lX] [$%05lX:$%05lX:$%05lX]\n",
            HU(i+1),
@@ -295,8 +324,10 @@ vset_init(zz_vset_t const vset)
            LU(off), LU(off+len-lpl), LU(off+len));
     } while (0);
 
-    if ( !(1 & (vset->iused>>i)) )
+    if ( !(1 & (vset->iused>>i)) ) {
+      dmsg("I#%02hu is tainted (%s)\n",HU(i+1),tainted);
       pcm = 0, len = lpl = 0;           /* If not used mark dirty */
+    }
 
     sum[i] = 0;
     if (pcm) {
@@ -361,8 +392,8 @@ vset_init(zz_vset_t const vset)
 
     inst->end = a_len+unroll;
 
-    dmsg("#%02hu I#%02hu %06lx %c %06lx %lu\n",
-         HU(i),HU(idx[i]),
+    dmsg("I#%02hu I#%02hu %06lx %c %06lx %lu\n",
+         HU(i+1),HU(idx[i]),
          LU(pcm-beg),
          "><"[pcm<=inst->pcm],
          LU(inst->pcm-beg),
@@ -411,7 +442,7 @@ vset_init(zz_vset_t const vset)
       for (k=0; k<inst->len; ++k)
         s2 = s2 * 3 ^ ( 255 & (0x80^inst->pcm[k]) );
     }
-    dmsg("I#%02hu sum: %04X %04X\n", HU(i), HU(s2), HU(sum[i]));
+    dmsg("I#%02hu sum: %04X %04X\n", HU(i+1), HU(s2), HU(sum[i]));
     zz_assert( s2 == sum[i] );
   }
 
