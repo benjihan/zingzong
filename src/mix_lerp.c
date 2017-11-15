@@ -13,8 +13,12 @@
 #define ZZ_DBG_PREFIX "(mix-" METH  ") "
 #include "zz_private.h"
 
-#define SETPCM() *b  = lerp(pcm,idx); ++b; idx += stp
-#define ADDPCM() *b += lerp(pcm,idx); ++b; idx += stp
+#define OPEPCM(OP) do {                         \
+    zz_assert( pcm+(idx>>FP)+0 < K->end );      \
+    zz_assert( pcm+(idx>>FP)+1 < K->end );      \
+    *b++ OP lerp(pcm,idx);                      \
+    idx += stp;                                 \
+  } while (0)
 
 /* Linear Interpolation.
  */

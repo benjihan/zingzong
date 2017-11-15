@@ -84,9 +84,17 @@ zz_err_t
 song_init(song_t * song)
 {
   zz_err_t ecode = E_SNG;
-  u8_t  ins, has_note, has_wait, k;
   u16_t off, size;
   u32_t iref = 0;
+  u8_t k;
+
+  union {
+    struct {
+      unsigned seq_ins:5, seq_has_note:1, seq_has_wait:1;
+      unsigned blk_ins:5, blk_has_note:1, blk_has_wait:1;
+    };
+    unsigned all;
+  } inf;
 
   /* sequence to use in case of empty sequence to avoid endless loop
    * condition and allow to properly measure music length.
@@ -100,7 +108,6 @@ song_init(song_t * song)
    * empty sequences by something that won't loop endlessly and won't
    * disrupt the end of music detection.
    */
-  has_note = has_wait = ins = 0;
   for (k=0, off=11, size=song->bin->len, song->iused=0;
        k<4 && off<size;
        off += 12)
@@ -111,26 +118,44 @@ song_init(song_t * song)
     u32_t    const stp = U32(seq->stp);
     u32_t    const par = U32(seq->par);
 
-    if (!song->seq[k])
+    if (!song->seq[k]) {
       song->seq[k] = seq;               /* Sequence */
+      inf.all = 0;
+    }
 
     switch (cmd) {
-    case 'F':                           /* End-Voice */
-      if (!has_note)
+    case 'F':                           /* Finish */
+      if (!inf.seq_has_note)
         song->seq[k] = (sequ_t *) nullseq;
-      has_note = 0;
       ++k;
       break;
 
     case 'P':                           /* Play-Note */
-      has_note = 1;
+      inf.seq_has_note = inf.blk_has_note = 1;
 
-      if ( ! (song->iused & (1l << ins)) )
+      if ( ! inf.seq_ins ) {
+        inf.seq_ins = 1;
+        dmsg("Seq-note without instrument set @%c[%hu]\n",
+             'A'+k, HU(seq_idx(song->seq[k],seq)));
+      } else if ( ! inf.blk_ins ) {
+        dmsg("Blk-note without instrument set @%c[%hu] I%02hu\n",
+             'A'+k, HU(seq_idx(song->seq[k],seq)), HU(inf.seq_ins));
+        inf.blk_ins = inf.seq_ins;
+      }
+
+      if ( ! (song->iused & ( 1l << (inf.seq_ins-1) )))
         dmsg("I#%02hu used for the first time @%c[%hu]\n",
-             HU(ins+1), 'A'+k, HU(seq_idx(song->seq[k],seq)));
-      song->iused |= 1l << ins;
+             HU(inf.seq_ins), 'A'+k, HU(seq_idx(song->seq[k],seq)));
+      song->iused |= 1l << (inf.seq_ins-1);
 
     case 'S':                           /* Slide-To-Note */
+      if ( ! inf.seq_has_note )
+        dmsg("Seq-slide without note @%c[%hu]\n",
+             'A'+k, HU(seq_idx(song->seq[k],seq)));
+      else if ( ! inf.blk_has_note )
+        dmsg("Blk-slide without note @%c[%hu]\n",
+             'A'+k, HU(seq_idx(song->seq[k],seq)));
+
       if (stp < SEQ_STP_MIN || stp > SEQ_STP_MAX) {
         emsg("song: %c[%hu] step out of range -- %08lx\n",
              'A'+k, HU(seq_idx(song->seq[k],seq)), LU(stp));
@@ -149,17 +174,21 @@ song_init(song_t * song)
              'A'+k, HU(seq_idx(song->seq[k],seq)), LU(len));
         goto error;
       }
+      inf.seq_has_wait = inf.blk_has_wait = 1;
       break;
 
     case 'l':                           /* Set-Loop-Point */
     case 'L':                           /* Loop-To-Point */
+      inf.blk_has_note = inf.blk_has_wait = 0;
+      inf.blk_ins = 0;
       break;
-    case 'V':                           /* Voice change */
-      if ( (ins = par >> 2) < 20u && ! (par & ~(31u<<2) ) ) {
-        if (! (iref & (1l << ins)) )
+    case 'V':                           /* Voice-Set */
+      if ( ! (par & ~(31u<<2)) && (par < 4*20u) ) {
+        inf.blk_ins = inf.seq_ins = ( par >> 2 ) + 1;
+        if ( ! (iref & (1l << (inf.seq_ins-1)) ))
           dmsg("I#%02hu refenced for the first time @%c[%hu]\n",
-               HU(ins+1), 'A'+k, HU(seq_idx(song->seq[k],seq)));
-        iref |= 1l << ins;
+               HU(inf.seq_ins), 'A'+k, HU(seq_idx(song->seq[k],seq)));
+        iref |= 1l << (inf.seq_ins-1);
         break;
       }
       emsg("song: %c[%hu] instrument out of range -- %08lx\n",
@@ -180,12 +209,11 @@ song_init(song_t * song)
   }
 
   for ( ;k<4; ++k) {
-    if (has_note) {
+    if (inf.seq_has_note) {
       /* Add 'F'inish mark */
       sequ_t * const seq = (sequ_t *) (song->bin->ptr+off);
       seq->cmd[0] = 0; seq->cmd[1] = 'F';
       off += 12;
-      has_note = 0;
       dmsg("channel %c is truncated\n", 'A'+k);
     } else {
       dmsg("channel %c is MIA\n", 'A'+k);
@@ -234,7 +262,8 @@ vset_init_header(zz_vset_t vset, const void * _hd)
   return ecode;
 }
 
-static void sort_inst(const inst_t inst[], uint8_t idx[], int nbi)
+static void
+sort_inst(const inst_t inst[], uint8_t idx[], int nbi)
 {
   uint8_t i,j,perm;
   /* bubble sort */
@@ -242,10 +271,51 @@ static void sort_inst(const inst_t inst[], uint8_t idx[], int nbi)
     for (perm=0, j=i+1; j<nbi; ++j)
       if (inst[idx[i]].pcm < inst[idx[j]].pcm) {
         perm = 1;
-        idx[i] ^= idx[j];               /* i^j */
+        idx[i] ^= idx[j];               /* i^j        */
         idx[j] ^= idx[i];               /* j^i^j => i */
         idx[i] ^= idx[j];               /* i^i^j => j */
       }
+}
+
+static void
+unroll_loop(uint8_t * dst, i32_t max, const uint8_t sig,
+            uint8_t * src, u16_t len, const u16_t lpl)
+{
+  max -= len;
+
+  zz_assert( len );
+  zz_assert( max >= 0 );
+
+  if (dst <= src) {
+    do {
+      *dst++ = *src++ ^ sig;
+    } while ( --len );
+  } else {
+    const u16_t n = len;
+    dst += len; src += len;
+    do {
+      *--dst = *--src ^ sig;
+    } while ( --len );
+    dst += n; src += n;
+  }
+
+  if (lpl)
+    for ( src=dst-lpl; max; --max)
+      *dst++ = *src++;
+  else {
+    u16_t v, r;
+    for (v=sig^dst[-1], r=0x80 ; max; --max) {
+      v = v+v+v+r; r = 0x80+(v&3); v >>= 2;
+      *dst++ = sig ^ v;
+    }
+  }
+}
+
+static uint16_t sum_part(uint16_t sum, uint8_t * pcm, i32_t len, uint8_t sig)
+{
+  while (len--)
+    sum = (sum+sum+sum) ^ sig ^ *pcm++;
+  return sum;
 }
 
 zz_err_t
@@ -271,15 +341,11 @@ vset_init(zz_vset_t const vset)
    * really help with that.
    */
   imask = vset->iused ? vset->iused : (1l<<nbi)-1;
-#ifdef DEBUG
-  if (1) {
-    char t[21];
-    for (i=0; i<20; ++i)
-      t[i] = ( 1 & (imask>>i) ) ? '-' : '0'+(i+1)%10u;
-    t[20] = 0;
-    dmsg("Used mask: %s\n", t);
-  }
-#endif
+
+  /* GB: $$$ Currently instrument mask does not work properly because
+   *         of loop sequence sometime not having a 'V' command.
+   */
+  imask = ( 1l << nbi ) - 1;
 
   for (i=nused=vset->iused=0; i<20; ++i) {
     const i32_t off = vset->inst[i].len - 222 + 8;
@@ -295,9 +361,9 @@ vset_init(zz_vset_t const vset)
 
     do {
       /* Sanity tests */
-      TAINTED (!(1&(imask>>i)));        /* Used ? */
-      TAINTED (off < 8);                /* inside ?  */
-      TAINTED (off >= bin->len);        /* inside ?  */
+      TAINTED (!(1&(imask>>i)));        /* instrument in used ? */
+      TAINTED (off < 8);                /* offset in range ? */
+      TAINTED (off >= bin->len);        /* offset in range ? */
 
       /* Get sample info */
       pcm = bin->ptr + off;
@@ -310,11 +376,11 @@ vset_init(zz_vset_t const vset)
        * Currently I haven't found a music file that is valid and does
        * not pass them.
        */
-      TAINTED (len & 0xFFFF);
-      TAINTED (lpl & 0xFFFF);
-      TAINTED ((len >>= 16) == 0);
-      TAINTED ((lpl >>= 16) > len);
-      TAINTED (off+len > bin->len);
+      TAINTED (len & 0xFFFF);           /* clean length ? */
+      TAINTED (lpl & 0xFFFF);           /* clean loop ? */
+      TAINTED ((len >>= 16) == 0);      /* have data ? */
+      TAINTED ((lpl >>= 16) > len);     /* loop inside sample ? */
+      TAINTED (off+len > bin->len);     /* sample in range ? */
 
       vset->iused |= 1l << i;
       ++nused;
@@ -325,16 +391,12 @@ vset_init(zz_vset_t const vset)
     } while (0);
 
     if ( !(1 & (vset->iused>>i)) ) {
-      dmsg("I#%02hu is tainted (%s)\n",HU(i+1),tainted);
-      pcm = 0, len = lpl = 0;           /* If not used mark dirty */
+      dmsg("I#%02hu was tainted by (%s)\n",HU(i+1),tainted);
+      pcm = 0;
+      len = lpl = 0;                   /* If not used mark as dirty */
     }
 
-    sum[i] = 0;
-    if (pcm) {
-      int32_t k;
-      for (k=0; k<len; ++k)
-        sum[i] = sum[i]*3^ ( 255 & pcm[k] );
-    }
+    sum[i] = sum_part(0xDEAD, pcm, len, 0);
 
     zz_assert( (!!len) == (1 & (vset->iused>>i)) );
     zz_assert( len < 0x10000 );
@@ -357,91 +419,97 @@ vset_init(zz_vset_t const vset)
     return E_SET;
   }
 
-  /* Loops unroll */
-
-  /* -1- Re-order instruments in memory order. */
-  for (i=tot=0; i<nbi; ++i) {
-    const u32_t len = vset->inst[i].len;
-    idx[i] = i;
-    tot += (len+1) & -2;
-  }
-  zz_assert( tot <= end-beg );
-  sort_inst(vset->inst, idx, nbi);
-
-  /* -2- Compute the unroll size. */
-  unroll = ( divu32(end-beg-tot,nused) - 1 ) & -2;
-  dmsg("%hu/%hu instrument using %lu/%lu bytes unroll:%lu\n",
-       HU(nused), HU(nbi), LU(tot), LU(end-beg), LU(unroll));
-  if (unroll < VSET_UNROLL)
-    wmsg("Have less unroll space than expected -- %lu\n",
-         LU(VSET_UNROLL-unroll));
-
-  /* -3- Unroll starting from bottom to top */
-  for (i=0, e=end; i<nbi; ++i) {
-    inst_t * const inst = vset->inst + idx[i];
-    const u32_t r_len = inst->len;        /* real length */
-    const u32_t a_len = (r_len + 1) & -2; /* aligned length */
-    uint8_t * const pcm = (void *)( (intptr_t) (e-unroll-a_len) & -2);
-
-    if (!a_len)
-      continue;
-    zz_assert( 1 & (vset->iused>>idx[i]) );
-    zz_assert( a_len < 0x10000 );
-    zz_assert( pcm >= beg );
-    zz_assert( pcm+a_len <= end  );
-
-    inst->end = a_len+unroll;
-
-    dmsg("I#%02hu I#%02hu %06lx %c %06lx %lu\n",
-         HU(i+1),HU(idx[i]),
-         LU(pcm-beg),
-         "><"[pcm<=inst->pcm],
-         LU(inst->pcm-beg),
-         LU(inst->len));
-
-    /* Copy and sign PCMs */
-    if (pcm <= inst->pcm)
-      for (j=0; j<r_len; ++j) {
-        zz_assert( pcm+j >= beg );
-        zz_assert( pcm+j < end );
-        pcm[j] = 0x80 ^ inst->pcm[j];
-      }
-    else
-      for (j=r_len-1; j>=0; --j) {
-        zz_assert( pcm+j >= beg );
-        zz_assert( pcm+j < end );
-        pcm[j] = 0x80 ^ inst->pcm[j];
-      }
-    inst->pcm = pcm;
-
-    if (!inst->lpl) {
-      /* Instrument does not loop -- smooth to middle point */
-      int8_t v = (int8_t)pcm[r_len-1]; const i16_t c = -(v<0) & 3;
-      for (j=r_len; j<inst->end && (v=(3*v+c)>>2); ) pcm[j++] = v;
-      for (; j<inst->end; ) pcm[j++] = v;
-    } else {
-      int lpi;
-      /* Copy loop */
-      for(j=lpi=r_len; j<inst->end; ++j) {
-        if (lpi >= r_len)
-          lpi -= inst->lpl;
-        zz_assert(lpi < r_len);
-        zz_assert(lpi >= r_len-inst->lpl);
-        pcm[j] = pcm[lpi++];
-      }
+  if (1) {
+    /* Very small unroll (clobber instrument definition) */
+    for (i=0; i<nbi; ++i) {
+      if (!vset->inst[i].len)
+        continue;
+      unroll_loop(vset->inst[i].pcm-8, vset->inst[i].len+8, 0x80,
+                  vset->inst[i].pcm, vset->inst[i].len, vset->inst[i].lpl);
+      vset->inst[i].pcm -= 8;
+      vset->inst[i].end += 8;
     }
-    e = pcm;
+  } else {
+    /* Loops unroll */
+    /* -1- Re-order instruments in memory order. */
+    for (i=tot=0; i<nbi; ++i) {
+      const u32_t len = vset->inst[i].len;
+      idx[i] = i;
+      tot += (len+1) & -2;
+    }
+    zz_assert( tot <= end-beg );
+    sort_inst(vset->inst, idx, nbi);
+
+    /* -2- Compute the unroll size. */
+    unroll = ( divu32(end-beg-tot,nused) - 1 ) & -2;
+    dmsg("%hu/%hu instrument using %lu/%lu bytes unroll:%lu\n",
+         HU(nused), HU(nbi), LU(tot), LU(end-beg), LU(unroll));
+    /* if (unroll < VSET_UNROLL) */
+    /*   wmsg("Have less unroll space than expected -- %lu\n", */
+    /*        LU(VSET_UNROLL-unroll)); */
+
+    /* -3- Unroll starting from bottom to top */
+    for (i=0, e=end; i<nbi; ++i) {
+      inst_t * const inst = vset->inst + idx[i];
+      const u32_t r_len = inst->len;        /* real length */
+      const u32_t a_len = (r_len + 1) & -2; /* aligned length */
+      uint8_t * const pcm = (void *)( (intptr_t) (e-unroll-a_len) & -2);
+
+      if (!a_len)
+        continue;
+      zz_assert( 1 & (vset->iused>>idx[i]) );
+      zz_assert( a_len < 0x10000 );
+      zz_assert( pcm >= beg );
+      zz_assert( pcm+a_len <= end  );
+
+      inst->end = a_len+unroll;
+
+      dmsg("I#%02hu I#%02hu %06lx %c %06lx %lu\n",
+           HU(i+1),HU(idx[i]),
+           LU(pcm-beg),
+           "><"[pcm<=inst->pcm],
+           LU(inst->pcm-beg),
+           LU(inst->len));
+
+      /* Copy and sign PCMs */
+      if (pcm <= inst->pcm)
+        for (j=0; j<r_len; ++j) {
+          zz_assert( pcm+j >= beg );
+          zz_assert( pcm+j < end );
+          pcm[j] = 0x80 ^ inst->pcm[j];
+        }
+      else
+        for (j=r_len-1; j>=0; --j) {
+          zz_assert( pcm+j >= beg );
+          zz_assert( pcm+j < end );
+          pcm[j] = 0x80 ^ inst->pcm[j];
+        }
+      inst->pcm = pcm;
+
+      if (!inst->lpl) {
+        /* Instrument does not loop -- smooth to middle point */
+        int8_t v = (int8_t)pcm[r_len-1]; const i16_t c = -(v<0) & 3;
+        for (j=r_len; j<inst->end && (v=(3*v+c)>>2); ) pcm[j++] = v;
+        for (; j<inst->end; ) pcm[j++] = v;
+      } else {
+        int lpi;
+        /* Copy loop */
+        for(j=lpi=r_len; j<inst->end; ++j) {
+          if (lpi >= r_len)
+            lpi -= inst->lpl;
+          zz_assert(lpi < r_len);
+          zz_assert(lpi >= r_len-inst->lpl);
+          pcm[j] = pcm[lpi++];
+        }
+      }
+      e = pcm;
+    }
   }
 
+  
   for (i=0; i<20; ++i) {
-    uint16_t s2 = 0;
     inst_t * const inst = vset->inst+i;
-
-    if (inst->len) {
-      int32_t k;
-      for (k=0; k<inst->len; ++k)
-        s2 = s2 * 3 ^ ( 255 & (0x80^inst->pcm[k]) );
-    }
+    uint16_t s2 = sum_part(0xDEAD, inst->pcm, inst->len, 0x80);
     dmsg("I#%02hu sum: %04X %04X\n", HU(i+1), HU(s2), HU(sum[i]));
     zz_assert( s2 == sum[i] );
   }

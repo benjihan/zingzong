@@ -13,7 +13,10 @@
 #define ZZ_DBG_PREFIX "(mix-" METH  ") "
 #include "zz_private.h"
 
-#define SETPCM() *b++  = (int8_t)(pcm[idx>>FP]) << 6; idx += stp
-#define ADDPCM() *b++ += (int8_t)(pcm[idx>>FP]) << 6; idx += stp
+#define OPEPCM(OP) do {                         \
+    zz_assert( &pcm[idx>>FP] < K->end );        \
+    *b++ OP (int8_t)(pcm[idx>>FP]) << 6;        \
+    idx += stp;                                 \
+  } while (0)
 
 #include "mix_common.c"

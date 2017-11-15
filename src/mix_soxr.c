@@ -17,7 +17,7 @@
 #define SOXR_USER_SUPPLY 1             /* 0:no user supply function */
 #endif
 
-#define F32MAX (MIXBLK*8)
+#define F32MAX 48
 #define FLIMAX (F32MAX)
 #define FLOMAX (F32MAX)
 
@@ -29,10 +29,10 @@ struct mix_chan_s {
   soxr_t   soxr;
   double   rate;
 
-  uint8_t *ptr;
-  uint8_t *ptl;
-  uint8_t *pte;
-  uint8_t *end;
+  uint8_t *pta;                         /* base address */
+  uint8_t *ptr;                         /* current address */
+  uint8_t *ptl;                         /* loop address (0=no loop) */
+  uint8_t *pte;                         /* end address */
 
   float   *icur;
   int      ilen;
@@ -64,29 +64,28 @@ struct mix_data_s {
    ---------------------------------------------------------------------- */
 
 static void
-chan_flread(float * const d, mix_chan_t * const K, const int n)
+chan_flread(float * restrict d, mix_chan_t * const K, int n)
 {
-  if (!n) return;
-  zz_assert( n > 0 );
-  zz_assert( n < VSET_UNROLL );
+  while ( n > 0 ) {
+    int l;
 
-  if (!K->ptr)
-    zz_memclr(d,n*sizeof(*d));
-  else {
-    zz_assert( K->ptr < K->pte );
-    i8tofl(d, K->ptr, n);
-
-    if ( (K->ptr += n) >= K->pte ) {
-      if (!K->ptl) {
-        K->ptr = 0;
-      } else {
-        zz_assert( K->ptl < K->pte );
-        K->ptr = &K->ptl[ ( K->ptr - K->pte ) % ( K->pte - K->ptl ) ];
-        zz_assert( K->ptr >= K->ptl );
-        zz_assert( K->ptr <  K->pte );
-      }
+    if (!K->ptr) {
+      zz_memclr(d,n*sizeof(*d));
+      break;
     }
+    zz_assert( K->ptr >= K->pta );
     zz_assert( K->ptr < K->pte );
+
+    l = K->pte - K->ptr;
+    zz_assert( l > 0 );
+
+    if ( l > n )
+      l = n;
+    i8tofl(d, K->ptr, l);
+    d += l;
+    n -= l;
+    if ( (K->ptr += l) == K->pte )
+      K->ptr = K->ptl;
   }
 }
 
@@ -186,10 +185,9 @@ push_soxr(play_t * const P, void * pcm, i16_t N)
     case TRIG_NOTE:
       zz_assert( C->note.ins );
 
-      K->ptr = C->note.ins->pcm;
-      K->pte = K->ptr + C->note.ins->len;
+      K->pte = ( K->pta = K->ptr = C->note.ins->pcm ) + C->note.ins->len;
       K->ptl = C->note.ins->lpl ? (K->pte - C->note.ins->lpl) : 0;
-      K->end = K->ptr + C->note.ins->end;
+      /* K->end = K->pta + C->note.ins->end; */
       C->note.ins = 0;
       if (restart_chan(K))
         return 0;
@@ -235,7 +233,7 @@ push_soxr(play_t * const P, void * pcm, i16_t N)
     int need = N, zero = 0;
 
     if (!K->ptr) {
-      /* Sound stopped. If it's channel A cleat the buffer else simply
+      /* Sound stopped. If it's channel#0 clear the buffer else simply
        * skip.
        */
       if (!k)
@@ -252,7 +250,6 @@ push_soxr(play_t * const P, void * pcm, i16_t N)
 
       if (want > K->omax)
         want = K->omax;
-
 
 #if SOXR_USER_SUPPLY
       idone = 0;
@@ -404,7 +401,7 @@ static zz_err_t init_soxr(play_t * const P, u32_t spr)
         NULL);       /* runtime spec */
 
       if (K->soxr) {
-        /* Set a iorate in the middle. It should matter much as no
+        /* Set a iorate in the middle. It should not matter much as no
          * note is played anyway. */
         K->rate = .5 * ( M->rate_min + M->rate_max );
         err = soxr_set_io_ratio(K->soxr, K->rate, 0);

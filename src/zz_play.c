@@ -137,18 +137,18 @@ int play_chan(play_t * const P, chan_t * const C)
     u32_t const par = U32(seq->par);
     ++seq;
 
-    /* dmsg("%c cmd:%c len:%04hX stp:%08lX par:%08lX\n", */
-    /*      'A'+C->num, (int)cmd, HU(len), LU(stp), LU(par)); */
+    dmsg("%c cmd:%c len:%04hX stp:%08lX par:%08lX\n",
+         'A'+C->num, (int)cmd, HU(len), LU(stp), LU(par));
 
     switch (cmd) {
 
-    case 'F':                           /* End-Voice */
+    case 'F':                           /* Finish */
       seq = C->seq;
       P->has_loop |= C->msk;            /* Set has_loop flags */
       C->loop_sp = C->loops;            /* Safety net */
       break;
 
-    case 'V':                           /* Voice-Change */
+    case 'V':                           /* Voice-Set */
       C->curi = par >> 2;
       break;
 

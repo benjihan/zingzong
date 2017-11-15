@@ -13,9 +13,9 @@
 #error DESC should be defined
 #endif
 
-#ifndef MIXBLK
-# error MIXBLK should be defined
-#endif
+/* #ifndef MIXBLK */
+/* # error MIXBLK should be defined */
+/* #endif */
 
 #if !defined (FP) || (FP > 16) || (FP < 7)
 # error undefined of invalid FP
@@ -38,6 +38,9 @@ struct mix_fp_s {
   mix_chan_t chan[4];
 };
 
+#define SETPCM() OPEPCM(=);
+#define ADDPCM() OPEPCM(+=);
+
 static inline void
 mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
 {
@@ -54,7 +57,6 @@ mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
   if (!K->lpl) {
     /* Instrument does not loop */
     do {
-      zz_assert( K->pcm+(idx>>FP) < K->end );
       ADDPCM();
       /* Have reach end ? */
       if (idx >= K->len) {
@@ -67,7 +69,6 @@ mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
     const u32_t off = K->len - K->lpl;  /* loop start index */
     /* Instrument does loop */
     do {
-      zz_assert( K->pcm+(idx>>FP) < K->end );
       ADDPCM();
       /* Have reach end ? */
       if (idx >= K->len) {
@@ -124,8 +125,6 @@ push_cb(play_t * const P, void * restrict pcm, i16_t N)
   zz_assert( N != 0 );
   zz_assert( N > 0 );
 
-  /* Clear mix buffer */
-  zz_memclr(pcm,N<<1);
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -156,6 +155,10 @@ push_cb(play_t * const P, void * restrict pcm, i16_t N)
     }
   }
 
+  /* Clear mix buffer */
+  zz_memclr(pcm,N<<1);
+
+  /* Add voices */
   for (k=0; k<4; ++k)
     mix_add1(M->chan+k, pcm, N);
 

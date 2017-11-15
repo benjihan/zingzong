@@ -119,9 +119,10 @@
 # define FP 15u                         /* mixer step precision */
 #endif
 
-#define MIXBLK        16u               /*  */
-#define VSET_UNROLL   128u              /* Over estimated */
-#define VSET_XSIZE    (20u*VSET_UNROLL) /* Additional space for loops  */
+/* #define MIXBLK        16u               /\*  *\/ */
+/* #define VSET_UNROLL   128u              /\* Over estimated *\/ */
+/* #define VSET_XSIZE    (20u*VSET_UNROLL) /\* Additional space for loops  *\/ */
+
 #define VSET_MAX_SIZE (1<<19) /* arbitrary .set max size */
 #define SONG_MAX_SIZE 0xFFF0  /* arbitrary .4v max size  */
 #define INFO_MAX_SIZE 2048    /* arbitrary .4q info max size */
