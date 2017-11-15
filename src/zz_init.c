@@ -269,7 +269,7 @@ sort_inst(const inst_t inst[], uint8_t idx[], int nbi)
   /* bubble sort */
   for (perm=1, i=0; perm && i<nbi-1; ++i)
     for (perm=0, j=i+1; j<nbi; ++j)
-      if (inst[idx[i]].pcm < inst[idx[j]].pcm) {
+      if (inst[idx[i]].pcm > inst[idx[j]].pcm) {
         perm = 1;
         idx[i] ^= idx[j];               /* i^j        */
         idx[j] ^= idx[i];               /* j^i^j => i */
@@ -311,12 +311,14 @@ unroll_loop(uint8_t * dst, i32_t max, const uint8_t sig,
   }
 }
 
+#ifdef DEBUG
 static uint16_t sum_part(uint16_t sum, uint8_t * pcm, i32_t len, uint8_t sig)
 {
   while (len--)
     sum = (sum+sum+sum) ^ sig ^ *pcm++;
   return sum;
 }
+#endif
 
 zz_err_t
 vset_init(zz_vset_t const vset)
@@ -328,9 +330,11 @@ vset_init(zz_vset_t const vset)
   uint8_t * e;
   i32_t tot, unroll, j, imask;
   u8_t nused, i;
-  uint8_t idx[20];
-  uint16_t sum[20];
 
+  uint8_t idx[20];
+#ifdef DEBUG
+  uint16_t sum[20];
+#endif
   zz_assert( nbi > 0 && nbi <= 20 );
 
   /* imask is best set before when possible so that unused (but valid)
@@ -347,10 +351,12 @@ vset_init(zz_vset_t const vset)
    */
   imask = ( 1l << nbi ) - 1;
 
-  for (i=nused=vset->iused=0; i<20; ++i) {
+  for (i=nused=tot=vset->iused=0; i<20; ++i) {
     const i32_t off = vset->inst[i].len - 222 + 8;
     u32_t len = 0, lpl = 0;
     uint8_t * pcm = 0;
+
+    idx[i] = i;
 
 #ifdef DEBUG
     const char * tainted = 0;
@@ -396,7 +402,9 @@ vset_init(zz_vset_t const vset)
       len = lpl = 0;                   /* If not used mark as dirty */
     }
 
+#ifdef DEBUG
     sum[i] = sum_part(0xDEAD, pcm, len, 0);
+#endif
 
     zz_assert( (!!len) == (1 & (vset->iused>>i)) );
     zz_assert( len < 0x10000 );
@@ -406,113 +414,43 @@ vset_init(zz_vset_t const vset)
     vset->inst[i].len = len;
     vset->inst[i].lpl = lpl;
     vset->inst[i].pcm = pcm;
-  }
-  dmsg("Instruments: used:%hu/%hu ($%05lX/$%05lX)\n",
-       HU(nused), HU(nbi), LU(vset->iused), LU(imask) );
 
-  /* That's very conservative. we should definitively warn in case any
-   * instrument got dismissed but an error might be a little to rough
+    tot += (len+1) & -2;
+  }
+  dmsg("Instruments: used:%hu/%hu ($%05lX/$%05lX) total:%lu\n",
+       HU(nused), HU(nbi), LU(vset->iused), LU(imask), LU(tot));
+
+  sort_inst(vset->inst, idx, nbi);
+
+  /* Use available space before sample (AVR header) to unroll
+   * loops. The standard mixers don't use unrolled loop anymore but it
+   * might still be useful for other mixers.
    */
-  if (vset->iused != imask) {
-    emsg("(instrument) instrument(s) got dismissed $%06lX != %06lX\n",
-         LU(vset->iused), LU(imask));
-    return E_SET;
+  for (i=0, e=beg; i<nbi; ++i) {
+    inst_t * const inst = vset->inst + idx[i];
+    int o;
+    uint8_t * f;
+
+    if (!inst->len) continue;
+
+    f = &inst->pcm[(inst->len+1)&-2];
+    o = inst->pcm-e;
+
+    dmsg("#%02hu I#%02hu +%04lu %06lx+%04lx\n",
+         HU(i+1), HU(idx[i]), LU(o),
+         LU(inst->pcm-beg), LU(inst->len) );
+    unroll_loop(e, f-e, 0x80, inst->pcm, inst->len, inst->lpl);
+    inst->pcm = e;
+    inst->end = f-e;
+    e = f;
   }
 
-  if (1) {
-    /* Very small unroll (clobber instrument definition) */
-    for (i=0; i<nbi; ++i) {
-      if (!vset->inst[i].len)
-        continue;
-      unroll_loop(vset->inst[i].pcm-8, vset->inst[i].len+8, 0x80,
-                  vset->inst[i].pcm, vset->inst[i].len, vset->inst[i].lpl);
-      vset->inst[i].pcm -= 8;
-      vset->inst[i].end += 8;
-    }
-  } else {
-    /* Loops unroll */
-    /* -1- Re-order instruments in memory order. */
-    for (i=tot=0; i<nbi; ++i) {
-      const u32_t len = vset->inst[i].len;
-      idx[i] = i;
-      tot += (len+1) & -2;
-    }
-    zz_assert( tot <= end-beg );
-    sort_inst(vset->inst, idx, nbi);
-
-    /* -2- Compute the unroll size. */
-    unroll = ( divu32(end-beg-tot,nused) - 1 ) & -2;
-    dmsg("%hu/%hu instrument using %lu/%lu bytes unroll:%lu\n",
-         HU(nused), HU(nbi), LU(tot), LU(end-beg), LU(unroll));
-    /* if (unroll < VSET_UNROLL) */
-    /*   wmsg("Have less unroll space than expected -- %lu\n", */
-    /*        LU(VSET_UNROLL-unroll)); */
-
-    /* -3- Unroll starting from bottom to top */
-    for (i=0, e=end; i<nbi; ++i) {
-      inst_t * const inst = vset->inst + idx[i];
-      const u32_t r_len = inst->len;        /* real length */
-      const u32_t a_len = (r_len + 1) & -2; /* aligned length */
-      uint8_t * const pcm = (void *)( (intptr_t) (e-unroll-a_len) & -2);
-
-      if (!a_len)
-        continue;
-      zz_assert( 1 & (vset->iused>>idx[i]) );
-      zz_assert( a_len < 0x10000 );
-      zz_assert( pcm >= beg );
-      zz_assert( pcm+a_len <= end  );
-
-      inst->end = a_len+unroll;
-
-      dmsg("I#%02hu I#%02hu %06lx %c %06lx %lu\n",
-           HU(i+1),HU(idx[i]),
-           LU(pcm-beg),
-           "><"[pcm<=inst->pcm],
-           LU(inst->pcm-beg),
-           LU(inst->len));
-
-      /* Copy and sign PCMs */
-      if (pcm <= inst->pcm)
-        for (j=0; j<r_len; ++j) {
-          zz_assert( pcm+j >= beg );
-          zz_assert( pcm+j < end );
-          pcm[j] = 0x80 ^ inst->pcm[j];
-        }
-      else
-        for (j=r_len-1; j>=0; --j) {
-          zz_assert( pcm+j >= beg );
-          zz_assert( pcm+j < end );
-          pcm[j] = 0x80 ^ inst->pcm[j];
-        }
-      inst->pcm = pcm;
-
-      if (!inst->lpl) {
-        /* Instrument does not loop -- smooth to middle point */
-        int8_t v = (int8_t)pcm[r_len-1]; const i16_t c = -(v<0) & 3;
-        for (j=r_len; j<inst->end && (v=(3*v+c)>>2); ) pcm[j++] = v;
-        for (; j<inst->end; ) pcm[j++] = v;
-      } else {
-        int lpi;
-        /* Copy loop */
-        for(j=lpi=r_len; j<inst->end; ++j) {
-          if (lpi >= r_len)
-            lpi -= inst->lpl;
-          zz_assert(lpi < r_len);
-          zz_assert(lpi >= r_len-inst->lpl);
-          pcm[j] = pcm[lpi++];
-        }
-      }
-      e = pcm;
-    }
-  }
-
-  
+#ifdef DEBUG
   for (i=0; i<20; ++i) {
-    inst_t * const inst = vset->inst+i;
-    uint16_t s2 = sum_part(0xDEAD, inst->pcm, inst->len, 0x80);
-    dmsg("I#%02hu sum: %04X %04X\n", HU(i+1), HU(s2), HU(sum[i]));
-    zz_assert( s2 == sum[i] );
+    zz_assert(sum_part(0xDEAD,vset->inst[i].pcm,vset->inst[i].len,0x80)
+              == sum[i]);
   }
+#endif
 
   return E_OK;
 }

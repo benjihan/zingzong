@@ -22,9 +22,10 @@ song_parse(song_t *song, vfs_t vfs, uint8_t *hd, u32_t size)
   zz_assert( sizeof(songhd_t) ==  16 );
   zz_assert( sizeof(sequ_t)   ==  12 );
 
-  if ( (ecode = song_init_header(song,hd)) ||
-       (ecode = bin_load(&song->bin, vfs, size, 12, SONG_MAX_SIZE)) ||
-       (ecode = song_init(song)) )
+  if ( 0
+       || (ecode = song_init_header(song,hd))
+       || (ecode = bin_load(&song->bin, vfs, size, 12, SONG_MAX_SIZE))
+       || (ecode = song_init(song)) )
     bin_free(&song->bin);
   return ecode;
 }
