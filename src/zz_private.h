@@ -244,6 +244,7 @@ struct song_s {
   u32_t   iused;             /**< mask of instrument really used.   */
   u32_t   stepmin;           /**< estimated minimal note been used. */
   u32_t   stepmax;           /**< estimated maximal note been used. */
+  u32_t   ticks;             /**< estimated song length in ticks.   */
   sequ_t *seq[4];            /**< pointers to channel sequences.    */
 };
 

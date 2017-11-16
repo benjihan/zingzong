@@ -80,35 +80,39 @@ u16_t seq_idx(const sequ_t * const org, const sequ_t * seq)
   return divu( (intptr_t)seq-(intptr_t)org, sizeof(sequ_t) );
 }
 
+
+
 zz_err_t
 song_init(song_t * song)
 {
-  zz_err_t ecode = E_SNG;
+  zz_err_t ecode=E_SNG;
   u16_t off, size;
-  u32_t iref = 0;
-  u8_t k;
+  u32_t ref=0;
+  u8_t k, has=0, cur=0, ssp=0;
 
-  union {
-    struct {
-      unsigned seq_ins:5, seq_has_note:1, seq_has_wait:1;
-      unsigned blk_ins:5, blk_has_note:1, blk_has_wait:1;
-    };
-    unsigned all;
-  } inf;
+  struct {
+    uint32_t len;
+  } stat[MAX_LOOP+1];
 
   /* sequence to use in case of empty sequence to avoid endless loop
    * condition and allow to properly measure music length.
    */
   static uint8_t nullseq[2][12] = {
     { 0,'R', 0, 1 },                    /* "R"est 1 tick */
-    { 0,'F' }                           /* "F"in */
+    { 0,'F' }                           /* "F"inish      */
   };
+
+  /* Clean-up */
+  song->seq[0] = song->seq[1] = song->seq[2] = song->seq[3] = 0;
+  song->stepmin = song->stepmax = 0;
+  song->iused = 0;
+  song->ticks = 0;
 
   /* Basic parsing of the sequences to find the end. It replaces
    * empty sequences by something that won't loop endlessly and won't
    * disrupt the end of music detection.
    */
-  for (k=0, off=11, size=song->bin->len, song->iused=0;
+  for (k=0, off=11, size=song->bin->len;
        k<4 && off<size;
        off += 12)
   {
@@ -119,43 +123,38 @@ song_init(song_t * song)
     u32_t    const par = U32(seq->par);
 
     if (!song->seq[k]) {
-      song->seq[k] = seq;               /* Sequence */
-      inf.all = 0;
+      /* new sequence starts */
+      song->seq[k] = seq;           /* new channel sequence       */
+      has = 0;                      /* #0:note #1:wait            */
+      cur = 0;                      /* current instrument (0:def) */
+      ssp = 0;                      /* loop stack pointer         */
+      stat[0].len = 0;
     }
 
     switch (cmd) {
+
     case 'F':                           /* Finish */
-      if (!inf.seq_has_note)
+      if (!has)
         song->seq[k] = (sequ_t *) nullseq;
+      if (ssp) {
+        wmsg("(song) %c[%hu] loop not closed -- %hu\n",
+             'A'+k, HU(seq_idx(song->seq[k],seq)), HU(ssp));
+        do {
+          stat[ssp-1].len += stat[ssp].len;
+        } while (--ssp);
+      }
+      dmsg("%c duration: %lu ticks\n",'A'+k, LU(stat[0].len));
+      if ( stat[0].len > song->ticks)
+        song->ticks = stat[0].len;
       ++k;
       break;
 
     case 'P':                           /* Play-Note */
-      inf.seq_has_note = inf.blk_has_note = 1;
-
-      if ( ! inf.seq_ins ) {
-        inf.seq_ins = 1;
-        dmsg("Seq-note without instrument set @%c[%hu]\n",
-             'A'+k, HU(seq_idx(song->seq[k],seq)));
-      } else if ( ! inf.blk_ins ) {
-        dmsg("Blk-note without instrument set @%c[%hu] I%02hu\n",
-             'A'+k, HU(seq_idx(song->seq[k],seq)), HU(inf.seq_ins));
-        inf.blk_ins = inf.seq_ins;
-      }
-
-      if ( ! (song->iused & ( 1l << (inf.seq_ins-1) )))
-        dmsg("I#%02hu used for the first time @%c[%hu]\n",
-             HU(inf.seq_ins), 'A'+k, HU(seq_idx(song->seq[k],seq)));
-      song->iused |= 1l << (inf.seq_ins-1);
+      /* stat[ssp].has_note = 1; */
+      has = 1;
+      song->iused |= 1l << cur;
 
     case 'S':                           /* Slide-To-Note */
-      if ( ! inf.seq_has_note )
-        dmsg("Seq-slide without note @%c[%hu]\n",
-             'A'+k, HU(seq_idx(song->seq[k],seq)));
-      else if ( ! inf.blk_has_note )
-        dmsg("Blk-slide without note @%c[%hu]\n",
-             'A'+k, HU(seq_idx(song->seq[k],seq)));
-
       if (stp < SEQ_STP_MIN || stp > SEQ_STP_MAX) {
         emsg("song: %c[%hu] step out of range -- %08lx\n",
              'A'+k, HU(seq_idx(song->seq[k],seq)), LU(stp));
@@ -174,21 +173,31 @@ song_init(song_t * song)
              'A'+k, HU(seq_idx(song->seq[k],seq)), LU(len));
         goto error;
       }
-      inf.seq_has_wait = inf.blk_has_wait = 1;
+      stat[ssp].len += len;
       break;
 
     case 'l':                           /* Set-Loop-Point */
-    case 'L':                           /* Loop-To-Point */
-      inf.blk_has_note = inf.blk_has_wait = 0;
-      inf.blk_ins = 0;
+      if (ssp == MAX_LOOP) {
+        emsg("song: %c[%hu] loop stack overflow\n",
+             'A'+k, HU(seq_idx(song->seq[k],seq)));
+        goto error;
+      }
+      ++ ssp;
+      zz_memclr( stat+ssp, sizeof(*stat) );
       break;
+
+    case 'L':                           /* Loop-To-Point */
+    {
+      u32_t len = mulu32( stat[ssp].len, (par>>16)+1 );
+      if (ssp > 0) --ssp;
+      stat[ssp].len += len;
+    } break;
+
     case 'V':                           /* Voice-Set */
-      if ( ! (par & ~(31u<<2)) && (par < 4*20u) ) {
-        inf.blk_ins = inf.seq_ins = ( par >> 2 ) + 1;
-        if ( ! (iref & (1l << (inf.seq_ins-1)) ))
-          dmsg("I#%02hu refenced for the first time @%c[%hu]\n",
-               HU(inf.seq_ins), 'A'+k, HU(seq_idx(song->seq[k],seq)));
-        iref |= 1l << (inf.seq_ins-1);
+      cur = par >> 2;
+      if ( cur < 20 && ! ( par & 3 ) ) {
+        ref |= 1l << cur;
+        /* stat[ssp].cur = cur + 1; */
         break;
       }
       emsg("song: %c[%hu] instrument out of range -- %08lx\n",
@@ -209,12 +218,21 @@ song_init(song_t * song)
   }
 
   for ( ;k<4; ++k) {
-    if (inf.seq_has_note) {
+    if (has) {
       /* Add 'F'inish mark */
       sequ_t * const seq = (sequ_t *) (song->bin->ptr+off);
       seq->cmd[0] = 0; seq->cmd[1] = 'F';
       off += 12;
+
+      for (; ssp; --ssp)
+        stat[ssp-1].len += stat[ssp].len;
+
+      dmsg("%c duration: %lu ticks\n",'A'+k, LU(stat[0].len));
+      if ( stat[0].len > song->ticks)
+        song->ticks = stat[0].len;
+
       dmsg("channel %c is truncated\n", 'A'+k);
+      has = 0;
     } else {
       dmsg("channel %c is MIA\n", 'A'+k);
       song->seq[k] = (sequ_t *) nullseq;
@@ -222,8 +240,8 @@ song_init(song_t * song)
   }
 
   dmsg("song steps: %08lx .. %08lx\n", LU(song->stepmin), LU(song->stepmax));
-  dmsg("song iused: %05lx iref:%05lx diff:%lx\n",
-       LU(song->iused), LU(iref), LU(iref^song->iused));
+  dmsg("song instruments: used: %05lx referenced:%05lx difference:%05lx\n",
+       LU(song->iused), LU(ref), LU(ref^song->iused));
   ecode = E_OK;
 
 error:
@@ -265,16 +283,19 @@ vset_init_header(zz_vset_t vset, const void * _hd)
 static void
 sort_inst(const inst_t inst[], uint8_t idx[], int nbi)
 {
-  uint8_t i,j,perm;
+  uint8_t i,j;
+
+  dmsg("sort %hu instruments\n", HU(nbi));
+
   /* bubble sort */
-  for (perm=1, i=0; perm && i<nbi-1; ++i)
-    for (perm=0, j=i+1; j<nbi; ++j)
+  for (i=0; i<nbi-1; ++i)
+    for (j=i+1; j<nbi; ++j) {
       if (inst[idx[i]].pcm > inst[idx[j]].pcm) {
-        perm = 1;
         idx[i] ^= idx[j];               /* i^j        */
         idx[j] ^= idx[i];               /* j^i^j => i */
         idx[i] ^= idx[j];               /* i^i^j => j */
       }
+    }
 }
 
 static void
@@ -326,9 +347,9 @@ vset_init(zz_vset_t const vset)
   const u8_t nbi = vset->nbi;
   bin_t * const bin = vset->bin;
   uint8_t * const beg = bin->ptr;
-  uint8_t * const end = beg + bin->max;
+  /* uint8_t * const end = beg + bin->max; */
   uint8_t * e;
-  i32_t tot, unroll, j, imask;
+  i32_t tot, /* unroll, j, */ imask;
   u8_t nused, i;
 
   uint8_t idx[20];
@@ -422,22 +443,30 @@ vset_init(zz_vset_t const vset)
 
   sort_inst(vset->inst, idx, nbi);
 
+  /* dmsg("-------------------------------\n"); */
+  /* for (i=0; i<20; ++i) { */
+  /*   inst_t * const I = vset->inst + idx[i]; */
+
+  /*   dmsg("#%02hu I#%02hu [$%05lX:$%05lX:$%05lX]\n", */
+  /*        HU(i+1),HU(idx[i]+1), */
+  /*        LU(I->pcm-beg), LU(&I->pcm[I->len-I->lpl]-beg), */
+  /*        LU(&I->pcm[I->len]-beg)); */
+  /* } */
+  /* dmsg("-------------------------------\n"); */
+
   /* Use available space before sample (AVR header) to unroll
    * loops. The standard mixers don't use unrolled loop anymore but it
    * might still be useful for other mixers.
    */
   for (i=0, e=beg; i<nbi; ++i) {
     inst_t * const inst = vset->inst + idx[i];
-    int o;
     uint8_t * f;
 
     if (!inst->len) continue;
 
     f = &inst->pcm[(inst->len+1)&-2];
-    o = inst->pcm-e;
-
-    dmsg("#%02hu I#%02hu +%04lu %06lx+%04lx\n",
-         HU(i+1), HU(idx[i]), LU(o),
+    dmsg("#%02hu I#%02hu +%05lu %06lx+%04lx\n",
+         HU(i+1), HU(idx[i]+1), LU(inst->pcm-e),
          LU(inst->pcm-beg), LU(inst->len) );
     unroll_loop(e, f-e, 0x80, inst->pcm, inst->len, inst->lpl);
     inst->pcm = e;

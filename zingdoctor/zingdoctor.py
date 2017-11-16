@@ -243,7 +243,7 @@ class Chan:
 
 
     def __init__(self, num):
-        if num <0 or num > 3:
+        if num < 0 or num > 3:
             raise Chan.Err('Invalid channel number -- '+repr(num))
         self.num = num          # channel number [0..3]
         self.tag = chr(65+self.num)
@@ -573,7 +573,7 @@ class Avr:
 class Inst:
     class Err(Error): pass
 
-    maxsize = 128<<10           # 128KB seems reasonnable
+    maxsize = 128<<10           # 128KiB seems reasonnable
 
     def __eq__(self,other):
         return \
