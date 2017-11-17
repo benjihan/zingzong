@@ -126,8 +126,13 @@
 #define VSET_MAX_SIZE (1<<19) /* arbitrary .set max size */
 #define SONG_MAX_SIZE 0xFFF0  /* arbitrary .4v max size  */
 #define INFO_MAX_SIZE 2048    /* arbitrary .4q info max size */
-#define MAX_LOOP      67      /* max loop depth (singsong.prg) */
 
+/* The size of the loop stack in the singsong.prg program is *67*.
+ * The maximum depth encountered so far in a Quartet module is *6*.
+ */
+#ifndef MAX_LOOP
+#define MAX_LOOP      15
+#endif
 #define SEQ_STP_MIN   0x04C1B
 #define SEQ_STP_MAX   0x50A28
 
@@ -219,7 +224,7 @@ struct vset_s {
   bin_t *bin;                /**< voiceset data container.          */
   u8_t   khz;                /**< sampling rate from .set.          */
   u8_t   nbi;                /**< number of instrument [1..20].     */
-  u32_t  iused;              /**< mask of instrument really used.   */
+  u32_t  iref;               /**< mask of instrument referenced.    */
   inst_t inst[20];           /**< instrument definitions.           */
 };
 
@@ -241,7 +246,8 @@ struct song_s {
   uint8_t tempo;             /**< header tempo.                     */
   uint8_t sigm;              /**< header signature numerator.       */
   uint8_t sigd;              /**< header signature denominator.     */
-  u32_t   iused;             /**< mask of instrument really used.   */
+  u32_t   iuse;              /**< mask of instrument really used.   */
+  u32_t   iref;              /**< mask of instrument referened.     */
   u32_t   stepmin;           /**< estimated minimal note been used. */
   u32_t   stepmax;           /**< estimated maximal note been used. */
   u32_t   ticks;             /**< estimated song length in ticks.   */

@@ -80,19 +80,28 @@ u16_t seq_idx(const sequ_t * const org, const sequ_t * seq)
   return divu( (intptr_t)seq-(intptr_t)org, sizeof(sequ_t) );
 }
 
+struct loop_stack_s {
+  uint32_t len;
+};
+typedef struct loop_stack_s loop_stack_t[MAX_LOOP+1];
 
+/* collapse loop stack */
+static uint32_t loopstack_collapse(loop_stack_t loops, u8_t ssp)
+{
+  zz_assert( ssp <= MAX_LOOP );
+  for ( ; ssp ; --ssp )
+    loops[ssp-1].len += loops[ssp].len;
+  return loops[0].len;
+}
 
 zz_err_t
 song_init(song_t * song)
 {
   zz_err_t ecode=E_SNG;
   u16_t off, size;
-  u32_t ref=0;
-  u8_t k, has=0, cur=0, ssp=0;
+  u8_t k, has=0, cur=0, ssp=0/* , max_ssp=0 */;
 
-  struct {
-    uint32_t len;
-  } stat[MAX_LOOP+1];
+  loop_stack_t loops;
 
   /* sequence to use in case of empty sequence to avoid endless loop
    * condition and allow to properly measure music length.
@@ -105,7 +114,7 @@ song_init(song_t * song)
   /* Clean-up */
   song->seq[0] = song->seq[1] = song->seq[2] = song->seq[3] = 0;
   song->stepmin = song->stepmax = 0;
-  song->iused = 0;
+  song->iuse = song->iref = 0;
   song->ticks = 0;
 
   /* Basic parsing of the sequences to find the end. It replaces
@@ -128,31 +137,29 @@ song_init(song_t * song)
       has = 0;                      /* #0:note #1:wait            */
       cur = 0;                      /* current instrument (0:def) */
       ssp = 0;                      /* loop stack pointer         */
-      stat[0].len = 0;
+      loops[0].len = 0;
     }
 
     switch (cmd) {
 
     case 'F':                           /* Finish */
-      if (!has)
+      if (!has) {
         song->seq[k] = (sequ_t *) nullseq;
-      if (ssp) {
+        loops[0].len  = 1;
+      }
+      if (ssp)
         wmsg("(song) %c[%hu] loop not closed -- %hu\n",
              'A'+k, HU(seq_idx(song->seq[k],seq)), HU(ssp));
-        do {
-          stat[ssp-1].len += stat[ssp].len;
-        } while (--ssp);
-      }
-      dmsg("%c duration: %lu ticks\n",'A'+k, LU(stat[0].len));
-      if ( stat[0].len > song->ticks)
-        song->ticks = stat[0].len;
+      loopstack_collapse(loops,ssp);
+      dmsg("%c duration: %lu ticks\n",'A'+k, LU(loops[0].len));
+      if ( loops[0].len > song->ticks)
+        song->ticks = loops[0].len;
       ++k;
       break;
 
     case 'P':                           /* Play-Note */
-      /* stat[ssp].has_note = 1; */
       has = 1;
-      song->iused |= 1l << cur;
+      song->iuse |= 1l << cur;
 
     case 'S':                           /* Slide-To-Note */
       if (stp < SEQ_STP_MIN || stp > SEQ_STP_MAX) {
@@ -173,7 +180,7 @@ song_init(song_t * song)
              'A'+k, HU(seq_idx(song->seq[k],seq)), LU(len));
         goto error;
       }
-      stat[ssp].len += len;
+      loops[ssp].len += len;
       break;
 
     case 'l':                           /* Set-Loop-Point */
@@ -183,26 +190,26 @@ song_init(song_t * song)
         goto error;
       }
       ++ ssp;
-      zz_memclr( stat+ssp, sizeof(*stat) );
+      /* if (ssp > max_ssp) max_ssp = ssp; */
+      zz_memclr( loops+ssp, sizeof(*loops) );
       break;
 
     case 'L':                           /* Loop-To-Point */
     {
-      u32_t len = mulu32( stat[ssp].len, (par>>16)+1 );
+      u32_t len = loops[ssp].len;
       if (ssp > 0) --ssp;
-      stat[ssp].len += len;
+      loops[ssp].len += len + mulu32(len,par>>16);
     } break;
 
     case 'V':                           /* Voice-Set */
       cur = par >> 2;
-      if ( cur < 20 && ! ( par & 3 ) ) {
-        ref |= 1l << cur;
-        /* stat[ssp].cur = cur + 1; */
-        break;
+      if ( cur >= 20 || (par & 3) ) {
+        emsg("song: %c[%hu] instrument out of range -- %08lx\n",
+             'A'+k, HU(seq_idx(song->seq[k],seq)), LU(par));
+        goto error;
       }
-      emsg("song: %c[%hu] instrument out of range -- %08lx\n",
-           'A'+k, HU(seq_idx(song->seq[k],seq)), LU(par));
-      goto error;
+      song->iref |= 1l << cur;
+      break;
 
     default:
       emsg("song: %c[%hu] invalid sequence -- %04hx-%04hx-%08lx-%08lx\n",
@@ -211,6 +218,8 @@ song_init(song_t * song)
       goto error;
     }
   }
+
+  /* dmsg("loop-depth: %hu\n",HU(max_ssp)); */
 
   if ( (off -= 11) != song->bin->len) {
     dmsg("garbage data after voice sequences -- %lu bytes\n",
@@ -224,12 +233,10 @@ song_init(song_t * song)
       seq->cmd[0] = 0; seq->cmd[1] = 'F';
       off += 12;
 
-      for (; ssp; --ssp)
-        stat[ssp-1].len += stat[ssp].len;
-
-      dmsg("%c duration: %lu ticks\n",'A'+k, LU(stat[0].len));
-      if ( stat[0].len > song->ticks)
-        song->ticks = stat[0].len;
+      loopstack_collapse(loops,ssp);
+      dmsg("%c duration: %lu ticks\n",'A'+k, LU(loops[0].len));
+      if ( loops[0].len > song->ticks)
+        song->ticks = loops[0].len;
 
       dmsg("channel %c is truncated\n", 'A'+k);
       has = 0;
@@ -241,7 +248,7 @@ song_init(song_t * song)
 
   dmsg("song steps: %08lx .. %08lx\n", LU(song->stepmin), LU(song->stepmax));
   dmsg("song instruments: used: %05lx referenced:%05lx difference:%05lx\n",
-       LU(song->iused), LU(ref), LU(ref^song->iused));
+       LU(song->iuse), LU(song->iref), LU(song->iref^song->iuse));
   ecode = E_OK;
 
 error:
@@ -265,8 +272,8 @@ vset_init_header(zz_vset_t vset, const void * _hd)
   /* header */
   vset->khz = hd[0];
   vset->nbi = hd[1]-1;
-  dmsg("vset: spr:%hukHz, ins:%hu/0x%hx\n",
-       HU(vset->khz), HU(vset->nbi), HU(vset->iused));
+  dmsg("vset: spr:%hukHz, ins:%hu/0x%05hx\n",
+       HU(vset->khz), HU(vset->nbi), HU(vset->iref));
 
   if (is_valid_khz(vset->khz) && is_valid_ins(vset->nbi)) {
     i8_t i;
@@ -296,6 +303,14 @@ sort_inst(const inst_t inst[], uint8_t idx[], int nbi)
         idx[i] ^= idx[j];               /* i^i^j => j */
       }
     }
+
+#ifdef DEBUG
+  /* verify */
+  for (i=0; i<nbi-1; ++i) {
+    dmsg("#%02hu %p %p\n", HU(i), inst[idx[i]].pcm , inst[idx[i+1]].pcm);
+    zz_assert( inst[idx[i]].pcm <= inst[idx[i+1]].pcm );
+  }
+#endif
 }
 
 static void
@@ -349,7 +364,7 @@ vset_init(zz_vset_t const vset)
   uint8_t * const beg = bin->ptr;
   /* uint8_t * const end = beg + bin->max; */
   uint8_t * e;
-  i32_t tot, /* unroll, j, */ imask;
+  i32_t tot, /* unroll, j, */ imsk;
   u8_t nused, i;
 
   uint8_t idx[20];
@@ -358,21 +373,20 @@ vset_init(zz_vset_t const vset)
 #endif
   zz_assert( nbi > 0 && nbi <= 20 );
 
-  /* imask is best set before when possible so that unused (but valid)
-   * instruments can be ignored. This give a little more space to
-   * unroll loops.
+  /* imsk is best set before when possible so that unused (yet valid)
+   * instruments can be ignored. This gives a little more space to
+   * unroll loops and save a bit of processing during init.
    *
-   * Unfortunately the way the loader work at the moment does not
-   * really help with that.
+   * GB: Currently using the referenced instrument mask instead of
+   * used instrument mask. That's because in some cases where an
+   * instrument is selected at the end of a loop it can be used
+   * without being properly detected (due to init code not following
+   * loops). It's possible (yet unlikely) for an instrument to be
+   * referenced but not being used. That's the lesser of two evils.
    */
-  imask = vset->iused ? vset->iused : (1l<<nbi)-1;
+  imsk = vset->iref ? vset->iref : (1l<<nbi)-1;
 
-  /* GB: $$$ Currently instrument mask does not work properly because
-   *         of loop sequence sometime not having a 'V' command.
-   */
-  imask = ( 1l << nbi ) - 1;
-
-  for (i=nused=tot=vset->iused=0; i<20; ++i) {
+  for (i=nused=tot=vset->iref=0; i<20; ++i) {
     const i32_t off = vset->inst[i].len - 222 + 8;
     u32_t len = 0, lpl = 0;
     uint8_t * pcm = 0;
@@ -388,7 +402,7 @@ vset_init(zz_vset_t const vset)
 
     do {
       /* Sanity tests */
-      TAINTED (!(1&(imask>>i)));        /* instrument in used ? */
+      TAINTED (!(1&(imsk>>i)));        /* instrument in used ? */
       TAINTED (off < 8);                /* offset in range ? */
       TAINTED (off >= bin->len);        /* offset in range ? */
 
@@ -409,7 +423,7 @@ vset_init(zz_vset_t const vset)
       TAINTED ((lpl >>= 16) > len);     /* loop inside sample ? */
       TAINTED (off+len > bin->len);     /* sample in range ? */
 
-      vset->iused |= 1l << i;
+      vset->iref |= 1l << i;
       ++nused;
       dmsg("I#%02hu [$%05lX:$%05lX:$%05lX] [$%05lX:$%05lX:$%05lX]\n",
            HU(i+1),
@@ -417,7 +431,7 @@ vset_init(zz_vset_t const vset)
            LU(off), LU(off+len-lpl), LU(off+len));
     } while (0);
 
-    if ( !(1 & (vset->iused>>i)) ) {
+    if ( !(1 & (vset->iref>>i)) ) {
       dmsg("I#%02hu was tainted by (%s)\n",HU(i+1),tainted);
       pcm = 0;
       len = lpl = 0;                   /* If not used mark as dirty */
@@ -427,7 +441,7 @@ vset_init(zz_vset_t const vset)
     sum[i] = sum_part(0xDEAD, pcm, len, 0);
 #endif
 
-    zz_assert( (!!len) == (1 & (vset->iused>>i)) );
+    zz_assert( (!!len) == (1 & (vset->iref>>i)) );
     zz_assert( len < 0x10000 );
     zz_assert( lpl <= len );
 
@@ -439,7 +453,7 @@ vset_init(zz_vset_t const vset)
     tot += (len+1) & -2;
   }
   dmsg("Instruments: used:%hu/%hu ($%05lX/$%05lX) total:%lu\n",
-       HU(nused), HU(nbi), LU(vset->iused), LU(imask), LU(tot));
+       HU(nused), HU(nbi), LU(vset->iref), LU(imsk), LU(tot));
 
   sort_inst(vset->inst, idx, nbi);
 

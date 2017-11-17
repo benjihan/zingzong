@@ -194,14 +194,10 @@ int play_chan(play_t * const P, chan_t * const C)
     case 'R':                       /* Rest */
       C->trig     = TRIG_STOP;
       C->wait     = len;
-
-      /* GB: Should I ? What if a slide happens after a rest ? It does
-       *     not really make sense but technically it's
-       *     possible. We'll see if it triggers the zz_assert.
-       *
-       * GB: See note above. It happens so I shouldn't !
-       *
-       * C->note.cur = 0;
+      C->note.stp = 0;
+      C->note.cur = 0;
+      /* GB: The original singsong.prg actually set the current note
+       *     to 0.
        */
       break;
 
@@ -493,13 +489,9 @@ zz_init(play_t * P, u16_t rate, u32_t maxms)
     return E_ARG;
 
   P->rate = 0;
-  ecode = E_SNG;
-  if (!P->song.iused)
-    goto error;
-
   P->ms_max = maxms;
   ecode = play_init(P);
-  if (ecode)
+  if (E_OK != ecode)
     goto error;
 
   if (!rate)
@@ -532,7 +524,7 @@ zz_setup(play_t * P, u8_t mid, u32_t spr)
     goto error;
 
   ecode = E_SET;
-  if (!P->vset.iused)
+  if (!P->vset.iref)
     goto error;
 
   ecode = E_MIX;

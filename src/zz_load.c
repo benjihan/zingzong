@@ -465,7 +465,7 @@ q4_load(vfs_t vfs, q4_t *q4)
     if (E_OK == ecode)
       ecode = song_parse(q4->song, vfs, hd, q4->songsz-16);
     if (E_OK == ecode && q4->vset)
-      q4->vset->iused = q4->song->iused;
+      q4->vset->iref = q4->song->iref;
   } else
     ecode = vfs_seek(vfs, q4->songsz, ZZ_SEEK_CUR);
 
