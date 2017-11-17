@@ -218,7 +218,6 @@ int play_chan(play_t * const P, chan_t * const C)
       struct loop_s * l = C->loop_sp-1;
 
       if (l < C->loops) {
-        ;
         C->loop_sp = (l = C->loops) + 1;
         l->cnt = 0;
         l->off = 0;
@@ -426,6 +425,11 @@ zz_measure(play_t * P, u32_t ms_max)
     P->ms_max = save_ms_max;
     P->ms_len = P->code ? ZZ_EOF : 0;
   } else {
+    if ( P->tick-1 != P->song.ticks ) {
+      wmsg("measured ticks differs ? play(%lu) != init(%lu)\n",
+           LU(P->tick-1) , LU(P->song.ticks));
+    }
+    zz_assert ( P->tick-1 == P->song.ticks );
     P->ms_max = P->ms_len = P->ms_pos;
   }
 

@@ -148,7 +148,7 @@ song_init(song_t * song)
         loops[0].len  = 1;
       }
       if (ssp)
-        wmsg("(song) %c[%hu] loop not closed -- %hu\n",
+        dmsg("(song) %c[%hu] loop not closed -- %hu\n",
              'A'+k, HU(seq_idx(song->seq[k],seq)), HU(ssp));
       loopstack_collapse(loops,ssp);
       dmsg("%c duration: %lu ticks\n",'A'+k, LU(loops[0].len));
@@ -189,7 +189,7 @@ song_init(song_t * song)
              'A'+k, HU(seq_idx(song->seq[k],seq)));
         goto error;
       }
-      ++ ssp;
+      ++ssp;
       /* if (ssp > max_ssp) max_ssp = ssp; */
       zz_memclr( loops+ssp, sizeof(*loops) );
       break;
@@ -287,30 +287,48 @@ vset_init_header(zz_vset_t vset, const void * _hd)
   return ecode;
 }
 
-static void
-sort_inst(const inst_t inst[], uint8_t idx[], int nbi)
+static u8_t
+sort_inst(const inst_t inst[], uint8_t idx[], u32_t iuse)
 {
-  uint8_t i,j;
+  uint8_t nbi;
 
-  dmsg("sort %hu instruments\n", HU(nbi));
+  /* while instruments remaining */
+  for ( nbi=0; iuse; ) {
+    u8_t i, j; u32_t irem;
 
-  /* bubble sort */
-  for (i=0; i<nbi-1; ++i)
-    for (j=i+1; j<nbi; ++j) {
-      if (inst[idx[i]].pcm > inst[idx[j]].pcm) {
-        idx[i] ^= idx[j];               /* i^j        */
-        idx[j] ^= idx[i];               /* j^i^j => i */
-        idx[i] ^= idx[j];               /* i^i^j => j */
+    /* find first */
+    for (i=0; ! ( iuse & (1l<<i) )  ; ++i)
+      ;
+    irem = iuse & ~(1l<<i);
+    zz_assert ( inst[i].pcm );
+    zz_assert ( inst[i].len );
+
+    /* find best */
+    for (j=i+1; irem; ++j) {
+      if (irem & (1l<<j)) {
+        irem &= ~(1l<<j);
+        zz_assert ( inst[j].pcm );
+        zz_assert ( inst[j].len );
+        if ( inst[j].pcm < inst[i].pcm )
+          i = j;
       }
     }
+    idx[nbi++] = i;
+    iuse &= ~(1l<<i);
+  }
 
 #ifdef DEBUG
-  /* verify */
-  for (i=0; i<nbi-1; ++i) {
-    dmsg("#%02hu %p %p\n", HU(i), inst[idx[i]].pcm , inst[idx[i+1]].pcm);
-    zz_assert( inst[idx[i]].pcm <= inst[idx[i+1]].pcm );
+  if (1) {
+    u8_t i;
+    /* verify */
+    dmsg("-------------------------------\n");
+    dmsg("Sorted #%hu instruments\n\n", HU(nbi));
+    for (i=0; i<nbi; ++i)
+      dmsg("#%02hu I#%02hu %p\n", HU(i), HU(idx[i]), inst[idx[i]].pcm);
+    dmsg("\n");
   }
 #endif
+  return nbi;
 }
 
 static void
@@ -356,14 +374,18 @@ static uint16_t sum_part(uint16_t sum, uint8_t * pcm, i32_t len, uint8_t sig)
 }
 #endif
 
+#define PTR_ALIGN(ADR,VAL) \
+  ( ( (intptr_t)(ADR) + ((intptr_t)(VAL)-1) ) & -(intptr_t)(VAL) )
+#define SPL_ALIGN(ADR) PTR_ALIGN(ADR,4)
+
 zz_err_t
 vset_init(zz_vset_t const vset)
 {
-  const u8_t nbi = vset->nbi;
+  u8_t nbi = vset->nbi;
   bin_t * const bin = vset->bin;
-  uint8_t * const beg = bin->ptr;
-  /* uint8_t * const end = beg + bin->max; */
-  uint8_t * e;
+  intptr_t const beg = (intptr_t)bin->ptr;
+  intptr_t const end = beg + bin->max;
+
   i32_t tot, /* unroll, j, */ imsk;
   u8_t nused, i;
 
@@ -390,8 +412,6 @@ vset_init(zz_vset_t const vset)
     const i32_t off = vset->inst[i].len - 222 + 8;
     u32_t len = 0, lpl = 0;
     uint8_t * pcm = 0;
-
-    idx[i] = i;
 
 #ifdef DEBUG
     const char * tainted = 0;
@@ -455,38 +475,77 @@ vset_init(zz_vset_t const vset)
   dmsg("Instruments: used:%hu/%hu ($%05lX/$%05lX) total:%lu\n",
        HU(nused), HU(nbi), LU(vset->iref), LU(imsk), LU(tot));
 
-  sort_inst(vset->inst, idx, nbi);
+  nbi = sort_inst(vset->inst, idx, imsk );
 
-  /* dmsg("-------------------------------\n"); */
-  /* for (i=0; i<20; ++i) { */
-  /*   inst_t * const I = vset->inst + idx[i]; */
-
-  /*   dmsg("#%02hu I#%02hu [$%05lX:$%05lX:$%05lX]\n", */
-  /*        HU(i+1),HU(idx[i]+1), */
-  /*        LU(I->pcm-beg), LU(&I->pcm[I->len-I->lpl]-beg), */
-  /*        LU(&I->pcm[I->len]-beg)); */
-  /* } */
-  /* dmsg("-------------------------------\n"); */
+  dmsg("-------------------------------\n");
+  for (i=0; i<nbi; ++i) {
+    inst_t * const I = vset->inst + idx[i];
+    dmsg("#%02hu I#%02hu [$%05lX:$%05lX:$%05lX]\n",
+         HU(i+1),HU(idx[i]+1),
+         LU(I->pcm-beg), LU(&I->pcm[I->len-I->lpl]-beg),
+         LU(&I->pcm[I->len]-beg));
+  }
+  dmsg("-------------------------------\n");
 
   /* Use available space before sample (AVR header) to unroll
    * loops. The standard mixers don't use unrolled loop anymore but it
    * might still be useful for other mixers.
    */
+#if 1
+  /* Just change sign */
+  for (i=0; i<nbi; ++i) {
+    inst_t * const I = vset->inst + idx[i];
+    unroll_loop(I->pcm, I->len, 0x80,
+                I->pcm, I->len, I->lpl);
+  }
+#else
+  
   for (i=0, e=beg; i<nbi; ++i) {
     inst_t * const inst = vset->inst + idx[i];
-    uint8_t * f;
 
-    if (!inst->len) continue;
 
-    f = &inst->pcm[(inst->len+1)&-2];
-    dmsg("#%02hu I#%02hu +%05lu %06lx+%04lx\n",
-         HU(i+1), HU(idx[i]+1), LU(inst->pcm-e),
-         LU(inst->pcm-beg), LU(inst->len) );
-    unroll_loop(e, f-e, 0x80, inst->pcm, inst->len, inst->lpl);
+    /* pcm                                                              end
+     *  |--+-------------------------------------------------------------|
+     *     e
+     */
+
+
+
+    if (inst->len) {
+      intptr_t const p = (intptr_t) inst->pcm;
+      intptr_t const f = p+inst->len;
+      intptr_t const s = i
+
+      intptr_t l;
+
+      zz_assert ( p >= beg && p <  end);
+      zz_assert ( f >  beg && f <= end );
+
+      /* p: sample start address
+       * f: sample end address
+       * e: inferior limit (end of previous instrument)
+       * s: superior line (start of next instrument)
+       * l: unrolled length
+       */
+
+      e = SPL_ALIGN(e);
+
+      dmsg("#%02hu I#%02hu gap:+%05lu [%06lx+%04lx]\n",
+           HU(i+1), HU(idx[i]+1), LU(p-e),
+           LU(p-(intptr_t)beg), LU(inst->len) );
+
+      a = SPL_ALIGN(e+inst->len+256);
+      if (a>
+
+
+
+      unroll_loop(e, f-e, 0x80, inst->pcm, inst->len, inst->lpl);
     inst->pcm = e;
     inst->end = f-e;
-    e = f;
+
+               e = f;
   }
+#endif
 
 #ifdef DEBUG
   for (i=0; i<20; ++i) {
