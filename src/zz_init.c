@@ -334,29 +334,19 @@ change_sign(uint8_t * dst, uint8_t * src, u16_t len)
 }
 
 static void
-unroll_loop(uint8_t * dst, i32_t max,
-            uint8_t * src, u16_t len, const u16_t lpl)
+unroll_loop(uint8_t * dst, uint8_t * end, i32_t lpl)
 {
-  max -= len;
-
-  zz_assert( len );
-  zz_assert( max >= 0 );
-  zz_assert( dst <= src );
-
-  if (src == dst)
-    src = dst += len;
-  else
-    do { *dst++ = *src++; } while ( --len );
-
+  zz_assert( dst < end );
   if (lpl)
-    for ( src=dst-lpl; max; --max)
-      *dst++ = *src++;
+    do {
+     *dst = dst[-lpl];
+    } while (++dst < end);
   else {
-    i16_t v, r;
-    for (v=(int8_t)dst[-1], r=0 ; max; --max) {
-      v = 3*v+r; r = v & 3; v >>= 2;
-      *dst++ = v;
-    }
+    i16_t r=0, v = (int8_t) dst[-1];
+    do {
+      v = 3*v+r; r = v & 3;
+      *dst = v >> 2;
+    } while (++dst < end);
   }
 }
 
@@ -368,14 +358,6 @@ static uint16_t sum_part(uint16_t sum, uint8_t * pcm, i32_t len, uint8_t sig)
   return sum;
 }
 #endif
-
-static inline u32_t int_align(const u32_t ptr, const u8_t align)
-{
-  const u32_t mask = (u32_t) align - 1;
-  return (ptr + mask) & ~mask;
-}
-
-#define INT_ALIGN(ADR) int_align((ADR),sizeof(int))
 
 zz_err_t
 vset_init(zz_vset_t const vset)
@@ -478,7 +460,7 @@ vset_init(zz_vset_t const vset)
   dmsg("Instruments: used:%hu/%hu ($%05lX/$%05lX)\n",
        HU(nbi), HU(vset->nbi), LU(vset->iref), LU(imsk));
 
-#ifdef DEBUG_LOG
+#if 0 && defined DEBUG_LOG
   dmsg("-------------------------------\n");
   for (i=0; i<nbi; ++i) {
     inst_t * const I = vset->inst + idx[i];
@@ -490,22 +472,12 @@ vset_init(zz_vset_t const vset)
   dmsg("-------------------------------\n");
 #endif
 
-  /* Use available space before sample (AVR header) to unroll
-   * loops. The standard mixers don't use unrolled loop anymore but it
-   * might still be useful for other mixers.
-   */
-#if 0
+  /* 3 pass loop unroll is the only way to unsure not to trash some
+   * sample during the process. */
 
-  /* Just change sign */
-  for (i=0; i<nbi; ++i) {
-    inst_t * const I = vset->inst + idx[i];
-    unroll_loop(I->pcm, I->len, 0x80,
-                I->pcm, I->len, I->lpl);
-  }
-
-#else
-  /* Stack all samples at the bottom of the buffer, changing sign in
-   * the process.
+  /* Pass#1: Stack all samples at the bottom of the buffer; changing
+   *         sign in the process and computing the total space needed
+   *         to store them all.
    */
   for (i=1, e=end, tot=0; i<=nbi; ++i) {
     inst_t * const inst = &vset->inst[idx[nbi-i]];
@@ -513,26 +485,40 @@ vset_init(zz_vset_t const vset)
     inst->pcm = e;
     tot += inst->len;
   }
-
   unroll = divu32(bin->max-tot, nbi);
   dmsg("total space is: %lu/%lu +%lu/spl\n",
        LU(tot), LU(bin->max),LU(unroll));
 
-  zz_assert(unroll >= 8);
-  if (unroll > 1024)
-    unroll = 1024;
+  /* We really need at least an amount of 2 unrolled pcm for the
+   * quadratic interpolation to work properly. As the sample have an 8
+   * bytes header it should always be alright.
+   */
+  zz_assert(unroll >= 2);
 
+  /* Pass#2: Move the sample to their finale location. */
   for (i=0, e=beg; i<nbi; ++i) {
+    const intptr_t align = 2-1; // $$$
     inst_t * const inst = &vset->inst[idx[i]];
-    uint8_t * const l = e + INT_ALIGN( inst->len + unroll );;
+    uint8_t * const a = (uint8_t *)((intptr_t) (e + align) & ~align);
+
     zz_assert( inst->pcm );
     zz_assert( inst->len );
-    unroll_loop(e, l-e, inst->pcm, inst->len, inst->lpl);
-    inst->pcm = e;
-    inst->end = l-e;
-    e = l;
+    zz_memcpy(a, inst->pcm, inst->len); /* zz_memcpy() is memmove() */
+    inst->pcm = a;
+    e += inst->len+unroll;
   }
-#endif
+
+  /* Pass#3 finally unroll the loop */
+  for (i=0; i<nbi; ) {
+    inst_t * const inst = &vset->inst[idx[i]];
+    uint8_t * pcm = inst->pcm;
+    uint8_t * mcp = ++i < nbi ? vset->inst[idx[i]].pcm : end;
+
+    inst->end = mcp-pcm;
+    pcm += inst->len;
+    zz_assert(pcm+2 < mcp);
+    unroll_loop(pcm, mcp, inst->lpl);
+  }
 
 #ifdef DEBUG
   for (i=0; i<20; ++i) {

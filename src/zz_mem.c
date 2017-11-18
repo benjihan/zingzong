@@ -255,12 +255,19 @@ void zz_mem(zz_new_t user_newf, zz_del_t user_delf)
 void * zz_memcpy(void * restrict _d, const void * _s, zz_u32_t n)
 {
 #ifdef NO_LIBC
-  uint8_t * d = _d; const uint8_t * s = _s;
-  while (n--) *d++ = *s++;
+  if (n) {
+    uint8_t * d = _d; const uint8_t * s = _s;
+    if (d < s)
+      do { *d++ = *s++; } while (--n);
+    else if (d > s) {
+      d += n, s += n;
+      do { *--d = *--s; } while (--n);
+    }
+  }
   return _d;
 #else
   wmsg("calling %s() instead of %s()\n", __func__, __func__+3);
-  return memcpy(_d,_s,n);
+  return memmove(_d,_s,n);
 #endif
 }
 

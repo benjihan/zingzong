@@ -466,7 +466,7 @@ void fltoi16(int16_t * const d, const float * const s, const int n);
 # endif
 
 # ifndef zz_memcpy
-#  define zz_memcpy(D,S,N) memcpy((D),(S),(N))
+#  define zz_memcpy(D,S,N) memmove((D),(S),(N)) /* memmove() required */
 # endif
 
 # ifndef zz_memclr
