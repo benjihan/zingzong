@@ -90,10 +90,12 @@ sequ_t * loop_seq(const chan_t * const C, const uint16_t off)
   return (sequ_t *)&off[(int8_t *)C->seq];
 }
 
+#ifndef NDEBUG
 static int is_valid_note(const i32_t stp)
 {
   return stp >= SEQ_STP_MIN && stp <= SEQ_STP_MAX;
 }
+#endif
 
 int play_chan(play_t * const P, chan_t * const C)
 {

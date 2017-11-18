@@ -317,50 +317,45 @@ sort_inst(const inst_t inst[], uint8_t idx[], u32_t iuse)
     iuse &= ~(1l<<i);
   }
 
-#ifdef DEBUG
-  if (1) {
-    u8_t i;
-    /* verify */
-    dmsg("-------------------------------\n");
-    dmsg("Sorted #%hu instruments\n\n", HU(nbi));
-    for (i=0; i<nbi; ++i)
-      dmsg("#%02hu I#%02hu %p\n", HU(i), HU(idx[i]), inst[idx[i]].pcm);
-    dmsg("\n");
-  }
-#endif
   return nbi;
 }
 
+
 static void
-unroll_loop(uint8_t * dst, i32_t max, const uint8_t sig,
+change_sign(uint8_t * dst, uint8_t * src, u16_t len)
+{
+  zz_assert( dst >= src );
+  zz_assert( len );
+
+  dst += len; src += len;
+  do {
+    *--dst = 0x80 ^ *--src;
+  } while (--len);
+}
+
+static void
+unroll_loop(uint8_t * dst, i32_t max,
             uint8_t * src, u16_t len, const u16_t lpl)
 {
   max -= len;
 
   zz_assert( len );
   zz_assert( max >= 0 );
+  zz_assert( dst <= src );
 
-  if (dst <= src) {
-    do {
-      *dst++ = *src++ ^ sig;
-    } while ( --len );
-  } else {
-    const u16_t n = len;
-    dst += len; src += len;
-    do {
-      *--dst = *--src ^ sig;
-    } while ( --len );
-    dst += n; src += n;
-  }
+  if (src == dst)
+    src = dst += len;
+  else
+    do { *dst++ = *src++; } while ( --len );
 
   if (lpl)
     for ( src=dst-lpl; max; --max)
       *dst++ = *src++;
   else {
-    u16_t v, r;
-    for (v=sig^dst[-1], r=0x80 ; max; --max) {
-      v = v+v+v+r; r = 0x80+(v&3); v >>= 2;
-      *dst++ = sig ^ v;
+    i16_t v, r;
+    for (v=(int8_t)dst[-1], r=0 ; max; --max) {
+      v = 3*v+r; r = v & 3; v >>= 2;
+      *dst++ = v;
     }
   }
 }
@@ -374,20 +369,24 @@ static uint16_t sum_part(uint16_t sum, uint8_t * pcm, i32_t len, uint8_t sig)
 }
 #endif
 
-#define PTR_ALIGN(ADR,VAL) \
-  ( ( (intptr_t)(ADR) + ((intptr_t)(VAL)-1) ) & -(intptr_t)(VAL) )
-#define SPL_ALIGN(ADR) PTR_ALIGN(ADR,4)
+static inline u32_t int_align(const u32_t ptr, const u8_t align)
+{
+  const u32_t mask = (u32_t) align - 1;
+  return (ptr + mask) & ~mask;
+}
+
+#define INT_ALIGN(ADR) int_align((ADR),sizeof(int))
 
 zz_err_t
 vset_init(zz_vset_t const vset)
 {
-  u8_t nbi = vset->nbi;
-  bin_t * const bin = vset->bin;
-  intptr_t const beg = (intptr_t)bin->ptr;
-  intptr_t const end = beg + bin->max;
+  u8_t nbi = vset->nbi, i;
+  bin_t   * const bin = vset->bin;
+  uint8_t * const beg = bin->ptr;
+  uint8_t * const end = beg + bin->max;
+  uint8_t * e;
 
-  i32_t tot, /* unroll, j, */ imsk;
-  u8_t nused, i;
+  u32_t tot, unroll, imsk;
 
   uint8_t idx[20];
 #ifdef DEBUG
@@ -397,7 +396,9 @@ vset_init(zz_vset_t const vset)
 
   /* imsk is best set before when possible so that unused (yet valid)
    * instruments can be ignored. This gives a little more space to
-   * unroll loops and save a bit of processing during init.
+   * unroll loops and save a bit of processing during init. However it
+   * might destroy instrument used by other songs using the same
+   * voiceset.
    *
    * GB: Currently using the referenced instrument mask instead of
    * used instrument mask. That's because in some cases where an
@@ -405,15 +406,16 @@ vset_init(zz_vset_t const vset)
    * without being properly detected (due to init code not following
    * loops). It's possible (yet unlikely) for an instrument to be
    * referenced but not being used. That's the lesser of two evils.
+   *
    */
   imsk = vset->iref ? vset->iref : (1l<<nbi)-1;
 
-  for (i=nused=tot=vset->iref=0; i<20; ++i) {
+  for (i=vset->iref=0; i<20; ++i) {
     const i32_t off = vset->inst[i].len - 222 + 8;
     u32_t len = 0, lpl = 0;
     uint8_t * pcm = 0;
 
-#ifdef DEBUG
+#ifdef DEBUG_LOG
     const char * tainted = 0;
 #   define TAINTED(COND) if ( COND ) { tainted = #COND; break; } else
 #else
@@ -444,7 +446,6 @@ vset_init(zz_vset_t const vset)
       TAINTED (off+len > bin->len);     /* sample in range ? */
 
       vset->iref |= 1l << i;
-      ++nused;
       dmsg("I#%02hu [$%05lX:$%05lX:$%05lX] [$%05lX:$%05lX:$%05lX]\n",
            HU(i+1),
            LU(0), LU(len-lpl), LU(len),
@@ -469,14 +470,15 @@ vset_init(zz_vset_t const vset)
     vset->inst[i].len = len;
     vset->inst[i].lpl = lpl;
     vset->inst[i].pcm = pcm;
-
-    tot += (len+1) & -2;
   }
-  dmsg("Instruments: used:%hu/%hu ($%05lX/$%05lX) total:%lu\n",
-       HU(nused), HU(nbi), LU(vset->iref), LU(imsk), LU(tot));
 
   nbi = sort_inst(vset->inst, idx, imsk );
+  if (!nbi)
+    return E_SET;
+  dmsg("Instruments: used:%hu/%hu ($%05lX/$%05lX)\n",
+       HU(nbi), HU(vset->nbi), LU(vset->iref), LU(imsk));
 
+#ifdef DEBUG_LOG
   dmsg("-------------------------------\n");
   for (i=0; i<nbi; ++i) {
     inst_t * const I = vset->inst + idx[i];
@@ -486,71 +488,56 @@ vset_init(zz_vset_t const vset)
          LU(&I->pcm[I->len]-beg));
   }
   dmsg("-------------------------------\n");
+#endif
 
   /* Use available space before sample (AVR header) to unroll
    * loops. The standard mixers don't use unrolled loop anymore but it
    * might still be useful for other mixers.
    */
-#if 1
+#if 0
+
   /* Just change sign */
   for (i=0; i<nbi; ++i) {
     inst_t * const I = vset->inst + idx[i];
     unroll_loop(I->pcm, I->len, 0x80,
                 I->pcm, I->len, I->lpl);
   }
+
 #else
-  
-  for (i=0, e=beg; i<nbi; ++i) {
-    inst_t * const inst = vset->inst + idx[i];
-
-
-    /* pcm                                                              end
-     *  |--+-------------------------------------------------------------|
-     *     e
-     */
-
-
-
-    if (inst->len) {
-      intptr_t const p = (intptr_t) inst->pcm;
-      intptr_t const f = p+inst->len;
-      intptr_t const s = i
-
-      intptr_t l;
-
-      zz_assert ( p >= beg && p <  end);
-      zz_assert ( f >  beg && f <= end );
-
-      /* p: sample start address
-       * f: sample end address
-       * e: inferior limit (end of previous instrument)
-       * s: superior line (start of next instrument)
-       * l: unrolled length
-       */
-
-      e = SPL_ALIGN(e);
-
-      dmsg("#%02hu I#%02hu gap:+%05lu [%06lx+%04lx]\n",
-           HU(i+1), HU(idx[i]+1), LU(p-e),
-           LU(p-(intptr_t)beg), LU(inst->len) );
-
-      a = SPL_ALIGN(e+inst->len+256);
-      if (a>
-
-
-
-      unroll_loop(e, f-e, 0x80, inst->pcm, inst->len, inst->lpl);
+  /* Stack all samples at the bottom of the buffer, changing sign in
+   * the process.
+   */
+  for (i=1, e=end, tot=0; i<=nbi; ++i) {
+    inst_t * const inst = &vset->inst[idx[nbi-i]];
+    change_sign(e -= inst->len, inst->pcm, inst->len);
     inst->pcm = e;
-    inst->end = f-e;
+    tot += inst->len;
+  }
 
-               e = f;
+  unroll = divu32(bin->max-tot, nbi);
+  dmsg("total space is: %lu/%lu +%lu/spl\n",
+       LU(tot), LU(bin->max),LU(unroll));
+
+  zz_assert(unroll >= 8);
+  if (unroll > 1024)
+    unroll = 1024;
+
+  for (i=0, e=beg; i<nbi; ++i) {
+    inst_t * const inst = &vset->inst[idx[i]];
+    uint8_t * const l = e + INT_ALIGN( inst->len + unroll );;
+    zz_assert( inst->pcm );
+    zz_assert( inst->len );
+    unroll_loop(e, l-e, inst->pcm, inst->len, inst->lpl);
+    inst->pcm = e;
+    inst->end = l-e;
+    e = l;
   }
 #endif
 
 #ifdef DEBUG
   for (i=0; i<20; ++i) {
-    zz_assert(sum_part(0xDEAD,vset->inst[i].pcm,vset->inst[i].len,0x80)
-              == sum[i]);
+    zz_assert( sum_part(0xDEAD, vset->inst[i].pcm, vset->inst[i].len, 0x80)
+               == sum[i] );
   }
 #endif
 
