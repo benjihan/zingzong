@@ -145,7 +145,9 @@ song_init(song_t * song)
     case 'F':                           /* Finish */
       if (!has) {
         song->seq[k] = (sequ_t *) nullseq;
-        loops[0].len  = 1;
+        loops[0].len = 1;
+        /* loops[0]. */has = 0;
+        has = 1;
       }
       if (ssp)
         dmsg("(song) %c[%hu] loop not closed -- %hu\n",
@@ -158,7 +160,7 @@ song_init(song_t * song)
       break;
 
     case 'P':                           /* Play-Note */
-      has = 1;
+      /* loop[ssp]. */has = 1;
       song->iuse |= 1l << cur;
 
     case 'S':                           /* Slide-To-Note */
@@ -454,7 +456,7 @@ vset_init(zz_vset_t const vset)
     vset->inst[i].pcm = pcm;
   }
 
-  nbi = sort_inst(vset->inst, idx, imsk );
+  nbi = sort_inst(vset->inst, idx, vset->iref );
   if (!nbi)
     return E_SET;
   dmsg("Instruments: used:%hu/%hu ($%05lX/$%05lX)\n",

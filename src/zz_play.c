@@ -678,14 +678,13 @@ const char * zz_formatstr(zz_u8_t fmt)
   return "?";
 }
 
-zz_err_t zz_info( zz_play_t P, zz_info_t * pinfo)
+zz_err_t zz_info(zz_play_t P, zz_info_t * pinfo)
 {
   zz_assert(pinfo);
   if (!pinfo)
     return E_ARG;
 
   if (!P || P->format == ZZ_FORMAT_UNKNOWN) {
-    dmsg("clear info (%s)\n", !P ? "nil" : "empty");
     zz_memclr(pinfo,sizeof(*pinfo));
     pinfo->fmt.str = zz_formatstr(pinfo->fmt.num);
   } else {
