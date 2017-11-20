@@ -81,17 +81,33 @@ u16_t seq_idx(const sequ_t * const org, const sequ_t * seq)
 }
 
 struct loop_stack_s {
-  uint32_t len;
+  uint32_t len:31, has:1;
 };
 typedef struct loop_stack_s loop_stack_t[MAX_LOOP+1];
 
 /* collapse loop stack */
-static uint32_t loopstack_collapse(loop_stack_t loops, u8_t ssp)
+static u8_t collapse_one(loop_stack_t loops, u8_t ssp, u16_t times)
 {
-  zz_assert( ssp <= MAX_LOOP );
-  for ( ; ssp ; --ssp )
-    loops[ssp-1].len += loops[ssp].len;
-  return loops[0].len;
+  u32_t const len = loops[ssp].len;
+  u32_t const amt = len + (times ? mulu32(len,times) : 0);
+
+  if (!ssp)
+    loops[0].len = amt;
+  else {
+    --ssp;
+    loops[ssp].has |= loops[ssp+1].has;
+    loops[ssp].len += amt;
+  }
+  dmsg("%s +%hux%lu (%lu) => %lu\n",
+       ".........."+10-(ssp+1),HU(times),LU(len),LU(amt), LU(loops[ssp].len));
+
+  return ssp;
+}
+
+static void collapse_all(loop_stack_t loops, u8_t ssp)
+{
+  while (ssp)
+    ssp = collapse_one(loops, ssp, 0);
 }
 
 zz_err_t
@@ -99,7 +115,7 @@ song_init(song_t * song)
 {
   zz_err_t ecode=E_SNG;
   u16_t off, size;
-  u8_t k, has=0, cur=0, ssp=0/* , max_ssp=0 */;
+  u8_t k, cur=0, ssp=0/* , max_ssp=0 */;
 
   loop_stack_t loops;
 
@@ -134,25 +150,25 @@ song_init(song_t * song)
     if (!song->seq[k]) {
       /* new sequence starts */
       song->seq[k] = seq;           /* new channel sequence       */
-      has = 0;                      /* #0:note #1:wait            */
       cur = 0;                      /* current instrument (0:def) */
       ssp = 0;                      /* loop stack pointer         */
-      loops[0].len = 0;
+      loops[0].len = 0;             /*  */
+      loops[0].has = 0;             /* #0:note #1:wait            */
     }
 
     switch (cmd) {
 
     case 'F':                           /* Finish */
-      if (!has) {
-        song->seq[k] = (sequ_t *) nullseq;
-        loops[0].len = 1;
-        /* loops[0]. */has = 0;
-        has = 1;
-      }
-      if (ssp)
+      if (ssp) {
         dmsg("(song) %c[%hu] loop not closed -- %hu\n",
              'A'+k, HU(seq_idx(song->seq[k],seq)), HU(ssp));
-      loopstack_collapse(loops,ssp);
+        collapse_all(loops,ssp);
+      }
+
+      if (!loops[0].has) {
+        song->seq[k] = (sequ_t *) nullseq;
+        loops[0].len = 1;
+      }
       dmsg("%c duration: %lu ticks\n",'A'+k, LU(loops[0].len));
       if ( loops[0].len > song->ticks)
         song->ticks = loops[0].len;
@@ -160,7 +176,7 @@ song_init(song_t * song)
       break;
 
     case 'P':                           /* Play-Note */
-      /* loop[ssp]. */has = 1;
+      loops[ssp].has = 1;
       song->iuse |= 1l << cur;
 
     case 'S':                           /* Slide-To-Note */
@@ -193,15 +209,14 @@ song_init(song_t * song)
       }
       ++ssp;
       /* if (ssp > max_ssp) max_ssp = ssp; */
-      zz_memclr( loops+ssp, sizeof(*loops) );
+      loops[ssp].len = 0;
+      loops[ssp].has = 0;
       break;
 
     case 'L':                           /* Loop-To-Point */
-    {
-      u32_t len = loops[ssp].len;
-      if (ssp > 0) --ssp;
-      loops[ssp].len += len + mulu32(len,par>>16);
-    } break;
+      dmsg("%c[%05hu][%hu] ",'A'+k, HU(seq_idx(song->seq[k],seq)), HU(ssp));
+      ssp = collapse_one(loops, ssp, par>>16);
+      break;
 
     case 'V':                           /* Voice-Set */
       cur = par >> 2;
@@ -229,19 +244,19 @@ song_init(song_t * song)
   }
 
   for ( ;k<4; ++k) {
-    if (has) {
+    ssp = 0;
+    if (loops[0].has) {
       /* Add 'F'inish mark */
       sequ_t * const seq = (sequ_t *) (song->bin->ptr+off);
-      seq->cmd[0] = 0; seq->cmd[1] = 'F';
-      off += 12;
+      seq->cmd[0] = 0; seq->cmd[1] = 'F'; off += 12;
 
-      loopstack_collapse(loops,ssp);
+      collapse_all(loops, ssp);
+      loops[0].has = 0;
+
       dmsg("%c duration: %lu ticks\n",'A'+k, LU(loops[0].len));
       if ( loops[0].len > song->ticks)
         song->ticks = loops[0].len;
-
       dmsg("channel %c is truncated\n", 'A'+k);
-      has = 0;
     } else {
       dmsg("channel %c is MIA\n", 'A'+k);
       song->seq[k] = (sequ_t *) nullseq;

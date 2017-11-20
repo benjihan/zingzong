@@ -276,10 +276,7 @@ struct note_s {
 struct chan_s {
   sequ_t  *seq;                       /**< sequence address.        */
   sequ_t  *cur;                       /**< next sequence.           */
-  sequ_t  *end;                       /**< last sequence.           */
-  sequ_t  *sq0;                       /**< First wait-able command. */
-  sequ_t  *sqN;                       /**< Last  wait-able command. */
-  inst_t  *ins;                       /**< instrument (fast)        */
+  inst_t  *ins;                       /**< instrument (zz_fast)     */
 
   u8_t num;                         /**< channel number [0..3].     */
   u8_t msk;                         /**< {0x11,0x22,0x44,0x88}.     */
@@ -342,7 +339,6 @@ struct play_s {
   u16_t ms_per_tick;                 /**< ms per tick (integer).    */
   u16_t ms_err_tick;                 /**< ms per tick (correction). */
 
-  uint8_t end_detect;           /**< try to detect music duration. */
   uint8_t muted_voices;         /**< channels mask.                */
   uint8_t has_loop;             /**< channels mask.                */
   uint8_t done;                 /**< non zero when done.           */

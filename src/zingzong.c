@@ -49,12 +49,6 @@ static const char bugreport[] = \
 #include "zingzong.h"
 #include "zz_def.h"
 
-#ifndef MAX_DETECT
-# define MAX_DETECT 1800    /* maximum seconds for length detection */
-#endif
-
-#define MAX_PLAY 150
-
 /* ----------------------------------------------------------------------
  * Includes
  * ---------------------------------------------------------------------- */
@@ -676,7 +670,7 @@ int main(int argc, char *argv[])
   char * wavuri = 0;
   char * songuri = 0, * vseturi = 0;
   zz_play_t P = 0;
-  zz_u32_t max_ms = 0;
+  zz_u32_t max_ms;
   zz_u8_t format;
   zz_out_t * out = 0;
 
@@ -743,7 +737,7 @@ int main(int argc, char *argv[])
     if (ecode)
       goto error_exit;
   } else {
-    max_ms = MAX_PLAY * 1000u;
+    max_ms = ZZ_EOF;
   }
 
   if (optind >= argc)
@@ -823,13 +817,6 @@ int main(int argc, char *argv[])
     imsg("wave: \"%s\"\n", wavuri);
 #endif
 
-  if ( ! opt_length ) {
-    zz_u32_t ms = zz_measure(P, MAX_DETECT * 1000 );
-    if (ms == ZZ_EOF)
-      RETURN (ZZ_EPLA);
-    dmsg("measured: %lu-ms\n", LU(ms));
-  }
-
   if (!ecode) {
     zz_info_t info;
     uint_t sec = (uint_t) -1;
@@ -843,13 +830,16 @@ int main(int argc, char *argv[])
     dmsg("Output via %s to \"%s\"\n", out->name, out->uri);
     imsg("Zing that zong\n"
          " with the \"%s\" mixer at %luhz\n"
-         " for %s%s @%huhz\n"
+         " for %s @%huhz\n"
          " via \"%s\" at %luhz\n"
          "vset: \"%s\" (%hukHz)\n"
          "song: \"%s\" (%hukHz)\n\n"
          ,
          info.mix.name, LU(info.mix.spr),
-         opt_length ? "max " : "", timestr(info.len.ms), HU(info.len.rate),
+         max_ms == 0
+         ? "infinity"
+         : timestr( max_ms == ZZ_EOF ? info.len.ms: max_ms),
+         HU(info.len.rate),
          out->uri, LU(out->hz),
          basename(info.set.uri), HU(info.set.khz),
          basename(info.sng.uri), HU(info.sng.khz )

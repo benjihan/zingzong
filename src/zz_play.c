@@ -18,23 +18,7 @@ static void chan_init(play_t * const P, u8_t k)
   C->msk = 0x11 << k;                   /* channel bit duplicated */
   C->num = k;
   C->cur = C->seq = P->song.seq[k];
-  if (!C->end) {
-    sequ_t * seq;
-    int cmd;
-    for ( seq = C->seq; (cmd=U16(seq->cmd)) != 'F' ; ++seq ) {
-      switch(cmd) {
-      case 'P': case 'R': case 'S':
-        /* Scoot first and last note sequence */
-        if (!C->sq0) C->sq0 = seq;
-        C->sqN = seq;
-      }
-    }
-    C->end = seq;
-  }
   C->loop_sp = C->loops;
-  zz_assert(C->end);
-  zz_assert(C->sq0);
-  zz_assert(C->sqN);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -145,6 +129,10 @@ int play_chan(play_t * const P, chan_t * const C)
     switch (cmd) {
 
     case 'F':                           /* Finish */
+      if ( ! ( P->has_loop & C->msk ) )
+        dmsg("%c[%hu] loops @%lu\n",
+             'A'+C->num, HU(seq_idx(C,seq-1)), LU(P->tick));
+
       seq = C->seq;
       P->has_loop |= C->msk;            /* Set has_loop flags */
       C->loop_sp = C->loops;            /* Safety net */
@@ -225,36 +213,12 @@ int play_chan(play_t * const P, chan_t * const C)
         l->off = 0;
       }
 
-      if (!l->cnt) {
-        /* Start a new loop unless the loop point is the start of
-         * the sequence and the next row is the end.
-         *
-         * This (not so) effectively removes useless loops on the
-         * whole sequence that messed up the song duration.
-         */
-
-        /* if (seq >= C->sqN) */
-        /*   dmsg("'%c: seq:%05u loop:%05u sq:[%05u..%05u]\n", */
-        /*        'A'+k, */
-        /*        seq - C->seq, */
-        /*        C->loop[l].seq - C->seq, */
-        /*        C->sq0 - C->seq, */
-        /*        C->sqN - C->seq); */
-
-        if ( loop_seq(C,l->off) <= C->sq0 && seq > C->sqN) {
-          l->cnt = 1;
-        } else {
-          l->cnt = (par >> 16) + 1;
-        }
-      }
-
-      if (--l->cnt) {
+      if ( ( l->cnt = l->cnt ? l->cnt-1 : (par >> 16) ) )
         seq = loop_seq(C,l->off);
-      } else {
+      else {
         --C->loop_sp;
         zz_assert(C->loop_sp >= C->loops);
       }
-
 
     } break;
 
@@ -301,10 +265,10 @@ zz_tick(play_t * const P)
     }
   }
 
-  P->done |= 0
-    | ( 0x01 & -(P->end_detect && (15&P->has_loop) == 15) )
-    | ( 0x02 & -(P->ms_max && P->ms_pos > P->ms_max) )
-    ;
+  if ( P->ms_max == ZZ_EOF )
+    P->done |= ((15 & P->has_loop) == 15) | ((P->ms_pos > P->ms_len) << 1);
+  else if ( P->ms_max != 0 )
+    P->done |= (P->ms_pos > P->ms_max) << 2;
 
   /* PCM this frame/tick */
   P->pcm_cnt  = P->pcm_per_tick;
@@ -382,69 +346,6 @@ zz_play(play_t * restrict P, void * restrict pcm, const i16_t n)
   return ret;
 }
 
-
-zz_u32_t
-zz_measure(play_t * P, u32_t ms_max)
-{
-  const zz_u32_t save_ms_max = P->ms_max;
-
-  if (!P->vset.bin) {
-    /* If there is no voice set we still want to be able to measure
-     * time. As the player will complain in case it tries to play a
-     * non-existing instrument we just create fake a instruments set.
-     */
-    zz_u8_t i;
-    dmsg("No voice set, assuming measuring only\n");
-    P->vset.khz = P->song.khz;
-    P->vset.nbi = 20;
-    for (i=0; i<20; ++i) {
-      /* P->vset.inst[i].num = i; */
-      P->vset.inst[i].len = 2;
-      P->vset.inst[i].lpl = 0;
-      P->vset.inst[i].end = 2;
-      P->vset.inst[i].pcm = (uint8_t *)&P->vset.inst[i].pcm;
-    }
-  }
-
-  play_init(P);
-  P->end_detect = 1;
-  P->ms_max = ms_max;
-  dmsg("measure: set current max to -- %lu ms\n", LU(P->ms_max));
-  do {
-    i16_t n = zz_play(P,0,0);    /* Get the number of PCM this tick */
-    if (n > 0)
-      n = zz_play(P,0,n);               /* Play without mixer */
-    zz_assert( n > 0 || P->done );
-  } while (!P->done);
-  dmsg("measure loop ended [done:%hu code:%hu ticks:%lu ms:%lu/%lu]\n",
-       HU(P->done),HU(P->code),LU(P->tick),LU(P->ms_pos),LU(P->ms_max));
-
-  /* If everything went as planed and we were able to measure music
-   * duration then set play_t::end_detect and play_t::max_ticks.
-   */
-  P->end_detect = !P->code && (!P->ms_max || P->ms_pos <= P->ms_max);
-  if (!P->end_detect) {
-    P->ms_max = save_ms_max;
-    P->ms_len = P->code ? ZZ_EOF : 0;
-  } else {
-    if ( P->tick-1 != P->song.ticks ) {
-      wmsg("measured ticks differs ? play(%lu) != init(%lu)\n",
-           LU(P->tick-1) , LU(P->song.ticks));
-    }
-    zz_assert ( P->tick-1 == P->song.ticks );
-    P->ms_max = P->ms_len = P->ms_pos;
-  }
-
-  if (!P->vset.bin)
-    P->vset.nbi = 0;
-
-  dmsg("measured (%s) -> ms:%lu\n",
-       P->code ? "ERR" : P->end_detect ? "OK" : "NOEND", LU(P->ms_len));
-
-  play_init(P);
-  return P->ms_len;
-}
-
 /* ---------------------------------------------------------------------- */
 
 static void rt_check(void)
@@ -486,7 +387,7 @@ static void rt_check(void)
 }
 
 zz_err_t
-zz_init(play_t * P, u16_t rate, u32_t maxms)
+zz_init(play_t * P, u16_t rate, u32_t ms)
 {
   zz_err_t ecode;
 
@@ -494,8 +395,8 @@ zz_init(play_t * P, u16_t rate, u32_t maxms)
   if (!P)
     return E_ARG;
 
+  P->ms_max = ms;
   P->rate = 0;
-  P->ms_max = maxms;
   ecode = play_init(P);
   if (E_OK != ecode)
     goto error;
@@ -505,8 +406,12 @@ zz_init(play_t * P, u16_t rate, u32_t maxms)
   if (rate < RATE_MIN) rate = RATE_MIN;
   if (rate > RATE_MAX) rate = RATE_MAX;
   P->rate = rate;
+
+  P->ms_len = divu32( mulu32(P->song.ticks,1000), P->rate );
+  dmsg("ms-len: %lu (%lu@%huhz)\n",
+       LU(P->ms_len),LU(P->song.ticks),HU(P->rate));
   xdivu(1000u, P->rate, &P->ms_per_tick, &P->ms_err_tick);
-  dmsg("rate=%hu-hz ms:%hu(+%hu)\n",
+  dmsg("rate=%huhz ms:%hu(+%hu)\n",
        HU(P->rate), HU(P->ms_per_tick), HU(P->ms_err_tick));
   P->pcm_per_tick = 1; /* in case zz_setup() is not call for measuring only */
   P->pcm_err_tick = 0;
@@ -543,7 +448,7 @@ zz_setup(play_t * P, u8_t mid, u32_t spr)
   zz_assert( P->spr );
 
   xdivu(P->spr, P->rate, &P->pcm_per_tick, &P->pcm_err_tick);
-  dmsg("spr=%lu-hz pcm:%hu(+%hu)\n",
+  dmsg("spr=%luhz pcm:%hu(+%hu)\n",
        LU(P->spr), HU(P->pcm_per_tick), HU(P->pcm_err_tick));
 
 error:
@@ -698,7 +603,7 @@ zz_err_t zz_info(zz_play_t P, zz_info_t * pinfo)
     /* rates */
     pinfo->len.rate = P->rate = P->rate ? P->rate : P->song.rate;
     pinfo->mix.spr  = P->spr;
-    pinfo->len.ms   = P->ms_max;
+    pinfo->len.ms   = P->ms_len;
 
     /* mixer */
     pinfo->mix.num = P->mixer_id;

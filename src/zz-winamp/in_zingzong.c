@@ -68,11 +68,6 @@ zz_vfs_dri_t zz_file_vfs(void);
 const char me[] = "in_zingzong";
 
 enum {
-  PLAY_MS    = 1000*(2*60+30),          /* default play time    */
-  MEASURE_MS = 1000*(12*60)             /* default measure time */
-};
-
-enum {
   NO_MEASURE=0, MEASURE, MEASURE_ONLY, MEASURE_CONFIG
 };
 
@@ -397,7 +392,7 @@ load(zz_play_t P, zz_info_t *I, const char * uri, zz_u8_t measure)
 {
   zz_err_t ecode = E_INP;
   zz_i32_t dms=g_dms, spr=g_spr, mid=g_mid;
-  zz_u8_t forced;
+  zz_u8_t forced = 0;
 
   zz_assert( P );
   zz_assert( I );
@@ -437,17 +432,14 @@ load(zz_play_t P, zz_info_t *I, const char * uri, zz_u8_t measure)
     }
   }
 
-  ;
-  if ( (forced = dms < 0) ) {
-    /* Forced time: no measure */
+  if (dms < 0) {
     dms = ~dms;
     dmsg("FORCED TIME: %lu-ms\n", LU(dms));
+  } else {
+    dms = ZZ_EOF;
   }
-  if (dms == 0)                         /* We don't do infinite */
-    dms = PLAY_MS;
-
   ecode = zz_init(P, 0, dms);
-  dmsg("zz_init(rate:0 dms:%lu) -> [%hu]\n", LU(dms), HU(ecode));
+  dmsg("zz_init(rate:0 -> [%hu]\n", HU(ecode));
 
   if (!ecode && measure != MEASURE_ONLY) {
     ecode = zz_setup(P, mid, spr);
@@ -458,17 +450,6 @@ load(zz_play_t P, zz_info_t *I, const char * uri, zz_u8_t measure)
   if (ecode)
     goto error_close;
 
-  if (!forced && measure != NO_MEASURE) {
-    zz_u32_t max_ms = zz_measure(P,MEASURE_MS);
-    if (max_ms == ZZ_EOF) {
-      dmsg("measure failed\n");
-      ecode = E_PLA;
-      goto error_close;
-    }
-    if (max_ms)
-      dms = max_ms;
-  }
-
 error_close:
   if (ecode)
     zz_close(P);
@@ -476,7 +457,10 @@ error_close:
 error_no_close:
   if (I) {
     zz_info(ecode ? 0 : P, I);
-    I->len.ms = dms;
+    if (dms == ZZ_EOF)
+      dms = I->len.ms;
+    else
+      I->len.ms = dms;
   }
 
   dmsg("load (%s) -- <%s> \"%s\" %lu ms \n", ecode ? "ERR" :"OK",

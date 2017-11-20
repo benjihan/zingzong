@@ -260,11 +260,11 @@ ZINGZONG_API
  *
  * @param  play   player instance
  * @param  rate   player tick rate (0:default)
- * @param  maxms  playback duration (0:infinite)
+ * @param  ms     playback duration (0:infinite, ZZ_EOF:measured)
  * @return error code
  * @retval ZZ_OK(0) on success
  */
-zz_err_t zz_init(zz_play_t play, zz_u16_t rate, zz_u32_t maxms);
+zz_err_t zz_init(zz_play_t play, zz_u16_t rate, zz_u32_t ms);
 
 ZINGZONG_API
 /**
@@ -319,17 +319,6 @@ ZINGZONG_API
  * @return old bits
  */
 uint8_t zz_mute(zz_play_t P, uint8_t clr, uint8_t set);
-
-ZINGZONG_API
-/**
- * Init player.
- *
- * @param  play  player instance
- * @param  ms    maximum ms for detection (0: infinite)
- * @return duration in ms
- * @retval ZZ_EOF on error
- */
-zz_u32_t zz_measure(zz_play_t play, zz_u32_t ms);
 
 ZINGZONG_API
 /**
