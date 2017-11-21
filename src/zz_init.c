@@ -356,15 +356,16 @@ unroll_loop(uint8_t * dst, uint8_t * end, i32_t lpl)
   zz_assert( dst < end );
   if (lpl)
     do {
-     *dst = dst[-lpl];
+      *dst = dst[-lpl];
     } while (++dst < end);
   else {
     i16_t r=0, v = (int8_t) dst[-1];
     do {
-      v = 3*v+r; r = v & 3;
-      *dst = v >> 2;
+      v = v+v+v+r; r = v & 3;
+      *dst = v >>= 2;
     } while (++dst < end);
   }
+  zz_assert( dst == end );
 }
 
 #ifdef DEBUG
