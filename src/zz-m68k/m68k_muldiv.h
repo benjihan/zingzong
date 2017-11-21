@@ -89,7 +89,7 @@ m68k_mulu32(uint32_t a, uint16_t b)
      "clr.w %[tp1] \n\t"
     */
     "add.l  %[tp1],%[val]  \n\t" /* val = XX:YY*ZZ */
-    : [val] "+d" (a), [tp1] "=r" (tp1)
+    : [val] "+d" (a), [tp1] "=d" (tp1)
     : [mul] "iSd" (b)
     : "cc"
     );

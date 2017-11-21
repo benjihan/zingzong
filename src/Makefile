@@ -244,11 +244,11 @@ clean_files += $(zz_lib) $(zz_exe) $(zz_dll)
 # ----------------------------------------------------------------------
 
 dist_top_lst = LICENSE README.md vcversion.sh
-dist_src_lst = README.md Makefile $(sources) $(headers) make.clean	\
-make.depend make.dist
+dist_src_lst = README.md Makefile $(sources) zz_fast.c $(headers)	\
+make.clean make.depend make.dist
 dist_rsc_lst = zingzong.rc resource.h zingzong.ico
-dist_amp_lst = README.md Makefile in_zingzong.c in_zingzong.h	\
-dialogs.c in_zingzong.nsi
+dist_amp_lst = README.md Makefile dialogs.c in_zingzong.c	\
+in_zingzong.h in_zingzong.nsi
 dist_68k_lst = README.md Makefile m68k_muldiv.h m68k_stf.S mix_aga.c	\
 mix_fal.c mix_ste.c mix_stf.c player.c player_start.S sc68_debug.h	\
 sc68_start.S song.S test_sc68.s vset.S ym10_pack.h zz_m68k.c		\
@@ -283,8 +283,13 @@ else
 DATADIR = $(datadir)
 endif
 
-bindir  = $(PREFIX)/bin
-mandir  = $(DATADIR)/man/man1
+exec_dir = $(PREFIX)
+bindir   = $(exec_dir)/bin
+libdir   = $(exec_dir)/lib
+
+mandir  = $(DATADIR)/man
+man1dir = $(mandir)/man1
+man1ext = .1
 docdir  = $(DATADIR)/$(PACKAGE)-$(VERSION)
 INSTALL = install $(INSTALL_OPT)
 
@@ -294,7 +299,8 @@ $(INSTALL) -t "$(DESTDIR)$(1)" $(foreach f,$(2),"$(f)")
 UNINSTALL_EXEC = rm -f -- $(foreach f,$(2),"$(DESTDIR)$(1)/$(f)")
 INSTALL_MAN    = \
 mkdir -p -- "$(DESTDIR)$(1)" && \
-sed -e 's/@VERSION@/$(VERSION)/' "$(2)" >"$(DESTDIR)$(1)/$(notdir $(2))"
+sed -e 's/@VERSION@/$(VERSION)/' "$(2)"\
+ >"$(DESTDIR)$(1)/$(patsubst %.1,%,$(notdir $2))$(man1ext)"
 
 INSTALL_DOC    = \
 mkdir -p -- "$(DESTDIR)$(1)" && \
@@ -311,7 +317,7 @@ install-exec: $(bin_targets)
 install-data: install-man install-doc
 
 install-man: $(srcdir)/man/zingzong.1
-	@$(call INSTALL_MAN,$(mandir),$<)
+	@$(call INSTALL_MAN,$(man1dir),$<)
 
 install-doc: INSTALL_OPT = --mode=644
 install-doc: $(topdir)/README.md
@@ -324,7 +330,7 @@ uninstall-exec:
 	@$(call UNINSTALL_EXEC,$(bindir),$(bin_targets))
 
 uninstall-data: uninstall-man uninstall-doc
-uninstall-man: ; @rm -f -- $(DESTDIR)$(mandir)/zingzong.1
+uninstall-man: ; @rm -f -- $(DESTDIR)$(man1dir)/zingzong$(man1ext)
 uninstall-doc: ; @rm -f -- $(DESTDIR)$(docdir)/README.md
 
 uninstall: uninstall-exec uninstall-data

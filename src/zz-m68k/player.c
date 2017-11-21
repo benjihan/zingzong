@@ -88,10 +88,10 @@ void player_init(bin_t * song, bin_t * vset)
     1
     && ! song_init_header(&play.song, song->ptr)
     && ! song_init(&play.song)
-    && ( play.vset.iused = play.song.iused )
+    && ( play.vset.iref = play.song.iref)
     && ! vset_init_header(&play.vset, vset->ptr)
     && ! vset_init(&play.vset)
-    && ! zz_init(&play,0,0) /* rate,maxms */
+    && ! zz_init(&play,0,0) /* rate,duration */
     && ! zz_setup(&play,ZZ_MIXER_DEF,0) /* mixer,spr */
     ;
 }

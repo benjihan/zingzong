@@ -46,10 +46,12 @@ int zz_fast_init(play_t * const P, const u8_t k)
     u32_t const par = U32(seq->par);
     zz_fast_t * fast = (zz_fast_t *) seq;
 
-    switch (cmd) {
-    case 'E':
+    if (cmd == 'E') {
       fast->cmd = ZZ_FAST_END;
       break;
+    }
+
+    switch (cmd) {
     case 'P':
       fast->cmd = ZZ_FAST_PLAY;
       fast->play.len  = len;
@@ -80,8 +82,6 @@ int zz_fast_init(play_t * const P, const u8_t k)
       zz_assert( "invalid command" );
       return E_SNG;
     }
-    if (fast->cmd == ZZ_FAST_END)
-      break;
   }
 
   return ZZ_OK;
@@ -165,6 +165,8 @@ int zz_fast_chan(play_t * const P, const u8_t k)
     case ZZ_FAST_REST:                  /* Rest */
       C->trig     = TRIG_STOP;
       C->wait     = fast->rest.len;
+      C->note.stp = 0;
+      C->note.cur = 0;
       break;
 
     case ZZ_FAST_LABEL:                 /* Set-Loop-Point */
@@ -181,12 +183,9 @@ int zz_fast_chan(play_t * const P, const u8_t k)
         l->off = 0;
       }
 
-      if (!l->cnt)
-        l->cnt = fast->loop.cnt;
-
-      if (--l->cnt) {
+      if ( ( l->cnt = l->cnt ? l->cnt-1 : fast->loop.cnt ) )
         seq = off2seq(C,l->off);
-      } else {
+      else {
         --C->loop_sp;
         zz_assert(C->loop_sp >= C->loops);
       }

@@ -86,12 +86,11 @@ int play_chan(play_t * const P, chan_t * const C)
   sequ_t * seq;
 
   zz_assert( C->trig == TRIG_NOP );
+  C->trig = TRIG_NOP;
 
   /* Ignored voices ? */
   if ( 0x0F & P->muted_voices & C->msk )
     return E_OK;
-
-  C->trig = TRIG_NOP;
 
   /* Portamento */
   if (C->note.stp) {

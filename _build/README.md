@@ -99,6 +99,25 @@ variables this Makefile uses.
  | `DEBUG`       | Set to defines below for default DEBUG CFLAGS              |
  | `PROFILE`     | Set to 1 for default PROFILING CFLAGS                      |
  | `PKGCONFIG`   | `pkg-config` program to use                                |
+ 
+
+### Make variables for installing
+
+The Makefile uses a subset of variables very similar to GNU packages.
+
+ | Make variable |                        Description                         |
+ |---------------|------------------------------------------------------------|
+ | `DESTDIR`     | Support for staged installs                                |
+ | `prefix`      | Prefix the default values of the variables listed below    |
+ | `exec_dir`    | Prefix for executable and library files                    |
+ | `bindir`      | Executable files                                           |
+ | `libdir`      | Library and object files                                   |
+ | `datadir`     | Prefix for architecture-independent data files             |
+ | `includedir`  | Header files                                               |
+ | `docdir`      | Documentation files                                        |
+ | `man1dir`     | Section 1 man pages                                        |
+ | `man1ext`     | The file name extension for installed section 1 man pages  |
+
 
       make \
 	CC=x86_64-w64-mingw32-gcc \

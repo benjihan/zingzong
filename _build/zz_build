@@ -21,9 +21,11 @@ top=$(realpath $(dirname "$0")) # Where this script is located.
 
 DEPLIBS="AO SRATE SOXR"
 vars1=( CC LD STRIP PKGCONFIG INSTALL DEBUG PROFILE MAKERULES )
-vars3=( CPPFLAGS CFLAGS LDFLAGS LDLIBS gb_CFLAGS gb_LDLIBS gb_LDFLAGS
-        prefix )
-vars2=( "${vars3[@]}" )
+vars3=( CPPFLAGS CFLAGS LDFLAGS LDLIBS gb_CFLAGS gb_LDLIBS gb_LDFLAGS )
+vars4=( DESTDIR prefix exec_dir bindir libdir datarootdir datadir
+	includedir docdir mandir man1dir man1ext )
+
+vars2=( "${vars3[@]}" "${vars4[@]}" )
 for dep in $DEPLIBS; do
     vars2+=( NO_${dep} ${dep}_CFLAGS ${dep}_LIBS )
 done
