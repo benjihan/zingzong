@@ -180,7 +180,6 @@ stf_mix_part1:
 
 full_part1:
 	.rept   BLKLEN
-
         | 24 bytes per loop       17
         | ----------------------+---+---
         add.w   a0,d0           | 1 | 7
@@ -311,13 +310,8 @@ stf_irq_routines:
 	
 tmpbuf:
 	.space	2*MIXMAX	| tmp mix buffer
-
 	
 // Local Variables:
 // mode: asm
 // asm-comment-char: ?|
 // End:
-
-
-	
-	

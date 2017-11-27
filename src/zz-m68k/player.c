@@ -10,6 +10,7 @@
  */
 
 #include "../zz_private.h"
+#include "zz_m68k.h"
 
 int song_init_header(zz_song_t const song, const void * hd);
 int song_init(zz_song_t const song);
@@ -92,7 +93,10 @@ void player_init(bin_t * song, bin_t * vset)
     && ! vset_init_header(&play.vset, vset->ptr)
     && ! vset_init(&play.vset)
     && ! zz_init(&play,0,0) /* rate,duration */
-    && ! zz_setup(&play,ZZ_MIXER_DEF,0) /* mixer,spr */
+
+    /* XXX $$$ GB: TEMP FORCE MIXER !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1 */
+
+    && ! zz_setup(&play,/*ZZ_MIXER_DEF*/MIXER_STF,0) /* mixer,spr */
     ;
 }
 

@@ -6,18 +6,9 @@
  */
 
 #include "../zz_private.h"
+#include "zz_m68k.h"
 
 void bin_free(bin_t ** pbin) {}
-
-enum {
-  MIXER_AGA,
-  MIXER_STF,
-  MIXER_STE,
-  MIXER_FAL,
-
-  /**/
-  MIXER_LAST
-};
 
 static mixer_t mixer;
 

@@ -183,7 +183,6 @@ static zz_err_t init_aga(play_t * const P, u32_t spr)
     }
   }
 
-  /* TO DO : prepare instrument */
   return ecode;
 }
 

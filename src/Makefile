@@ -252,7 +252,7 @@ in_zingzong.h in_zingzong.nsi
 dist_68k_lst = README.md Makefile m68k_muldiv.h m68k_stf.S mix_aga.c	\
 mix_fal.c mix_ste.c mix_stf.c player.c player_start.S sc68_debug.h	\
 sc68_start.S song.S test_sc68.s vset.S ym10_pack.h zz_m68k.c		\
-zingzong.x
+zz_m68k.h zingzong.x
 
 dist_lst = $(sort \
  $(addprefix ./,$(dist_top_lst)) \

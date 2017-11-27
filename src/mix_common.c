@@ -84,18 +84,6 @@ mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
   K->xtp = stp;
 }
 
-/* static void */
-/* mix_add1(mix_fp_t * const M, const int k, int16_t * b) */
-/* { */
-/*   mix_gen(M,k,b,MIXBLK); */
-/* } */
-
-/* static void mix_addN(mix_fp_t * const M, const int k, int16_t * b, const int n) */
-/* { */
-/*   mix_gen(M,k,b,n); */
-/* } */
-
-
 static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
 {
   /* stp is fixed-point 16
