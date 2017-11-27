@@ -13,10 +13,6 @@
 #error DESC should be defined
 #endif
 
-/* #ifndef MIXBLK */
-/* # error MIXBLK should be defined */
-/* #endif */
-
 #if !defined (FP) || (FP > 16) || (FP < 7)
 # error undefined of invalid FP
 #endif
@@ -104,7 +100,6 @@ static void *
 push_cb(play_t * const P, void * restrict pcm, i16_t N)
 {
   mix_fp_t * const M = (mix_fp_t *)P->mixer_data;
-  /* int16_t  * restrict b = pcm; */
   int k;
 
   zz_assert( P );
@@ -112,7 +107,6 @@ push_cb(play_t * const P, void * restrict pcm, i16_t N)
   zz_assert( pcm );
   zz_assert( N != 0 );
   zz_assert( N > 0 );
-
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -150,22 +144,8 @@ push_cb(play_t * const P, void * restrict pcm, i16_t N)
   for (k=0; k<4; ++k)
     mix_add1(M->chan+k, pcm, N);
 
-  /* Mix per block of MIXBLK samples */
-  /* for (b=pcm, n=N; */
-  /*      n >= MIXBLK; */
-  /*      b += MIXBLK, n -= MIXBLK) */
-  /*   for (k=0; k<4; ++k) */
-  /*     mix_add1(M, k, b); */
-
-  /* if (n > 0) { */
-  /*   for (k=0; k<4; ++k) */
-  /*     mix_addN(M, k, b, n); */
-  /*   b += n; */
-  /* } */
-
   return ( (int16_t *) pcm ) + N;
 }
-
 
 static void * local_calloc(u32_t size, zz_err_t * err)
 {

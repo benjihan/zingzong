@@ -305,9 +305,10 @@ zz_play(play_t * restrict P, void * restrict pcm, const i16_t n)
       }
       if (P->done)
         break;
-
     }
+
     if (n == 0) {
+      /* n == 0 :: request remaining pcm to close the current tick */
       zz_assert( P->pcm_cnt > 0 );
       zz_assert( ! ret );
       ret = P->pcm_cnt;
@@ -315,7 +316,7 @@ zz_play(play_t * restrict P, void * restrict pcm, const i16_t n)
     }
 
     if ( n < 0 ) {
-      /* finish the tick */
+      /* n < 0 :: finish the tick but no more than -n */
       zz_assert( !ret );
       cnt = -n;
     } else {

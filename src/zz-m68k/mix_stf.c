@@ -11,7 +11,7 @@
 #define SPR_MIN 4000
 
 #undef SPR_MAX
-#define SPR_MAX 20000u
+#define SPR_MAX 30000u
 
 #define YML ((volatile uint32_t *)0xFFFF8800)
 #define YMB ((volatile uint8_t *)0xFFFF8800)
@@ -42,41 +42,18 @@ struct mix_chan_s {
 };
 typedef struct mix_chan_s mix_chan_t;
 
-#define MIXMAX 128
+#define MIXMAX ((SPR_MAX/200)+4)
 struct mix_stf_s {
   mix_chan_t chan[4];
 
+  uint16_t scl;
   uint8_t tcr, tdr;
-  int16_t *phy, *log, *cur, mix[2][MIXMAX];
+  volatile int16_t *cur;
+  int16_t *phy, *log, mix[2][MIXMAX];
 };
 typedef struct mix_stf_s mix_stf_t;
 
 static mix_stf_t g_stf;
-
-static const struct {
-  uint8_t tcr,tdr;
-  uint16_t frq;
-}
-timer_table[] =
-{
-  { 1, 0x98,  4042 },
-  { 1, 0x7a,  5036 },
-  { 1, 0x66,  6023 },
-  { 1, 0x58,  6981 },
-  { 1, 0x4c,  8084 },
-  { 1, 0x44,  9035 },
-  { 1, 0x3d, 10072 },
-  { 1, 0x38, 10971 },
-  { 1, 0x33, 12047 },
-  { 1, 0x2f, 13072 },
-  { 1, 0x2c, 13963 },
-  { 1, 0x29, 14985 },
-  { 1, 0x26, 16168 },
-  { 1, 0x24, 17066 },
-  { 1, 0x22, 18070 },
-  { 1, 0x20, 19200 },
-  { 1, 0x1e, 20480 }
-};
 
 static uint8_t Tpcm[1024*4];
 
@@ -106,16 +83,14 @@ static void never_inline init_replay_table(void)
 
 static void __attribute__ ((interrupt)) timer()
 {
-  if (g_stf.cur) {
-    const uint8_t * pcm = &Tpcm[512*4] + ( *g_stf.cur++ << 2 ) ;
+  const uint8_t * pcm = &Tpcm[512*4] + ( *g_stf.cur++ << 2 ) ;
 
     /* if (pcm < Tpcm || pcm >= &Tpcm[sizeof(Tpcm)]) */
     /*   asm volatile("illegal\n\t"); */
 
-    YMB[0] = 8;    YMB[2] = *pcm++;
-    YMB[0] = 9;    YMB[2] = *pcm++;
-    YMB[0] = 10;   YMB[2] = *pcm++;
-  }
+  YMB[0] = 8;    YMB[2] = *pcm++;
+  YMB[0] = 9;    YMB[2] = *pcm++;
+  YMB[0] = 10;   YMB[2] = *pcm++;
 }
 
 static void clear_ym_regs(void)
@@ -154,31 +129,30 @@ static void stop_timer(play_t * const P)
   MFP[0x19] = 0;                        /* Stop timer-A */
 }
 
-static void prepare_timer(play_t * const P)
+static uint16_t never_inline set_sampling(play_t * const P, uint16_t spr)
 {
   mix_stf_t * const M = (mix_stf_t *) P->mixer_data;
-  uint16_t const idx = divu(P->spr,1000u) - 4;
+  M->tdr = (divu(2457600>>1, spr) + 1) >> 1;
+  M->tcr = 1;
+  return P->spr = (divu(2457600>>1, M->tdr) + 1) >> 1;
+}
 
-  zz_assert( idx < sizeof(timer_table)/sizeof(*timer_table) );
-
+static void prepare_timer(void)
+{
   MFP[0x19]  = 0;                       /* Stop timer-A */
   MFP[0x07] |= 0x20;                    /* IER */
   MFP[0x13] |= 0x20;                    /* IMR */
   MFP[0x17] |= 8;                       /* AEI */
-
-  M->tcr = timer_table[idx].tcr;
-  M->tdr = timer_table[idx].tdr;
   VEC = timer;
 }
 
 #define OPEPCM(OP) do {                         \
     zz_assert( &pcm[idx>>FP] < K->end );        \
-    *b++ OP (int8_t)(pcm[idx>>FP]);             \
+    *b++ OP (int8_t) pcm[idx>>FP];              \
     idx += stp;                                 \
   } while (0)
 #define SETPCM() OPEPCM(=);
 #define ADDPCM() OPEPCM(+=);
-
 
 static void never_inline
 mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
@@ -224,7 +198,7 @@ mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
 
 static inline u32_t xstep(u32_t stp, uint16_t f12)
 {
-  return stp >> (16-FP);                /* $$$ GB: TODO */
+  return mulu(stp>>4, f12) >> (24-FP);
 }
 
 static void * push_stf(play_t * const P, void * pcm, i16_t n)
@@ -235,12 +209,26 @@ static void * push_stf(play_t * const P, void * pcm, i16_t n)
   zz_assert(P);
   zz_assert(M);
   zz_assert(n>0);
-  zz_assert(n<=MIXMAX);
+  zz_assert(n<MIXMAX);
+
+  if (1) {
+    int16_t a = P->pcm_per_tick;
+    int16_t b = a+(!!P->pcm_err_tick);
+    if (n != a && n != b)
+      ILLEGAL;
+  }
+
+  n = P->pcm_per_tick + (!!P->pcm_err_tick);
 
   /* Swap buffers */
-  M->cur = M->log;
-  M->log = M->phy;
-  M->phy = M->cur;
+  if (1) {
+    int16_t * cur = M->log;
+    M->log = M->phy;
+    M->phy = cur;
+    M->cur = cur;
+  } else {
+    M->cur = M->log;
+  }
 
   if (!MFP[0x19]) {
     MFP[0x1f] = M->tdr;
@@ -265,7 +253,7 @@ static void * push_stf(play_t * const P, void * pcm, i16_t n)
       K->end = C->note.ins->end + K->pcm;
 
     case TRIG_SLIDE:
-      K->xtp = xstep(C->note.cur, 0x1000);
+      K->xtp = xstep(C->note.cur, M->scl);
       break;
     case TRIG_STOP: K->xtp = 0;
     case TRIG_NOP:
@@ -282,8 +270,9 @@ static void * push_stf(play_t * const P, void * pcm, i16_t n)
   /* Add voices */
   for (k=0; k<4; ++k)
     mix_add1(M->chan+k, M->log, n);
+  /* M->log[n] = M->log[n+1] = M->log[n-1]; */
 
-  return ( (int16_t *) pcm ) + n;
+  return (int16_t) 0xBEEFFACE;
 }
 
 
@@ -291,18 +280,21 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
 {
   int ecode = E_OK;
   mix_stf_t * const M = &g_stf;
+  uint32_t refspr;
 
   init_replay_table();
   P->mixer_data = M;
   P->spr = mulu(P->song.khz,1000u);
   zz_memclr(M,sizeof(*M));
 
-  M->phy = M->mix[0];
-  M->log = M->mix[1];
+  M->log = M->mix[0];
+  M->phy = M->mix[1];
   M->cur = 0;
 
+  refspr = mulu(P->song.khz,1000u);
+
   switch (spr) {
-  case 0: spr = mulu(P->song.khz,1000u); break;
+  case 0:     spr = refspr; break;
   case ZZ_LQ: spr = 8000; break;
   case ZZ_MQ: spr = 12000; break;
   case ZZ_FQ: spr = SPR_MIN; break;
@@ -310,9 +302,12 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
   }
   if (spr < SPR_MIN) spr = SPR_MIN;
   if (spr > SPR_MAX) spr = SPR_MAX;
-  P->spr = spr;
 
-  prepare_timer(P);
+  spr = SPR_MAX;
+  spr = set_sampling(P,spr);
+  M->scl = ( divu(refspr<<13,spr) + 1 ) >> 1;
+
+  prepare_timer();
   prepare_sound();
 
   return ecode;

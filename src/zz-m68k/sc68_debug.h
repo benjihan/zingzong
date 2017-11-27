@@ -8,6 +8,8 @@
 #ifndef SC68_DEBUG_H
 #define SC68_DEBUG_H
 
+#define ILLEGAL asm volatile("illegal\n\t")
+
 #ifdef NDEBUG
 
 #define BREAKP    zz_void
