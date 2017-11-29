@@ -9,7 +9,7 @@
 
 static zz_err_t init_aga(play_t * const, u32_t);
 static void     free_aga(play_t * const);
-static void    *push_aga(play_t * const, void *, i16_t);
+static i16_t    push_aga(play_t * const, void *, i16_t);
 
 mixer_t * mixer_aga(mixer_t * const M)
 {
@@ -58,8 +58,9 @@ static mix_aga_t g_aga;
 
 static uint16_t xstep(uint32_t stp, uint8_t khz)
 {
+  uint16_t per;
   static const uint32_t ftbl[][2] = {
-    /* Sampling   PAL         NTSC       */
+    /* SAMPLING   PAL         NTSC       */
     /* 04kHz */ { 0x0376b941, 0x037ee2e5 },
     /* 05kHz */ { 0x02c56101, 0x02cbe8b8 },
     /* 06kHz */ { 0x024f262b, 0x02549744 },
@@ -76,15 +77,15 @@ static uint16_t xstep(uint32_t stp, uint8_t khz)
     /* 17kHz */ { 0x00d0a40f, 0x00d28fbe },
     /* 18kHz */ { 0x00c50cb9, 0x00c6dd17 },
     /* 19kHz */ { 0x00baadbd, 0x00bc65aa },
-    /* 20kHz */ { 0x00b15840, 0x00b2fa2e },
+    /* 20kHz */ { 0x00b15840, 0x00b2fa2e }
   };
-
   zz_assert( (stp>>3) < 0x10000 );
-  return divu(ftbl[khz-4][0]>>3,stp>>3);
+  per = divu(ftbl[khz-4][0]>>3, stp>>3);
+  zz_assert( per > 113 );
+  return per;
 }
 
-
-static void *push_aga(play_t * const P, void * pcm, i16_t npcm)
+static i16_t push_aga(play_t * const P, void * pcm, i16_t npcm)
 {
   mix_aga_t * const M = (mix_aga_t *)P->mixer_data;
   int k;
@@ -131,11 +132,11 @@ static void *push_aga(play_t * const P, void * pcm, i16_t npcm)
 
     default:
       zz_assert(!"wtf");
-      return 0;
+      return -1;
     }
   }
 
-  return pcm;
+  return npcm;
 }
 
 static zz_err_t init_aga(play_t * const P, u32_t spr)

@@ -11,16 +11,20 @@
 #define SPR_MIN 4000
 
 #undef SPR_MAX
-#define SPR_MAX 30000u
+#define SPR_MAX 20000
+
+#define MIX_MAX (SPR_MAX/200u+2)
+
+
 
 #define YML ((volatile uint32_t *)0xFFFF8800)
 #define YMB ((volatile uint8_t *)0xFFFF8800)
 #define MFP ((volatile uint8_t *)0xFFFFFA00)
-#define VEC (*(volatile timer_f *)0x134)
+#define VEC (*(timer_rout_t * volatile *)0x134)
 
 static zz_err_t init_stf(play_t * const P, u32_t spr);
 static void     free_stf(play_t * const P);
-static void    *push_stf(play_t * const P, void *pcm, i16_t npcm);
+static i16_t    push_stf(play_t * const P, void *pcm, i16_t npcm);
 
 mixer_t * mixer_stf(mixer_t * const M)
 {
@@ -34,7 +38,7 @@ mixer_t * mixer_stf(mixer_t * const M)
 
 #include "ym10_pack.h"
 
-typedef void (*timer_f)(void);
+typedef struct timer_rout_s timer_rout_t;
 
 struct mix_chan_s {
   int8_t *pcm, *end;
@@ -42,29 +46,99 @@ struct mix_chan_s {
 };
 typedef struct mix_chan_s mix_chan_t;
 
-#define MIXMAX ((SPR_MAX/200)+4)
 struct mix_stf_s {
   mix_chan_t chan[4];
-
+  timer_rout_t * wptr;
   uint16_t scl;
   uint8_t tcr, tdr;
-  volatile int16_t *cur;
-  int16_t *phy, *log, mix[2][MIXMAX];
 };
 typedef struct mix_stf_s mix_stf_t;
 
-static mix_stf_t g_stf;
+struct timer_rout_s {
+  struct  {
+    uint16_t opc;                       /* 0x21fc */
+    uint8_t  reg,x,val,y;
+    uint16_t adr;
+  } movel[3];
+  uint16_t opc;                         /* 0x31fc */
+  uint16_t imm;
+  uint16_t adr;
+  uint16_t rte;
+};
 
+static mix_stf_t      g_stf;
+static int16_t      * temp;             /* intermediat mix buffer */
+static timer_rout_t * rout;             /* first timer routine */
+static timer_rout_t * tuor;             /* last  timer routine */
+
+static uint8_t stf_buf[32*4*MIX_MAX+16];
 static uint8_t Tpcm[1024*4];
 
-static void never_inline init_replay_table(void)
+static void /* never_inline */
+fill_timer_routines(timer_rout_t * rout, uint16_t n)
+{
+  static const uint16_t tpl[16] = {
+    0x21fc,0x0800, /* d1 */    0x0000,0x8800, /* d2 */
+    0x21fc,0x0900, /* d3 */    0x0000,0x8800, /* d4 */
+    0x21fc,0x0A00, /* d5 */    0x0000,0x8800, /* d6 */
+    0x31fc,0x0000, /* d7 */    0x0136,0x4e73, /* a0 */
+  };
+
+  asm volatile (
+    "   movem.l  %[tpl],%%d1-%%a0  \n"
+    "   movea.l  %[buf],%%a1       \n"
+    "   move.w   %%a1,%%d7         \n"
+    "   move.w   %[cnt],%%d0       \n"
+    "   lsl.w    #5,%%d0           \n"
+    "   adda.w   %%d0,%%a1         \n"
+    "   move.w   %[cnt],%%d0       \n"
+    "   subq.w   #1,%%d0           \n"
+    "0: movem.l  %%d1-%%a0,-(%%a1) \n"
+    "   move.w   %%a1,%%d7         \n"
+    "   dbf      %%d0,0b           \n\t"
+    :
+    : [cnt] "g" (n), [buf] "g" (rout), [tpl] "m" (tpl)
+    : "%cc","memory",
+      "%d0","%d1","%d2","%d3","%d4","%d5","%d6","%d7",
+      "%a0","%a1","%a2"
+    );
+}
+
+static void never_inline init_timer_routines(void)
+{
+  const intptr_t beg = (intptr_t) stf_buf;
+  const intptr_t end = beg+sizeof(stf_buf);
+  const intptr_t seg = end & 0xFFFF0000;
+
+  /* default setup */
+  rout = (timer_rout_t *) beg;
+  temp = (int16_t *) end - MIX_MAX;
+
+  if (seg > beg) {
+    /* end is on a different segment */
+    const uint16_t len0 = seg-beg;      /* => -beg */
+    const uint16_t len1 = end-seg;      /* =>  end */
+    if (len0 < len1) {
+      rout = (timer_rout_t *) seg;
+      if ( (len0>>1) >= MIX_MAX ) {
+        temp = (int16_t *) stf_buf;
+      }
+    }
+  }
+  tuor = rout+MIX_MAX*2;
+  fill_timer_routines(rout, MIX_MAX*2);
+}
+
+
+/* Create 1024 x 4 bytes {A,B,C,X} entry from the packed table. */
+static void never_inline
+init_replay_table(void)
 {
   const uint8_t * pack = ym10_pack;
   uint8_t * table = Tpcm;
 
   do {
     uint8_t XY;
-
     XY = *pack++;
     *table++ = XY >> 4;
     *table++ = XY & 15;
@@ -76,21 +150,8 @@ static void never_inline init_replay_table(void)
     *table++ = XY >> 4;
     *table++ = XY & 15;
     ++ table;
-
   } while (pack < ym10_pack+sizeof(ym10_pack));
   zz_assert( table == &Tpcm[sizeof(Tpcm)] );
-}
-
-static void __attribute__ ((interrupt)) timer()
-{
-  const uint8_t * pcm = &Tpcm[512*4] + ( *g_stf.cur++ << 2 ) ;
-
-    /* if (pcm < Tpcm || pcm >= &Tpcm[sizeof(Tpcm)]) */
-    /*   asm volatile("illegal\n\t"); */
-
-  YMB[0] = 8;    YMB[2] = *pcm++;
-  YMB[0] = 9;    YMB[2] = *pcm++;
-  YMB[0] = 10;   YMB[2] = *pcm++;
 }
 
 static void clear_ym_regs(void)
@@ -117,7 +178,7 @@ static void never_inline prepare_sound(void)
   int16_t savesr;
   asm volatile ("move.w %%sr,%[savesr] \n\t" : [savesr] "=m" (savesr) );
   YMB[0] = 7;
-  /* YMB[2] = YMB[0] | 0x3f; */
+  /* YMB[2] = YMB[0] | 0077; */
   YMB[2] = (YMB[0] & 0370) | 0070;
   asm volatile ("move.w %%sr,%[savesr] \n\t" : : [savesr] "m" (savesr) );
   clear_ym_regs();                 /* A98-xx54-3210 */
@@ -143,7 +204,7 @@ static void prepare_timer(void)
   MFP[0x07] |= 0x20;                    /* IER */
   MFP[0x13] |= 0x20;                    /* IMR */
   MFP[0x17] |= 8;                       /* AEI */
-  VEC = timer;
+  VEC = (timer_rout_t *)&tuor[-1].rte;
 }
 
 #define OPEPCM(OP) do {                         \
@@ -195,45 +256,31 @@ mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
   K->xtp = stp;
 }
 
+static void to_timers(timer_rout_t * rout, int16_t * mix, int16_t n)
+{
+  while (n--) {
+    uint8_t * t = &Tpcm[ (*mix++ & 0x3ff ^ 0x200) << 2 ];
+    rout->movel[0].val = *t++;
+    rout->movel[1].val = *t++;
+    rout->movel[2].val = *t++;
+    ++rout;
+  }
+}
 
 static inline u32_t xstep(u32_t stp, uint16_t f12)
 {
   return mulu(stp>>4, f12) >> (24-FP);
 }
 
-static void * push_stf(play_t * const P, void * pcm, i16_t n)
+static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
 {
   mix_stf_t * const M = (mix_stf_t *)P->mixer_data;
   int k;
 
-  zz_assert(P);
-  zz_assert(M);
-  zz_assert(n>0);
-  zz_assert(n<MIXMAX);
-
-  if (1) {
-    int16_t a = P->pcm_per_tick;
-    int16_t b = a+(!!P->pcm_err_tick);
-    if (n != a && n != b)
-      ILLEGAL;
-  }
-
-  n = P->pcm_per_tick + (!!P->pcm_err_tick);
-
-  /* Swap buffers */
-  if (1) {
-    int16_t * cur = M->log;
-    M->log = M->phy;
-    M->phy = cur;
-    M->cur = cur;
-  } else {
-    M->cur = M->log;
-  }
-
-  if (!MFP[0x19]) {
-    MFP[0x1f] = M->tdr;
-    MFP[0x19] = M->tcr;
-  }
+  zz_assert( P );
+  zz_assert( M );
+  zz_assert( n > 0 );
+  zz_assert( n < MIX_MAX );
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -260,19 +307,68 @@ static void * push_stf(play_t * const P, void * pcm, i16_t n)
       break;
     default:
       zz_assert(!"wtf");
-      return 0;
+      return -1;
     }
   }
 
-  /* Clear mix buffer */
-  zz_memclr(M->log,n<<1);
+  if (1) {
+    i16_t n1, n2;
+    timer_rout_t *r1, *r2;
 
-  /* Add voices */
-  for (k=0; k<4; ++k)
-    mix_add1(M->chan+k, M->log, n);
-  /* M->log[n] = M->log[n+1] = M->log[n-1]; */
+    if (!M->wptr) {
+      MFP[0x19] = 0;
+      VEC = r1 = rout;
+      M->wptr = r2 = r1 + (n1=n);
+      n2 = 0;
+    }
+    else {
+      timer_rout_t * const rptr = VEC;
+      MFP[0x1f] = M->tdr;
+      MFP[0x19] = M->tcr;
 
-  return (int16_t) 0xBEEFFACE;
+      r1 = M->wptr;
+      if (rptr > r1) {
+        if (n1 = rptr-r1, n1 > n)
+          n1 = n;
+        M->wptr = r2 = r1+n1;
+        n2 = 0;
+      } else if (n1 = tuor-r1, n1 > n) {
+        n1 = n;
+        M->wptr = r2 = r1+n1;
+        n2 = 0;
+      } else {
+        n2 = n - n1;
+        r2 = rout;
+        M->wptr = r2+n2;
+      }
+    }
+
+    if (n1+n2 > n)
+      ILLEGAL;
+    if (n1+n2 <= 0)
+      ILLEGAL;
+
+    n = n1+n2;
+
+    /* Clear temp mix buffer */
+    zz_memclr(temp,n<<1);
+
+    /* Add voices */
+    for (k=0; k<4; ++k)
+      mix_add1(M->chan+k, temp, n);
+
+    if (n1)
+      to_timers(r1, temp, n1);
+    if (n2)
+      to_timers(r2, temp+n1, n2);
+
+    if (M->wptr >= tuor)
+      M->wptr = rout + (M->wptr-tuor);
+  }
+
+
+
+  return n;
 }
 
 
@@ -282,14 +378,11 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
   mix_stf_t * const M = &g_stf;
   uint32_t refspr;
 
+  init_timer_routines();
   init_replay_table();
   P->mixer_data = M;
   P->spr = mulu(P->song.khz,1000u);
   zz_memclr(M,sizeof(*M));
-
-  M->log = M->mix[0];
-  M->phy = M->mix[1];
-  M->cur = 0;
 
   refspr = mulu(P->song.khz,1000u);
 

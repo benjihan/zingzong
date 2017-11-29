@@ -17,16 +17,18 @@ sc68_start:
 	bra.w	player_play
 
 0:
+	move.l	d0,-(a7)	// mixer-id.l
+
 	lea	to_set(pc),a0
 	adda.l	(a0),a0
-	pea	(a0)
+	pea	(a0)		// set.l
 
 	lea	to_sng(pc),a0
 	adda.l	(a0),a0
-	pea	(a0)
-	
+	pea	(a0)		// sng.l
+
 	bsr	player_init
-	addq	#8,a7
+	lea	12(a7),a7
 
 	rts
 

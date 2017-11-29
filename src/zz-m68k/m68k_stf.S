@@ -9,18 +9,10 @@
         .arch   68000
         .global stf_timer_gen
 
+#define SPRMIN 4000             // Minimal sampling rate
+#define SPRMAX 32000		// Maximum sampling rate
 #define BLKLEN 16		// # of sample mixed per block
-#define SPRMAX 20500		// sampling rate max
-#define SPDMIN 200		// replay rate (speed) min
-
-	
-#define MINMAX ((SPRMAX+SPDMIN-1)/SPDMIN)
-#define MIXMAX 256	
-
-	// Just checking if the constants are sane
-	.if	MIXMAX < MINMAX
-	.err
-	.endif
+#define SPFMAX SPRMAX/200	// Maximum sample per frame (160)
 	
 /// stf_timer_gen(mem.l,vec.w,count.w,loop.w)
 ///
@@ -107,16 +99,16 @@ over:
         rts
 
 tpl_beg:
-        move.l  #0x08000000,0xFFFF8800.w // 21fc-08000X00-8800 |
-        move.l  #0x09000000,0xFFFF8800.w // 21fc-09000Y00-8800 |=> 24/4
-        move.l  #0x0A000000,0xFFFF8800.w // 21fc-0A000Z00-8800 |
-        move.l  #0x12345678,0x0000ABCD.w // 21fc-12345678-ABCD
-        rte                              // 4e73
+        move.l  #0x08000000,0xFFFF8800.w // 21fc-08000X00-8800 | 8
+        move.l  #0x09000000,0xFFFF8800.w // 21fc-09000Y00-8800 | 8
+        move.l  #0x0A000000,0xFFFF8800.w // 21fc-0A000Z00-8800 | 8
+        move.w  #0x00001234,0x0000ABCD.w // 31fc-1234-ABCD     | 6
+        rte                              // 4e73               | 2
 tpl_end:
-        .set tpl_len,tpl_end-tpl_beg
-
-
-
+        .set	tpl_len,tpl_end-tpl_beg
+	.if	tpl_len != 32
+	.err
+	.endif
 	
 	
 ///
@@ -305,11 +297,21 @@ nulPcm:	.word 0x0000		| Mid point for signed 8bit sample
 		
 	.section .bss
 
-stf_irq_routines:
-	.space	tpl_len*MIXMAX
+// Buffer used to generate the chained interrupted routines.
+//	
+// Each routines is tpl_len (32 bytes) long. The routines must be in
+// the same 64k segment. As we don't know where in memory this is
+// going to be loaded we have to allocate at least twice the
+// minimal room. We need 2 frames/ticks worth of sample (SPFMAX)
+// so we allocate 2 times that plus a few bytes for the last
+// routine of the ring buffer.
+//
+// We will use some of the lost room as temporary mix buffer. We need
+// MIXMAX words.
 	
-tmpbuf:
-	.space	2*MIXMAX	| tmp mix buffer
+stf_irq_routines:
+// 	.space	tpl_len*4*MIXMAX
+	
 	
 // Local Variables:
 // mode: asm

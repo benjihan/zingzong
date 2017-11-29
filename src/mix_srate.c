@@ -66,11 +66,10 @@ struct mix_data_s {
 
    ---------------------------------------------------------------------- */
 
-static int
+static inline void
 emsg_srate(const mix_chan_t * const K, int err)
 {
   emsg("src: %c: %s\n", K->id, src_strerror(err));
-  return E_MIX;
 }
 
 static inline double
@@ -125,16 +124,18 @@ fill_cb(void *_K, float **data)
 }
 #endif
 
-static int
+static zz_err_t
 restart_chan(mix_chan_t * const K)
 {
-  int err = 0;
-
+  int err;
   K->ilen = 0;
   K->imax = FLIMAX;
   K->omax = FLOMAX;
-  err = src_reset (K->st);
-  return err ? emsg_srate(K,err) : E_OK;
+  if (err = src_reset(K->st), err) {
+    emsg_srate(K,err);
+    return E_MIX;
+  }
+  return E_OK;
 }
 
 /* ----------------------------------------------------------------------
@@ -143,7 +144,7 @@ restart_chan(mix_chan_t * const K)
 
    ---------------------------------------------------------------------- */
 
-static void *
+static i16_t
 push_cb(play_t * const P, void * pcm, i16_t N)
 {
   mix_data_t * const M = (mix_data_t *) P->mixer_data;
@@ -171,7 +172,7 @@ push_cb(play_t * const P, void * pcm, i16_t N)
       /* K->end = K->pta + C->note.ins->end; */
       C->note.ins = 0;
       if (restart_chan(K))
-        return 0;
+        return -1;
 
     case TRIG_SLIDE:
       K->rate = rate_of_fp16(C->note.cur, M->rate);
@@ -235,8 +236,10 @@ push_cb(play_t * const P, void * pcm, i16_t N)
 
       K->sd.data_out = K->oflt;
       K->sd.output_frames = want;
-      if (src_process (K->st, &K->sd))
-        return emsg_srate(K,src_error(K->st));
+      if (src_process (K->st, &K->sd)) {
+        emsg_srate(K,src_error(K->st));
+        return -1;
+      }
       idone = K->sd.input_frames_used;
       odone = K->sd.output_frames_gen;
       K->sd.data_in += idone;
@@ -247,16 +250,17 @@ push_cb(play_t * const P, void * pcm, i16_t N)
       odone = src_callback_read(K->st, RATIO(K->rate), want, K->oflt);
       if (odone < 0) {
         emsg_srate(K,src_error(K->st));
-        return 0;
+        return -1;
       }
 #endif
 
       if ( (idone+odone) > 0) {
         zero = 0;
       } else {
+        zz_assert( !"keep happening ?" );
         if (++zero > 7) {
           emsg("%c: too many loop without data -- %u\n",K->id, zero);
-          return 0;
+          return -1;
         }
       }
 
@@ -275,7 +279,7 @@ push_cb(play_t * const P, void * pcm, i16_t N)
   /* Convert back to s16 */
   fltoi16(pcm, M->flt_buf, N);
 
-  return (int16_t *)pcm+N;
+  return N;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -347,10 +351,12 @@ static zz_err_t init_srate(play_t * const P, u32_t spr, const int quality)
 #else
       K->st = src_new(quality, 1, &err);
 #endif
-      ecode = (!K->st || err)
-        ? emsg_srate(K,err)
-        : restart_chan(K)
-        ;
+      if (!K->st) {
+        ecode = E_MIX;
+        emsg_srate(K,err);
+      } else {
+        ecode = restart_chan(K);
+      }
     }
   }
 

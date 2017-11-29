@@ -96,7 +96,7 @@ static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
   return res;
 }
 
-static void *
+static i16_t
 push_cb(play_t * const P, void * restrict pcm, i16_t N)
 {
   mix_fp_t * const M = (mix_fp_t *)P->mixer_data;
@@ -133,7 +133,7 @@ push_cb(play_t * const P, void * restrict pcm, i16_t N)
       break;
     default:
       zz_assert(!"wtf");
-      return 0;
+      return -1;
     }
   }
 
@@ -144,7 +144,7 @@ push_cb(play_t * const P, void * restrict pcm, i16_t N)
   for (k=0; k<4; ++k)
     mix_add1(M->chan+k, pcm, N);
 
-  return ( (int16_t *) pcm ) + N;
+  return N;
 }
 
 static void * local_calloc(u32_t size, zz_err_t * err)

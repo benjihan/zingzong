@@ -69,7 +69,7 @@ logfunc(zz_u8_t chan, void * user, const char *fmt, va_list list)
 # define LOGFUNC 0
 #endif
 
-void player_init(bin_t * song, bin_t * vset)
+void player_init(bin_t * song, bin_t * vset, uint32_t d0)
 {
   BRKMSG("player_init()");
 
@@ -85,6 +85,7 @@ void player_init(bin_t * song, bin_t * vset)
   zz_log_fun(LOGFUNC,0);
   zz_mem(newf,delf);
 
+  d0 = (uint8_t)(d0-1);       /* 0->DEF 1->AGA 2->STF 3->STE 4->FAL */
   ready =
     1
     && ! song_init_header(&play.song, song->ptr)
@@ -92,11 +93,8 @@ void player_init(bin_t * song, bin_t * vset)
     && ( play.vset.iref = play.song.iref)
     && ! vset_init_header(&play.vset, vset->ptr)
     && ! vset_init(&play.vset)
-    && ! zz_init(&play,0,0) /* rate,duration */
-
-    /* XXX $$$ GB: TEMP FORCE MIXER !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1 */
-
-    && ! zz_setup(&play,/*ZZ_MIXER_DEF*/MIXER_STF,0) /* mixer,spr */
+    && ! zz_init(&play,0,0)             /* rate,duration */
+    && ! zz_setup(&play,d0,0)           /* mixer,spr */
     ;
 }
 

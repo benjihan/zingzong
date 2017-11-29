@@ -95,11 +95,10 @@ chan_flread(float * restrict d, mix_chan_t * const K, int n)
 
    ---------------------------------------------------------------------- */
 
-static int
+static inline void
 emsg_soxr(const mix_chan_t * const K, soxr_error_t err)
 {
   emsg("soxr: %c: %s\n", K->id, soxr_strerror(err));
-  return E_MIX;
 }
 
 #if SOXR_USER_SUPPLY
@@ -138,7 +137,11 @@ restart_chan(mix_chan_t * const K)
     err = soxr_set_input_fn(K->soxr, fill_cb, K, K->imax);
 #endif
 
-  return err ? emsg_soxr(K,err) : E_OK;
+  if (err) {
+    emsg_soxr(K,err);
+    return E_MIX;
+  }
+  return E_OK;
 }
 
 static inline double
@@ -159,7 +162,7 @@ rate_of_fp16(const u32_t fp16, const double rate) {
 
    ---------------------------------------------------------------------- */
 
-static void *
+static i16_t
 push_soxr(play_t * const P, void * pcm, i16_t N)
 {
   soxr_error_t err;
@@ -196,10 +199,6 @@ push_soxr(play_t * const P, void * pcm, i16_t N)
     case TRIG_SLIDE:
       K->rate = rate_of_fp16(C->note.cur, M->rate);
 
-      /* if ( K->rate < M->rate_min || K->rate > M->rate_max ) */
-      /*   dmsg("rate out of range ! %f < %f < %f\n", */
-      /*        M->rate_min, K->rate, M->rate_max); */
-
       /* GB: Add/Sub a small amount because these asserts are
        *     sometimes triggered (eg. i686-mingw) by rounding errors
        *     of sort. Weirdly enough adding the conditional debug
@@ -214,7 +213,7 @@ push_soxr(play_t * const P, void * pcm, i16_t N)
 
       if (err) {
         emsg_soxr(K,err);
-        return 0;
+        return -1;
       }
       break;
     case TRIG_STOP: K->ptr = 0;
@@ -222,7 +221,7 @@ push_soxr(play_t * const P, void * pcm, i16_t N)
     default:
       emsg("INTERNAL ERROR: %c: invalid trigger -- %d\n", 'A'+k, C->trig);
       zz_assert( !"wtf" );
-      return 0;
+      return -1;
     }
   }
 
@@ -261,7 +260,7 @@ push_soxr(play_t * const P, void * pcm, i16_t N)
       err = soxr_error(K->soxr);
       if (err || odone < 0) {
         emsg_soxr(K,err);
-        return 0;
+        return -1;
       }
 
 #else
@@ -276,8 +275,10 @@ push_soxr(play_t * const P, void * pcm, i16_t N)
         K->icur, K->ilen, &idone,
         K->oflt, want, &odone);
 
-      if (err)
-        return emsg_soxr(K,err);
+      if (err) {
+        emsg_soxr(K,err);
+        return -1;
+      }
 
       K->ilen -= idone;
       K->icur += idone;
@@ -297,7 +298,7 @@ push_soxr(play_t * const P, void * pcm, i16_t N)
              soxr_strerror(err));
         if (++zero > 7) {
           emsg("%c: too many loop without data -- %hu\n",K->id, HU(zero));
-          return 0;
+          return -1;
         }
       }
 
@@ -310,10 +311,6 @@ push_soxr(play_t * const P, void * pcm, i16_t N)
           *flt++ += K->oflt[i];
     }
 
-    /* $$$ TEST */
-    if (need != 0)
-      wmsg("need:%d\n", need);
-
     zz_assert( need == 0 );
     zz_assert( flt-N == M->flt_buf );
   }
@@ -321,7 +318,7 @@ push_soxr(play_t * const P, void * pcm, i16_t N)
   /* Convert back to s16 */
   fltoi16(pcm, M->flt_buf, N);
 
-  return (int16_t *)pcm + N;
+  return N;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -407,10 +404,12 @@ static zz_err_t init_soxr(play_t * const P, u32_t spr)
         err = soxr_set_io_ratio(K->soxr, K->rate, 0);
       }
 
-      ecode = err
-        ? emsg_soxr(K,err)
-        : restart_chan(K)
-        ;
+      if (err) {
+        emsg_soxr(K,err);
+        ecode = E_MIX;
+      } else {
+        ecode = restart_chan(K);
+      }
     }
   }
 

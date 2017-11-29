@@ -8,6 +8,10 @@
 #ifndef ZZ_M68K_H
 #define ZZ_M68K_H
 
+/* GB: Keep order in sync with sc68 track in the test case.
+ *     We do (d0-1) so that d0 is 0 for auto-detect, 1 for Amiga ...
+ */
+
 enum {
   MIXER_AGA,                        /**< Amiga mixer identifier.    */
   MIXER_STF,                        /**< PSG mixer identifier.      */

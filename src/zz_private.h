@@ -202,8 +202,7 @@ struct mixer_s {
   void (*free)(play_t * const);
 
   /** push PCM function. */
-  void * (*push)(play_t * const, void *, i16_t);
-
+  i16_t (*push)(play_t * const, void *, i16_t);
 };
 
 /** Prepared instrument (sample). */

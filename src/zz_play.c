@@ -328,11 +328,22 @@ zz_play(play_t * restrict P, void * restrict pcm, const i16_t n)
     P->pcm_cnt -= cnt;
 
     if (pcm) {
-      pcm = P->mixer->push(P, pcm, cnt);
-      if (!pcm) {
+      i16_t written = P->mixer->push(P, pcm, cnt);
+      if (written < 0) {
         ret = -(P->code = E_MIX);
         break;
+      } else if (written == 0) {
+        /* GB: Reversed for future use. Currently should not happen.
+         *     A mixer only returning 0 causes an infinite loop.
+         */
+        zz_assert( ! "mixer should not return 0" );
       }
+
+      /* GB: currently mixers should have mix it all. */
+      zz_assert( cnt == written );
+      cnt = written;
+      /* GB: currently assuming all mixers returns 16bit pcm */
+      pcm = (int16_t *) pcm + cnt;
     }
     ret += cnt;
 
