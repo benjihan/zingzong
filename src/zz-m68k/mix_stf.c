@@ -7,6 +7,9 @@
 
 #include "../zz_private.h"
 
+#undef FP
+#define FP 16
+
 #undef SPR_MIN
 #define SPR_MIN 4000
 
@@ -14,8 +17,6 @@
 #define SPR_MAX 20000
 
 #define MIX_MAX (SPR_MAX/200u+2)
-
-
 
 #define YML ((volatile uint32_t *)0xFFFF8800)
 #define YMB ((volatile uint8_t *)0xFFFF8800)
@@ -44,10 +45,30 @@ struct mix_chan_s {
   int8_t *pcm, *end;
   u32_t  idx, lpl, len, xtp;
 };
+
+
+/* !!! change in m68k_stf.S as well !!! */
+struct mix_fast_s {
+  int8_t * end;                         /*  0 */
+  uint32_t stp;                         /*  4 */
+  int8_t * cur;                         /*  8 */
+  uint16_t dec;                         /* 12 */
+  uint16_t lpl;                         /* 14 */
+};                                      /* 16 bytes */
+
+typedef struct mix_fast_s mix_fast_t;
+
+ZZ_EXTERN_C
+void fast_stf(uint8_t * Tpcm, timer_rout_t *routs,
+              int16_t * temp, mix_fast_t * voices,
+              int16_t n);
+
+
 typedef struct mix_chan_s mix_chan_t;
 
 struct mix_stf_s {
   mix_chan_t chan[4];
+  mix_fast_t fast[4];
   timer_rout_t * wptr;
   uint16_t scl;
   uint8_t tcr, tdr;
@@ -73,6 +94,34 @@ static timer_rout_t * tuor;             /* last  timer routine */
 
 static uint8_t stf_buf[32*4*MIX_MAX+16];
 static uint8_t Tpcm[1024*4];
+
+static void never_inline
+chan_to_fast(mix_fast_t * restrict fast, mix_chan_t * const chan)
+{
+  fast->stp = chan->xtp;
+  if (!fast->stp) {
+    fast->dec = 0xAAAA;
+    fast->lpl = 0x5555;
+    fast->cur = (void*) 0xDEADDA70;
+    fast->end = (void*) 0xDEADF1F0;
+  } else {
+    /* _BREAKP; */
+    fast->dec = chan->idx;
+    fast->lpl = chan->lpl >> FP;
+    fast->cur = chan->pcm + ( chan->idx >> FP );
+    fast->end = chan->pcm + ( chan->len >> FP );
+  }
+}
+
+static void never_inline
+fast_to_chan(mix_chan_t * restrict chan, mix_fast_t * const fast)
+{
+  chan->xtp = fast->stp;
+  if (chan->xtp)
+    chan->idx = fast->dec + ( (fast->cur-chan->pcm) << FP);
+  else
+    chan->idx = chan->len;
+}
 
 static void /* never_inline */
 fill_timer_routines(timer_rout_t * rout, uint16_t n)
@@ -184,6 +233,17 @@ static void never_inline prepare_sound(void)
   clear_ym_regs();                 /* A98-xx54-3210 */
 }
 
+/* GB: unsigned samples: !!! SLOW ASS METHOD !!! */
+static void never_inline prepare_insts(inst_t * inst, u8_t n)
+{
+  u8_t i;
+  for (i=0; i<n; ++i, ++inst)
+    if (inst->len) {
+      uint8_t * pcm = inst->pcm, * const end = pcm+inst->end;
+      while (pcm < end)
+        *pcm++ ^= 0x80;
+    }
+}
 
 static void stop_timer(play_t * const P)
 {
@@ -209,7 +269,7 @@ static void prepare_timer(void)
 
 #define OPEPCM(OP) do {                         \
     zz_assert( &pcm[idx>>FP] < K->end );        \
-    *b++ OP (int8_t) pcm[idx>>FP];              \
+    *b++ OP (uint8_t) pcm[idx>>FP];              \
     idx += stp;                                 \
   } while (0)
 #define SETPCM() OPEPCM(=);
@@ -221,8 +281,15 @@ mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
   const int8_t * const pcm = (const int8_t *)K->pcm;
   u32_t idx = K->idx, stp = K->xtp;
 
-  if (n <= 0 || !K->xtp)
+  if (n <= 0)
     return;
+
+  if (!K->xtp) {
+    do {
+      *b++ += 0x80;
+    } while (--n);
+    return;
+  }
 
   zz_assert( K->pcm );
   zz_assert( K->end > K->pcm );
@@ -235,9 +302,13 @@ mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
       /* Have reach end ? */
       if (idx >= K->len) {
         idx = stp = 0;
+        do {
+          *b++ += 0x80;
+        } while (--n);
         break;
       }
     } while(--n);
+
   } else {
     const u32_t off = K->len - K->lpl;  /* loop start index */
     /* Instrument does loop */
@@ -259,7 +330,7 @@ mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
 static void to_timers(timer_rout_t * rout, int16_t * mix, int16_t n)
 {
   while (n--) {
-    uint8_t * t = &Tpcm[ (*mix++ & 0x3ff ^ 0x200) << 2 ];
+    uint8_t * t = &Tpcm[ ( (*mix++ & 0x3ff) /* ^ 0x200 */) << 2 ];
     rout->movel[0].val = *t++;
     rout->movel[1].val = *t++;
     rout->movel[2].val = *t++;
@@ -351,16 +422,42 @@ static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
     n = n1+n2;
 
     /* Clear temp mix buffer */
-    zz_memclr(temp,n<<1);
+    /* zz_memclr(temp,n<<1); */
 
     /* Add voices */
-    for (k=0; k<4; ++k)
-      mix_add1(M->chan+k, temp, n);
+    chan_to_fast( M->fast+0, M->chan+0);
+    chan_to_fast( M->fast+1, M->chan+1);
+    /* chan_to_fast( M->fast+2, M->chan+2); */
+    /* chan_to_fast( M->fast+3, M->chan+3); */
 
-    if (n1)
+    fast_stf(Tpcm, r1, temp,    M->fast, n1);
+    fast_stf(Tpcm, r2, temp+n1, M->fast, n2);
+
+    fast_to_chan( M->chan+0, M->fast+0 );
+    fast_to_chan( M->chan+1, M->fast+1 );
+
+    /* fast_to_chan( M->chan+2, M->fast+2 ); */
+    /* fast_to_chan( M->chan+3, M->fast+3 ); */
+
+    /* for (k=2; k<4; ++k) { */
+    /*   mix_add1(M->chan+k, temp, n); */
+    /* } */
+
+
+    for (k=2; k<4; ++k) {
+      i16_t i;
+      for (i=0; i<n; ++i)
+        temp[i] += 0x80;
+    }
+
+    if (n1) {
       to_timers(r1, temp, n1);
-    if (n2)
+//      fast_stf(Tpcm, r1, temp, M->fast, n1);
+    }
+    if (n2) {
       to_timers(r2, temp+n1, n2);
+//      fast_stf(Tpcm, r2, temp, M->fast, n2);
+    }
 
     if (M->wptr >= tuor)
       M->wptr = rout + (M->wptr-tuor);
@@ -402,6 +499,7 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
 
   prepare_timer();
   prepare_sound();
+  prepare_insts(P->vset.inst, P->vset.nbi);
 
   return ecode;
 }

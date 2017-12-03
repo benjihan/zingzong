@@ -237,7 +237,7 @@ VASMBIN = vasmm68k_mot -quiet -Fbin -o
 
 
 %.o : %.c
-	echo "[GCC] $* <$(call filter-m,$(CFLAGS))>";\
+	@echo "[GCC] $* <$(call filter-m,$(CFLAGS))>";\
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c  "$<" -o "$@"
 
 %.o : %.S
@@ -245,11 +245,8 @@ VASMBIN = vasmm68k_mot -quiet -Fbin -o
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(ASFLAGS) -c "$<" -o "$@"
 
 %.elf dri_%.elf:
-	echo "[ELF] $* [$(START_SYMB)=$(START_ADDR)]";\
+	@echo "[ELF] $* [$(START_SYMB)=$(START_ADDR)]";\
 	$(CC) $(ELFFLAGS) $^ $(LDLIBS) -o $@
-
-
-#	$(LD) $(ELFFLAGS)  $^ $(ELFLIBS) -o $@
 
 %.bin : %.elf
 	@echo "[BIN] $*";\

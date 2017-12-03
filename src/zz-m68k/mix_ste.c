@@ -9,7 +9,7 @@
 
 static zz_err_t init_ste(play_t * const, u32_t);
 static void     free_ste(play_t * const);
-static void    *push_ste(play_t * const, void *, i16_t);
+static i16_t    push_ste(play_t * const, void *, i16_t);
 
 mixer_t * mixer_ste(mixer_t * const M)
 {
@@ -26,10 +26,10 @@ const char mix_ste_version[] = __DATE__;
 uint8_t mix_ste_bss[128];
 /* $$$ GB: TEMP for linker test. */
 
-static void *push_ste(play_t * const P, void *pcm, i16_t n)
+static i16_t push_ste(play_t * const P, void *pcm, i16_t n)
 {
   zz_assert( 0 );
-  return 0;
+  return -1;
 }
 
 static zz_err_t init_ste(play_t * const P, u32_t spr)
