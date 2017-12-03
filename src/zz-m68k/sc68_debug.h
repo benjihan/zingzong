@@ -10,21 +10,11 @@
 
 #define ILLEGAL asm volatile("illegal\n\t")
 
-#ifdef NDEBUG
-
-#define BREAKP    zz_void
-#define BRKMSG(M) zz_void
-#define ASSERT(C) zz_void
-#define DBGMSG(M) zz_void
-#define zz_assert(C) zz_void
-
-#else
-
 #define _STRINGY(X) #X
 #define _ASSERTY(X,F,L) X " in " F  ":" _STRINGY(L)
 
 /* Break-on-debug break-point */
-#define BREAKP                                  \
+#define _BREAKP                                 \
   asm volatile(                                 \
     "clr.l   -(%a7)      \n\t"                  \
     "pea     0x5C68DB61  \n\t"                  \
@@ -33,7 +23,7 @@
     )                                           \
 
 /* Break-on-debug break-point with message. */
-#define BRKMSG(M)                               \
+#define _BRKMSG(M)                              \
   do {                                          \
     const char * str = (M);                     \
     asm volatile (                              \
@@ -47,7 +37,7 @@
   } while (0)
 
 /* Print a debug message. */
-#define DBGMSG(M)                               \
+#define _DBGMSG(M)                              \
   do {                                          \
     const char * str = (M);                     \
     asm volatile (                              \
@@ -61,7 +51,7 @@
   } while (0)
 
 /* Break-on-debug-only if condition is false. */
-#define zz_assert(C) if (! (C) ) {                              \
+#define _zz_assert(C) if (! (C) ) {                             \
     static char str[] = _ASSERTY(#C, __BASE_FILE__, __LINE__);  \
     asm volatile(                                               \
       "pea     %0          \n\t"                                \
@@ -71,6 +61,22 @@
       : : "m" ( str ) );                                        \
   }                                                             \
   else
+
+#ifdef NDEBUG
+
+#define BREAKP    zz_void
+#define BRKMSG(M) zz_void
+#define ASSERT(C) zz_void
+#define DBGMSG(M) zz_void
+#define zz_assert(C) zz_void
+
+#else
+
+#define BREAKP    _BREAKP
+#define BRKMSG(M) _BRKMSG(M)
+#define ASSERT(C) _ASSERT(C)
+#define DBGMSG(M) _DBGMSG(M)
+#define zz_assert(C) _zz_assert(C)
 
 #endif /* NDEBUG */
 
