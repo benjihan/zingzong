@@ -41,17 +41,11 @@ mixer_t * mixer_stf(mixer_t * const M)
 
 typedef struct timer_rout_s timer_rout_t;
 
-struct mix_chan_s {
-  int8_t *pcm, *end;
-  u32_t  idx, lpl, len, xtp;
-};
-
-
 /* !!! change in m68k_stf.S as well !!! */
 struct mix_fast_s {
-  int8_t * end;                         /*  0 */
-  uint32_t stp;                         /*  4 */
-  int8_t * cur;                         /*  8 */
+  uint8_t *end;                         /*  0 */
+  uint8_t *cur;                         /*  8 */
+  uint32_t xtp;                         /*  4 */
   uint16_t dec;                         /* 12 */
   uint16_t lpl;                         /* 14 */
 };                                      /* 16 bytes */
@@ -67,7 +61,6 @@ void fast_stf(uint8_t * Tpcm, timer_rout_t *routs,
 typedef struct mix_chan_s mix_chan_t;
 
 struct mix_stf_s {
-  mix_chan_t chan[4];
   mix_fast_t fast[4];
   timer_rout_t * wptr;
   uint16_t scl;
@@ -95,33 +88,6 @@ static timer_rout_t * tuor;             /* last  timer routine */
 static uint8_t stf_buf[32*4*MIX_MAX+16];
 static uint8_t Tpcm[1024*4];
 
-static void never_inline
-chan_to_fast(mix_fast_t * restrict fast, mix_chan_t * const chan)
-{
-  fast->stp = chan->xtp;
-  if (!fast->stp) {
-    fast->dec = 0xAAAA;
-    fast->lpl = 0x5555;
-    fast->cur = (void*) 0xDEADDA70;
-    fast->end = (void*) 0xDEADF1F0;
-  } else {
-    /* _BREAKP; */
-    fast->dec = chan->idx;
-    fast->lpl = chan->lpl >> FP;
-    fast->cur = chan->pcm + ( chan->idx >> FP );
-    fast->end = chan->pcm + ( chan->len >> FP );
-  }
-}
-
-static void never_inline
-fast_to_chan(mix_chan_t * restrict chan, mix_fast_t * const fast)
-{
-  chan->xtp = fast->stp;
-  if (chan->xtp)
-    chan->idx = fast->dec + ( (fast->cur-chan->pcm) << FP);
-  else
-    chan->idx = chan->len;
-}
 
 static void /* never_inline */
 fill_timer_routines(timer_rout_t * rout, uint16_t n)
@@ -267,77 +233,6 @@ static void prepare_timer(void)
   VEC = (timer_rout_t *)&tuor[-1].rte;
 }
 
-#define OPEPCM(OP) do {                         \
-    zz_assert( &pcm[idx>>FP] < K->end );        \
-    *b++ OP (uint8_t) pcm[idx>>FP];              \
-    idx += stp;                                 \
-  } while (0)
-#define SETPCM() OPEPCM(=);
-#define ADDPCM() OPEPCM(+=);
-
-static void never_inline
-mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
-{
-  const int8_t * const pcm = (const int8_t *)K->pcm;
-  u32_t idx = K->idx, stp = K->xtp;
-
-  if (n <= 0)
-    return;
-
-  if (!K->xtp) {
-    do {
-      *b++ += 0x80;
-    } while (--n);
-    return;
-  }
-
-  zz_assert( K->pcm );
-  zz_assert( K->end > K->pcm );
-  zz_assert( K->idx >= 0 && K->idx < K->len );
-
-  if (!K->lpl) {
-    /* Instrument does not loop */
-    do {
-      ADDPCM();
-      /* Have reach end ? */
-      if (idx >= K->len) {
-        idx = stp = 0;
-        do {
-          *b++ += 0x80;
-        } while (--n);
-        break;
-      }
-    } while(--n);
-
-  } else {
-    const u32_t off = K->len - K->lpl;  /* loop start index */
-    /* Instrument does loop */
-    do {
-      ADDPCM();
-      /* Have reach end ? */
-      if (idx >= K->len) {
-        u32_t ovf = idx - K->len;
-        if (ovf >= K->lpl) ovf = modu(ovf,K->lpl);
-        idx = off+ovf;
-        zz_assert( idx >= off && idx < K->len );
-      }
-    } while(--n);
-  }
-  K->idx = idx;
-  K->xtp = stp;
-}
-
-static void to_timers(timer_rout_t * rout, int16_t * mix, int16_t n)
-{
-  while (n--) {
-    uint8_t * t = &Tpcm[ ( (*mix++ & 0x3ff) /* ^ 0x200 */) << 2 ];
-    rout->movel[0].val = *t++;
-    rout->movel[1].val = *t++;
-    rout->movel[2].val = *t++;
-    ++rout;
-  }
-}
-
 static inline u32_t xstep(u32_t stp, uint16_t f12)
 {
   return mulu(stp>>4, f12) >> (24-FP);
@@ -355,7 +250,7 @@ static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
-    mix_chan_t * const K = M->chan+k;
+    mix_fast_t * const K = M->fast+k;
     chan_t     * const C = P->chan+k;
     const u8_t trig = C->trig;
 
@@ -364,11 +259,10 @@ static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
     case TRIG_NOTE:
 
       zz_assert(C->note.ins);
-      K->idx = 0;
-      K->pcm = (int8_t *) C->note.ins->pcm;
-      K->len = C->note.ins->len << FP;
-      K->lpl = C->note.ins->lpl << FP;
-      K->end = C->note.ins->end + K->pcm;
+      K->cur = C->note.ins->pcm;
+      K->end = K->cur + C->note.ins->len;
+      K->dec = 0;
+      K->lpl = C->note.ins->lpl;
 
     case TRIG_SLIDE:
       K->xtp = xstep(C->note.cur, M->scl);
@@ -412,58 +306,24 @@ static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
         r2 = rout;
         M->wptr = r2+n2;
       }
+      if (M->wptr >= tuor)
+        M->wptr = rout + (M->wptr-tuor);
     }
 
     if (n1+n2 > n)
       ILLEGAL;
     if (n1+n2 <= 0)
       ILLEGAL;
+//    n = n1 + n2;
 
-    n = n1+n2;
+    /* M->fast[0].xtp = 0; */
+    /* M->fast[1].xtp = 0; */
+    /* M->fast[2].xtp = 0; */
+    /* M->fast[3].xtp = 0; */
 
-    /* Clear temp mix buffer */
-    /* zz_memclr(temp,n<<1); */
-
-    /* Add voices */
-    chan_to_fast( M->fast+0, M->chan+0);
-    chan_to_fast( M->fast+1, M->chan+1);
-    /* chan_to_fast( M->fast+2, M->chan+2); */
-    /* chan_to_fast( M->fast+3, M->chan+3); */
-
-    fast_stf(Tpcm, r1, temp,    M->fast, n1);
-    fast_stf(Tpcm, r2, temp+n1, M->fast, n2);
-
-    fast_to_chan( M->chan+0, M->fast+0 );
-    fast_to_chan( M->chan+1, M->fast+1 );
-
-    /* fast_to_chan( M->chan+2, M->fast+2 ); */
-    /* fast_to_chan( M->chan+3, M->fast+3 ); */
-
-    /* for (k=2; k<4; ++k) { */
-    /*   mix_add1(M->chan+k, temp, n); */
-    /* } */
-
-
-    for (k=2; k<4; ++k) {
-      i16_t i;
-      for (i=0; i<n; ++i)
-        temp[i] += 0x80;
-    }
-
-    if (n1) {
-      to_timers(r1, temp, n1);
-//      fast_stf(Tpcm, r1, temp, M->fast, n1);
-    }
-    if (n2) {
-      to_timers(r2, temp+n1, n2);
-//      fast_stf(Tpcm, r2, temp, M->fast, n2);
-    }
-
-    if (M->wptr >= tuor)
-      M->wptr = rout + (M->wptr-tuor);
+    fast_stf(Tpcm, r1, temp, M->fast, n1);
+    fast_stf(Tpcm, r2, temp, M->fast, n2);
   }
-
-
 
   return n;
 }
