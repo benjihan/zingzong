@@ -82,6 +82,7 @@ from struct import unpack, pack
 from math import log, gcd
 from getopt import gnu_getopt as getopt, error as GetOptError
 from fractions import Fraction
+from os.path import splitext
 
 # ----------------------------------------------------------------------------
 #  Globales
@@ -885,6 +886,7 @@ Usage: zingdoctor.py [OPTIONS] file.4q ...
 Options:
  -h --help --usage ...... Display this message and exit
  -V --version ........... Print version and copyright and exit
+ -d --demux ............. Demux .4q file
  -c --check ............. Only check (default)
  -f --fix ............... Fix error
  -u --unroll=N .......... Add N-bytes of loop unroll buffer"""
@@ -896,6 +898,7 @@ def print_version():
 
 Copyright (c) 2017 Benjamin Gerard AKA Ben/OVR
 Licensed under MIT license""" % version)
+
 
 ######################################################################
 #
@@ -909,15 +912,16 @@ def main(argc, argv):
     vsetdata = songdata = infodata = None
 
     try:
-        opts, args = getopt(argv, "hV" "vq" "cf" "u:",
+        opts, args = getopt(argv, "hV" "vq" "dcf" "u:",
                             [ 'help','usage','version',
                               'verbose','quiet',
-                              'check','fix','unroll='
+                              'check','fix','denux','unroll='
                             ])
     except GetOptError as e:
         raise Error(str(e))
 
     for opt,arg in opts:
+        new_mod = None
 
         if opt in [ '-h','--help','--usage' ]:
             print_usage()
@@ -931,14 +935,13 @@ def main(argc, argv):
         elif opt in [ '-q', '--quiet' ]:
             opt_verbose -= 1
 
+        elif opt in [ '-d', '--demux' ]:
+            new_mode = "demux"
         elif opt in [ '-c', '--check' ]:
-            if opt_mode and opt_mode != "check":
-                raise Error("option "+opt+" incompatible with -f/--fix")
-            opt_mode = "check"
+            new_mode = "check"
         elif opt in [ '-f', '--fix' ]:
-            if opt_mode and opt_mode != "fix":
-                raise Error("option "+opt+" incompatible with -c/--check")
-            opt_mode = "fix"
+            new_mode = "fix"
+          
         elif opt in [ '-u', '--unroll' ]:
             try:
                 opt_unroll = int(arg)
@@ -948,6 +951,11 @@ def main(argc, argv):
                 raise Error("option "+opt+" not an integer -- "+repr(arg))
         else:
             raise Error("option "+opt+" not implemented")
+
+        if new_mode:
+            if opt_mode and new_mode != opt_mode:
+                raise Error("option "+opt+" incompatible with --"+opt_mode)
+            opt_mode = new_mode
 
     opt_mode = opt_mode or "check"
     args = args[1:]
@@ -959,7 +967,7 @@ def main(argc, argv):
 
     dmsg("Input file: %s" % repr(path))
 
-    # "QUARTET" file ?
+    # "QUARTET" (,4q) file ?
     f = open(path,'rb')
     hd = f.read(8)
     if hd == b"QUARTET\0":
@@ -971,9 +979,37 @@ def main(argc, argv):
         songdata = f.read(qsng)
         vsetdata = f.read(qset)
         infodata = f.read(qinf)
-        rem = f.read()
+        rem = len(f.read())
         if rem:
-            wmsg("unexpected garbage at end of "+repr(path))
+            wmsg("%u unexpected garbage at end of %s" %
+                 (rem,repr(path)))
+
+        if opt_mode == 'demux':
+            base = splitext(path)[0]
+
+            if songdata:
+                name = base+'.4v'
+                with open(name,'wb') as wp:
+                    print('saving song into %s (%u bytes)'
+                          % (repr(name), wp.write(songdata)))
+
+            if vsetdata:
+                name = base+'.set'
+                with open(name,'wb') as wp:
+                    print('saving instrument into %s (%u bytes)'
+                          % (repr(name), wp.write(vsetdata)))
+
+            if infodata:
+                # GB: ultimately it would be better to convert from
+                #     AtariST charset to UTF-8 using python codecs
+                #     class.
+                name = base+'.txt' 
+                with open(name,'wb') as wp:
+                    print('saving info into %s (%u bytes)'
+                          % (repr(name), wp.write(infodata)))
+
+            return 0
+            
     else:
         vsetdata = hd+f.read()
         vsetpath = path
