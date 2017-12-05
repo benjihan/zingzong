@@ -78,15 +78,14 @@ zz_CPPFLAGS += -I$(srcdir) -DSC68
 ifdef DEBUG
 m68_pcrel    = no-pcrel
 m68_SHORT    = no-short
-
 zz_CFLAGS   += -g -Og
 zz_CPPFLAGS += -DNO_VFS -DDEBUG=1
-ELFLIBS      = --verbose -L$(shell $(LD) --print-sysroot)/usr/lib -lc
+ELFLIBS      = 
 else
 m68_pcrel    = pcrel
 zz_CFLAGS   += -g -Os -fomit-frame-pointer
 zz_CPPFLAGS += -DZZ_MINIMAL -DNDEBUG=1
-ELFLIBS      =
+ELFLIBS      = $(NOSTART) $(NOLIBS)
 endif
 
 zz_ASFLAGS  += --register-prefix-optional # no annoying %
@@ -100,8 +99,8 @@ comma := ,
 comma-list = $(subst ${space},${comma},$(strip $1))
 filter-m   = $(patsubst -m%,%,$(filter -m%,$(1)))
 
-# Deoending id calling LD or CC to link
-maybe-wl   = $(call comma-list, -Wl $1)
+# Depending if calling LD or CC to link
+maybe-wl   = $(call comma-list,-Wl $1)
 
 # ----------------------------------------------------------------------
 
@@ -138,21 +137,23 @@ zz_fast.o: override zz_CFLAGS += -Ofast
 
 START_SYMB = $(error START_SYMB must be defined)
 START_ADDR = $(error START_ADDR must be defined)
-ELFFLAGS   = $(error ELFFLAGS must be defined)
 
-# -static-libgcc -static-libstdc++
-
-DEFAULTLIBS = -nostartfiles # -nodefaultlibs -nostdlib
-
-ELFSTATIC  = -static $(DEFAULTLIBS)
-ELFPARTIAL = -e $(START_SYMB) $(call maybe-Wl,-Ttext=0x$(START_ADDR))
-ELFCOMMON  = $(ELFSTATIC) $(ELFPARTIAL)
-
-# ELFCOMMON += -EB
+NOUNDEF     = -z defs
+NOLIBS      = -nodefaultlibs -nostdlib
 
 # ----------------------------------------------------------------------
 #  Drivers
-# ----------------------------------------------------------------------
+#
+#  GB: Drivers have unresolved symbols that are set to 0 by the
+#      linker. Setting a START_ADDRESS far away triggers an overflow
+#      error with 16-bit relocations (R_68K_PC16).
+#
+#  GB: Drivers are basically partial (intermediate) link with a common
+#      interface. All drivers could work as overlay but it's not
+#      convenient for our usage. However as only one driver is used at
+#      a time they can share a common BSS section. This is achieved by
+#      the finale linker scripts.
+#      ----------------------------------------------------------------------
 
 drivers := $(patsubst %,dri_%.elf,aga stf ste fal)
 
@@ -164,29 +165,30 @@ dri_stf.elf: mix_stf.o m68k_stf.o
 dri_ste.elf: mix_ste.o
 dri_fal.elf: mix_fal.o
 
-# GB: Drivers have unresolved symbols that are set to 0 by the
-#     linker. Setting a START_ADDRESS far away triggers an overflow
-#     error with 16-bit relocations (R_68K_PC16).
-DRIFLAGS = $(ELFCOMMON) $(call maybe-Wl,--unresolved-symbols=ignore-all)
+DRIFLAGS = -r -static $(NOSTART) $(NOLIBS)
 
+# START_* are dummies only used by the echo command
 dri_%.elf: START_SYMB = mixer_$*
 dri_%.elf: START_ADDR = 00000000
-dri_%.elf: ELFPARTIAL = -r
-dri_%.elf: ELFFLAGS   = $(DRIFLAGS)
+dri_%.elf: LDFLAGS = $(DRIFLAGS)
 
 # ----------------------------------------------------------------------
 #  Player
 # ----------------------------------------------------------------------
 
-player: zingzong.bin
-.PHONY: player
+zingzong player: zingzong.bin
+.PHONY: player zingzong
 
+ELFFLAGS = -static $(ELFLIBS) $(NOUNDEF) $(MAPFLAGS)
+MAPFLAGS = $(call maybe-wl,-Map=$*.map)
+#MAPFLAGS = $(error MAPFLAGS ?)
+
+.PRECIOUS: zingzong.elf
 zingzong.elf: START_SYMB = player_start
 zingzong.elf: START_ADDR = C0000000
-zingzong.elf: ELFFLAGS   = $(ELFCOMMON) -T zingzong.x $(call maybe-Wl,-Map=$*.map)
+zingzong.elf: LDFLAGS    = -T zingzong.x $(ELFFLAGS)
 zingzong.elf: player_start.o $(addsuffix .o,$(com) $(zzz)) $(drivers)
-.PRECIOUS: zingzong.elf
-player_start.o: zingzong.x
+player_start.o: zingzong.x	# GB: force rebuild when script change
 
 # ----------------------------------------------------------------------
 #  Test sc68 files
@@ -194,21 +196,20 @@ player_start.o: zingzong.x
 
 CLEAN_TARGETS += clean-test
 
+.PHONY: clean-test
 clean-test:
 	@rm -f -- *.o *.dri *.elf *.map song.dat vset.dat
 	@echo "$@ done"
 
-.PHONY: clean-test
-
-test: test.sc68
 .PHONY: test
+test: test.sc68
 
+.PRECIOUS: test.elf
 test.elf: START_SYMB = sc68_start
 test.elf: START_ADDR = 00010000
-test.elf: ELFFLAGS   = $(ELFCOMMON) -T sc68.x $(call maybe-Wl,-Map=$*.map)
+test.elf: LDFLAGS    = -T sc68.x $(ELFFLAGS)
 test.elf: sc68_start.o $(addsuffix .o,$(com) $(zzz)) $(drivers) song.elf vset.elf
-
-sc68_start.o: sc68.x		# GB: hacky
+sc68_start.o: sc68.x		# GB: force rebuild when script change
 
 SONGFILE = Cowboy_Theme-01.4v
 ifndef VSETFILE
@@ -245,8 +246,8 @@ VASMBIN = vasmm68k_mot -quiet -Fbin -o
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(ASFLAGS) -c "$<" -o "$@"
 
 %.elf dri_%.elf:
-	@echo "[ELF] $* [$(START_SYMB)=$(START_ADDR)]";\
-	$(CC) $(ELFFLAGS) $^ $(LDLIBS) -o $@
+	echo "[ELF] $* [$(START_SYMB)=$(START_ADDR)]";\
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 %.bin : %.elf
 	@echo "[BIN] $*";\
