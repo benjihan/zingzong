@@ -120,7 +120,7 @@
 #endif
 
 #define VSET_MAX_SIZE (1<<19) /* arbitrary .set max size */
-#define SONG_MAX_SIZE 0xFFF0  /* arbitrary .4v max size  */
+#define SONG_MAX_SIZE 0xFFF0  /* not so arbitrary .4v max size */
 #define INFO_MAX_SIZE 2048    /* arbitrary .4q info max size */
 
 /* The size of the loop stack in the singsong.prg program is *67*.
@@ -129,8 +129,15 @@
 #ifndef MAX_LOOP
 #define MAX_LOOP      15
 #endif
-#define SEQ_STP_MIN   0x04C1B
-#define SEQ_STP_MAX   0x50A28
+
+/* Encountered lowest and highest notes are respectively:
+ *
+ * 0x04C1B (~0.3) = -21 semitones
+ * 0x50A28 (~5.0) = +30 semitones
+ *
+ */
+#define SEQ_STP_MIN 0x04C1B  /**< Lowest note without re-sampling.  */
+#define SEQ_STP_MAX 0x50A28  /**< Highest note without re-sampling. */
 
 enum {
   TRIG_NOP, TRIG_NOTE, TRIG_SLIDE, TRIG_STOP
