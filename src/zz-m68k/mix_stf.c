@@ -44,8 +44,8 @@ typedef struct timer_rout_s timer_rout_t;
 /* !!! change in m68k_stf.S as well !!! */
 struct mix_fast_s {
   uint8_t *end;                         /*  0 */
-  uint8_t *cur;                         /*  8 */
-  uint32_t xtp;                         /*  4 */
+  uint8_t *cur;                         /*  4 */
+  uint32_t xtp;                         /*  8 */
   uint16_t dec;                         /* 12 */
   uint16_t lpl;                         /* 14 */
 };                                      /* 16 bytes */
@@ -54,7 +54,7 @@ typedef struct mix_fast_s mix_fast_t;
 
 ZZ_EXTERN_C
 void fast_stf(uint8_t * Tpcm, timer_rout_t *routs,
-              int16_t * temp, mix_fast_t * voices,
+              int16_t * temp, mix_fast_t *voices,
               int16_t n);
 
 
@@ -242,6 +242,8 @@ static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
 {
   mix_stf_t * const M = (mix_stf_t *)P->mixer_data;
   int k;
+  i16_t n1, n2;
+  timer_rout_t *r1, *r2;
 
   zz_assert( P );
   zz_assert( M );
@@ -276,54 +278,38 @@ static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
     }
   }
 
-  if (1) {
-    i16_t n1, n2;
-    timer_rout_t *r1, *r2;
-
-    if (!M->wptr) {
-      MFP[0x19] = 0;
-      VEC = r1 = rout;
-      M->wptr = r2 = r1 + (n1=n);
-      n2 = 0;
-    }
-    else {
-      timer_rout_t * const rptr = VEC;
-      MFP[0x1f] = M->tdr;
-      MFP[0x19] = M->tcr;
-
-      r1 = M->wptr;
-      if (rptr > r1) {
-        if (n1 = rptr-r1, n1 > n)
-          n1 = n;
-        M->wptr = r2 = r1+n1;
-        n2 = 0;
-      } else if (n1 = tuor-r1, n1 > n) {
-        n1 = n;
-        M->wptr = r2 = r1+n1;
-        n2 = 0;
-      } else {
-        n2 = n - n1;
-        r2 = rout;
-        M->wptr = r2+n2;
-      }
-      if (M->wptr >= tuor)
-        M->wptr = rout + (M->wptr-tuor);
-    }
-
-    if (n1+n2 > n)
-      ILLEGAL;
-    if (n1+n2 <= 0)
-      ILLEGAL;
-//    n = n1 + n2;
-
-    /* M->fast[0].xtp = 0; */
-    /* M->fast[1].xtp = 0; */
-    /* M->fast[2].xtp = 0; */
-    /* M->fast[3].xtp = 0; */
-
-    fast_stf(Tpcm, r1, temp, M->fast, n1);
-    fast_stf(Tpcm, r2, temp, M->fast, n2);
+  if (!M->wptr) {
+    MFP[0x19] = 0;
+    VEC = r1 = rout;
+    M->wptr = r2 = r1 + (n1=n);
+    n2 = 0;
   }
+  else {
+    timer_rout_t * const rptr = VEC;
+    MFP[0x1f] = M->tdr;
+    MFP[0x19] = M->tcr;
+
+    r1 = M->wptr;
+    if (rptr > r1) {
+      if (n1 = rptr-r1, n1 > n)
+        n1 = n;
+      M->wptr = r2 = r1+n1;
+      n2 = 0;
+    } else if (n1 = tuor-r1, n1 > n) {
+      n1 = n;
+      M->wptr = r2 = r1+n1;
+      n2 = 0;
+    } else {
+      n2 = n - n1;
+      r2 = rout;
+      M->wptr = r2+n2;
+    }
+    if (M->wptr >= tuor)
+      M->wptr = rout + (M->wptr-tuor);
+  }
+
+  fast_stf(Tpcm, r1, temp, M->fast, n1);
+  fast_stf(Tpcm, r2, temp, M->fast, n2);
 
   return n;
 }
@@ -353,7 +339,7 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
   if (spr < SPR_MIN) spr = SPR_MIN;
   if (spr > SPR_MAX) spr = SPR_MAX;
 
-  spr = SPR_MAX;
+  /* spr = SPR_MAX; */
   spr = set_sampling(P,spr);
   M->scl = ( divu(refspr<<13,spr) + 1 ) >> 1;
 

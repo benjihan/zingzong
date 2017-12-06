@@ -211,7 +211,7 @@ test.elf: LDFLAGS    = -T sc68.x $(ELFFLAGS)
 test.elf: sc68_start.o $(addsuffix .o,$(com) $(zzz)) $(drivers) song.elf vset.elf
 sc68_start.o: sc68.x		# GB: force rebuild when script change
 
-SONGFILE = Cowboy_Theme-01.4v
+SONGFILE ?= Cowboy_Theme-01.4v
 ifndef VSETFILE
 VSETFILE = $(SONGFILE:%.4v=%.set)
 endif
@@ -236,7 +236,6 @@ VASMBIN = vasmm68k_mot -quiet -Fbin -o
 #  Implicite rules
 # ----------------------------------------------------------------------
 
-
 %.o : %.c
 	@echo "[GCC] $* <$(call filter-m,$(CFLAGS))>";\
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c  "$<" -o "$@"
@@ -246,7 +245,7 @@ VASMBIN = vasmm68k_mot -quiet -Fbin -o
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(ASFLAGS) -c "$<" -o "$@"
 
 %.elf dri_%.elf:
-	echo "[ELF] $* [$(START_SYMB)=$(START_ADDR)]";\
+	@echo "[ELF] $* [$(START_SYMB)=$(START_ADDR)]";\
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 %.bin : %.elf

@@ -714,8 +714,9 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
           break;
         ecode = E_MEM;
         P->vseturi = zz_strset(P->vseturi,vseturi);
-        if (likely(!P->vseturi))
-          ecode = E_OK;
+        if (unlikely(!P->vseturi))
+          break;
+        ecode = E_OK;
       } else {
         dmsg("skipped voice set as requested\n");
         zz_assert( ecode == E_OK);
