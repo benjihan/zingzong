@@ -43,20 +43,21 @@ struct mix_chan_s {
   uint32_t lp_adr;
   uint16_t lp_len;
   uint8_t  status;
+  uint8_t  inum;
 };
 
 struct mix_aga_s {
   mix_chan_t chan[4];
   struct aga_inst {
     uint32_t adr, lp_adr;
-    uint16_t len, lp_len, vol, xxx;
+    uint16_t len, lp_len, vol, num;
   } inst[20];
 };
 
 
 static mix_aga_t g_aga;
 
-static uint16_t xstep(uint32_t stp, uint8_t khz)
+static uint16_t xstep(uint32_t stp, uint8_t khz, uint8_t inum)
 {
   uint16_t per;
   static const uint32_t ftbl[][2] = {
@@ -81,7 +82,15 @@ static uint16_t xstep(uint32_t stp, uint8_t khz)
   };
   zz_assert( (stp>>3) < 0x10000 );
   per = divu(ftbl[khz-4][0]>>3, stp>>3);
-  zz_assert( per > 113 );
+  if (per < 113) {
+    /* Sometime we reach periods that excess the DMA speed. This is
+     * unfortunate and the only way to prevent that would be to
+     * down-sample the instruments.
+     */
+    wmsg("(aga) period overflow I#%02hu stp:0x%lx per:%hu\n",
+         HU(inum), LU(stp), HU(per));
+    per = 113;
+  }
   return per;
 }
 
@@ -103,17 +112,18 @@ static i16_t push_aga(play_t * const P, void * pcm, i16_t npcm)
     case TRIG_NOTE:
       zz_assert(C->note.ins == &P->vset.inst[C->curi]);
       DMACON = K->dmacon;              /* Disable audio channel DMA */
+      K->inum    = C->curi;
       K->lp_adr  = M->inst[C->curi].lp_adr;
       K->lp_len  = M->inst[C->curi].lp_len;
       K->hw->adr = M->inst[C->curi].adr;
       K->hw->len = M->inst[C->curi].len;
       K->hw->vol = M->inst[C->curi].vol;
-      K->hw->per = xstep(C->note.cur, P->song.khz);
+      K->hw->per = xstep(C->note.cur, P->song.khz, K->inum);
       DMACON = 0x8000 | K->dmacon;      /* Enable audio channel DMA */
       break;
 
     case TRIG_SLIDE:
-      K->hw->per = xstep(C->note.cur, P->song.khz);
+      K->hw->per = xstep(C->note.cur, P->song.khz, K->inum);
     case TRIG_NOP:
       if (old_status == TRIG_NOTE) {
         /* Setting the sample loop at the frame following the note
@@ -150,6 +160,12 @@ static zz_err_t init_aga(play_t * const P, u32_t spr)
 
   zz_memclr(M,sizeof(*M));
 
+  if (1)
+  {
+    xstep(P->song.stepmin, P->song.khz, 255);
+    xstep(P->song.stepmax, P->song.khz, 255);
+  }
+
   DMACON = 0x000F;                    /* disable audio DMAs */
   DMACON = 0x8200;                    /* enable DMAs */
   for (k=0; k<4; ++k) {
@@ -165,6 +181,7 @@ static zz_err_t init_aga(play_t * const P, u32_t spr)
   for (k=0; k<20; ++k) {
     inst_t * const ins = P->vset.inst + k;
     uint32_t end;
+    M->inst[k].num = k;
     M->inst[k].len = 1;
     if (!ins->len) continue;
     M->inst[k].vol = 64;
