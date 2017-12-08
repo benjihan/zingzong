@@ -116,7 +116,7 @@
 #endif
 
 #ifndef FP
-# define FP 15u                         /* mixer step precision */
+# define FP 15                          /* mixer step precision */
 #endif
 
 #define VSET_MAX_SIZE (1<<19) /* arbitrary .set max size */
@@ -127,7 +127,7 @@
  * The maximum depth encountered so far in a Quartet module is *6*.
  */
 #ifndef MAX_LOOP
-#define MAX_LOOP      15
+#define MAX_LOOP 15
 #endif
 
 /* Encountered lowest and highest notes are respectively:
@@ -254,6 +254,7 @@ struct song_s {
   u32_t   stepmax;           /**< estimated maximal note been used. */
   u32_t   ticks;             /**< estimated song length in ticks.   */
   sequ_t *seq[4];            /**< pointers to channel sequences.    */
+  uint8_t istep[20];         /**< max step per instrument.          */
 };
 
 /** Song meta info. */

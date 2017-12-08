@@ -21,7 +21,7 @@ static int is_valid_khz(const uint16_t khz) {
 
 /* Encountered values so far [8,12,16,24]. */
 static int is_valid_bar(const uint16_t bar) {
-  return bar >= 4 && bar <= 48 && !(bar & 3) ;
+  return bar >= 4 && bar <= 48 && !(bar & 3);
 }
 
 /* Encountered values so far {04..36}. */
@@ -146,6 +146,7 @@ song_init(song_t * song)
     u16_t    const len = U16(seq->len);
     u32_t    const stp = U32(seq->stp);
     u32_t    const par = U32(seq->par);
+    u8_t           s12;
 
     if (!song->seq[k]) {
       /* new sequence starts */
@@ -191,6 +192,10 @@ song_init(song_t * song)
         song->stepmax = stp;
       else if (stp < song->stepmin)
         song->stepmin = stp;
+
+      s12 = (stp+4095) >> 12;
+      if (s12 > song->istep[cur])
+        song->istep[cur] = s12;
 
     case 'R':                           /* Rest */
       if (!len) {
