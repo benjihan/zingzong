@@ -21,8 +21,13 @@ A_stp:	.struct	.+4		| 08
 A_dec:	.struct	.+2		| 12 0c
 A_lpl:	.struct	.+2		| 14 0d
 A_siz:				| 16 10
+
 	.equiv	B_end,A_siz+A_end
+	.equiv	B_cur,A_siz+A_cur
+	.equiv	B_stp,A_siz+A_stp
+	.equiv	B_dec,A_siz+A_dec
 	.equiv	B_lpl,A_siz+A_lpl
+
 	
 	.macro	break
 	clr.l   -(a7)
@@ -34,110 +39,60 @@ A_siz:				| 16 10
 	.section .text
         .global fast_stf
 	
-///                a2      a3      a4       a5
-/// void fast_stf(Tpcm.l, routs.l, temp.l, voices.l, cnt.w)
+///                a2      a3      a4       a5        d7
+/// void fast_stf(Tpcm.l, routs.l, temp.l, voices.l, cnt.l)
 ///                4(a7)   8(a7)   12(a7)  16(a7)    20(a7)	
-///      +13*4=52 56(a7)  60(a7)   64(a7)  68(a7)    72(a7)	
+///      +11*4=44 48(a7)  52(a7)   56(a7)  60(a7)    64(a7)	
 fast_stf:
-	moveq	#0,d0
-        move.w  20(a7),d0	| count
-        bne.s	0f
-	rts
-0:	
-	movem.l	d1-d7/a1-a6,-(a7) | 13 regs
+        move.l  20(a7),d0	| d0: count
+        beq.s	0f
 
-	|| Arguments		|     (56)      (60)      (64)     (68)
-	movem.l	56(a7),a2-a5	| a2: Tpcm, a3: rout, a4: temp, a5:voices
+	|| 11 regs (d0/d1/a0/a1 not saved by m68k ABI)
+	movem.l	d2-d7/a2-a6,-(a7)
+
+	|| Arguments		|     (48)      (52)      (56)     (60)
+	movem.l	48(a7),a2-a5	| a2: Tpcm, a3: rout, a4: temp, a5:voices
 	move.l	d0,d7		| d7: count
 	add.w	d7,d7		| d7: count*2
-	lea	zeros+2(pc),a6	| a6: midpoint sample loop
 
-	||----------------------
-	|| Voice A
-	move.l	A_stp(a5),d0	| d0: stp
-	bne.s	1f		| running ?
-
-	|| Voice A is stopped
-	move.l	a6,A_end(a5)
-	move.l	a6,d4
-	subq.l	#2,d4		| d4: pcm (zeros)
-	move.l	d0,a0		| a0: decimal stp (0)
-	move.l	d0,d2		| d2: decimal acu (0)
-	bra.s	2f
-
-	
-1:	|| Voice A is running
-	move.l	A_cur(a5),d4	| d4: pcm 
-	movea.w	d0,a0		| a0: decimal stp
-	clr.w	d0
-	swap	d0		| d0: integer stp
-	move.w	A_dec(a5),d2	| d2: decimal acu
-
-	||----------------------
-2:	|| voice B
-	lea	A_siz(a5),a5	| a5: voice#B
-	move.l	A_stp(a5),d1	| d1: stp
-	bne.s	3f		| running ?
-
-	|| Voice B is stopped
-	move.l	a6,A_end(a5)
-	move.l	a6,d5
-	subq.l	#2,d5		| d5: pcm (zeros)
-	move.l	d1,a1		| a1: decimal stp (0)
-	move.l	d1,d3		| d3: decimal acu (0)
-	bra.s	4f
-
-3:	|| Voice B is running
-	move.l	A_cur(a5),d5	| d5: pcm
-	movea.w	d1,a1		| a1: decimal stp
-	clr.w	d1
-	swap	d1		| d1: integer stp
-	move.w	A_dec(a5),d3	| d3: decimal acu
-
-	
-	||----------------------
-4:	|| Voice A+B
-	lea	-A_siz(a5),a5	| a5: voice#A
-	bsr	fast_stf_AB
-
-	swap	d0
-	move.w	a0,d0
-	move.l	d0,A_stp(a5)
-	move.l	d4,A_cur(a5)
-	move.w	d2,A_dec(a5)
-
-	lea	A_siz(a5),a5	| a5: voice#B
-	swap	d1
-	move.w	a1,d1
-	move.l	d1,A_stp(a5)
-	move.l	d5,A_cur(a5)
-	move.w	d3,A_dec(a5)
-
-
-	//////////////////////////////////////////////////
+	|| Mix A/B
+	lea	fast_stf_AB(pc),a6
+	bsr.s	mix_2chans
 
 	|| Arguments
-	move.l	64(a7),a4	| a4: temp
-	move.w	72(a7),d7	| d7: count
+	move.l	56(a7),a4	| a4: temp
+	move.w	66(a7),d7	| d7: count
 	add.w	d7,d7		| d7: count*2
-	lea	A_siz(a5),a5	| a5: voice#C
+	lea	2*A_siz(a5),a5	| a5: voice#C
+
+	|| Mix C/D
+	lea	fast_stf_CD(pc),a6
+	bsr.s	mix_2chans
+	
+	movem.l	(a7)+,d2-d7/a2-a6 | 11 regs
+0:	rts
+
+	
+mix_2chans:
+	move.l	a6,d6		| d6: mixer routine
 	lea	zeros+2(pc),a6	| a6: midpoint sample loop
+	exg	d6,a6		| d6: midpoint, a6: mixer
 
 	||----------------------
-	|| Voice C
+	|| Voice A/C
 	move.l	A_stp(a5),d0	| d0: stp
 	bne.s	1f		| running ?
 
-	|| Voice C is stopped
-	move.l	a6,A_end(a5)
-	move.l	a6,d4
+	|| Voice A/C is stopped
+	move.l	d6,A_end(a5)
+	move.l	d6,d4
 	subq.l	#2,d4		| d4: pcm (zeros)
 	move.l	d0,a0		| a0: decimal stp (=0)
 	move.l	d0,d2		| d2: decimal acu (=0)
 	bra.s	2f
 
 	
-1:	|| Voice C is running
+1:	|| Voice A/C is running
 	move.l	A_cur(a5),d4	| d4: pcm 
 	movea.w	d0,a0		| a0: decimal stp
 	clr.w	d0
@@ -145,30 +100,29 @@ fast_stf:
 	move.w	A_dec(a5),d2	| d2: decimal acu
 
 	||----------------------
-2:	|| voice D
-	lea	A_siz(a5),a5	| a5: voice#D
-	move.l	A_stp(a5),d1	| d1: stp
+2:	|| voice B/D
+	move.l	B_stp(a5),d1	| d1: stp
 	bne.s	3f		| running ?
 
-	|| Voice D is stopped
-	move.l	a6,A_end(a5)
-	move.l	a6,d5
+	|| Voice B/D is stopped
+	move.l	d6,B_end(a5)
+	move.l	d6,d5
 	subq.l	#2,d5		| d5: pcm (zeros)
 	move.l	d1,a1		| a1: decimal stp (0)
 	move.l	d1,d3		| d3: decimal acu (0)
 	bra.s	4f
 
 3:	|| Voice D is running
-	move.l	A_cur(a5),d5	| d5: pcm
+	move.l	B_cur(a5),d5	| d5: pcm
 	movea.w	d1,a1		| a1: decimal stp
 	clr.w	d1
 	swap	d1		| d1: integer stp
-	move.w	A_dec(a5),d3	| d3: decimal acu
+	move.w	B_dec(a5),d3	| d3: decimal acu
 	
 	||----------------------
-4:	|| Voices C+D
-	lea	-A_siz(a5),a5	| a5: voice#C
-	bsr	fast_stf_CD
+4:	|| Call 2 channels mixer
+
+	jsr	(a6)
 
 	swap	d0
 	move.w	a0,d0
@@ -176,15 +130,14 @@ fast_stf:
 	move.l	d4,A_cur(a5)
 	move.w	d2,A_dec(a5)
 
-	lea	A_siz(a5),a5	| a5: voice#D
 	swap	d1
 	move.w	a1,d1
-	move.l	d1,A_stp(a5)
-	move.l	d5,A_cur(a5)
-	move.w	d3,A_dec(a5)
+	move.l	d1,B_stp(a5)
+	move.l	d5,B_cur(a5)
+	move.w	d3,B_dec(a5)
 	
-	movem.l	(a7)+,d1-d7/a1-a6 | 13 regs
 	rts
+
 	
 /// ----------------------------------------
 /// Mix 2 voices (A&B) into the intermediate
@@ -340,7 +293,6 @@ part2_beg:
 	.set	i,0
 	.rept   BLKLEN
         |                         33  33 nops, 42 bytes
-        | ----------------------+---+---
         | ----------------------+---+---
         move.w  (a4)+,d7        | 2 | 9 nops, 12 bytes 
         add.w   a0,d2           | 1 |
