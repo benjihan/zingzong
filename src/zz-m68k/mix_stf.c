@@ -53,9 +53,9 @@ struct mix_fast_s {
 typedef struct mix_fast_s mix_fast_t;
 
 ZZ_EXTERN_C
-void fast_stf(uint8_t * Tpcm, timer_rout_t *routs,
-              int16_t * temp, mix_fast_t *voices,
-              int16_t n);
+void fast_stf(uint8_t * Tpcm, timer_rout_t * routs,
+              int16_t * temp, mix_fast_t   * voices,
+              int32_t n);
 
 
 typedef struct mix_chan_s mix_chan_t;
