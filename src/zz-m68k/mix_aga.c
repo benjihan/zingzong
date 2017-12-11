@@ -89,7 +89,7 @@ static uint16_t xstep(uint32_t stp, uint8_t khz, uint8_t inum)
      */
     wmsg("(aga) period overflow I#%02hu stp:0x%lx per:%hu\n",
          HU(inum), LU(stp), HU(per));
-    per = 113;
+    //per = 113;
   }
   return per;
 }

@@ -93,6 +93,7 @@ void player_init(bin_t * song, bin_t * vset, uint32_t d0)
     && ( play.vset.iref = play.song.iref)
     && ! vset_init_header(&play.vset, vset->ptr)
     && ! vset_init(&play.vset)
+    /* && ( zz_mute(&play,0,0xF-8) || 1 ) */
     && ! zz_init(&play,0,0)             /* rate,duration */
     && ! zz_setup(&play,d0,0)           /* mixer,spr */
     ;

@@ -13,12 +13,6 @@
 #include <string.h>
 #include <samplerate.h>
 
-#ifndef SRATE_USER_SUPPLY
-#define SRATE_USER_SUPPLY 1            /* 0:no user supply function */
-#endif
-
-#define RATIO(X) (1.0/(double)(X))
-
 #define F32MAX 48
 #define FLIMAX (F32MAX)
 #define FLOMAX (F32MAX)
@@ -27,12 +21,10 @@ typedef struct mix_data_s mix_data_t;
 typedef struct mix_chan_s mix_chan_t;
 
 struct mix_chan_s {
-  int id;
+  int8_t id;                            /* { 'A','B','C','D' } */
+  int8_t run;                           /* 0:voice stopped */
 
   SRC_STATE * st;
-#if !SRATE_USER_SUPPLY
-  SRC_DATA    sd;
-#endif
   double   rate;
 
   uint8_t *pta;                         /* base address */
@@ -40,12 +32,8 @@ struct mix_chan_s {
   uint8_t *ptl;                         /* loop address (0=no loop) */
   uint8_t *pte;                         /* end address */
 
-  int      ilen;
-  int      imax;
-  float    iflt[FLIMAX];
-
-  int      omax;
-  float    oflt[FLOMAX];
+  float    iflt[FLIMAX];                /* input pcm buffer */
+  float    oflt[FLOMAX];                /* output pcm buffer */
 };
 
 struct mix_data_s {
@@ -75,7 +63,6 @@ emsg_srate(const mix_chan_t * const K, int err)
 static inline double
 iorate(const u32_t fp16, const double irate, const double orate)
 {
-  /* return ldexp(fp16,-16) * irate / orate; */
   return (double)fp16 * irate / (65536.0*orate);
 }
 
@@ -84,57 +71,60 @@ rate_of_fp16(const u32_t fp16, const double rate) {
   return (double)fp16 * rate;
 }
 
+/* ----------------------------------------------------------------------
+
+   Read input PCM
+
+   ---------------------------------------------------------------------- */
+
 static void
 chan_flread(float * restrict d, mix_chan_t * const K, int n)
 {
-  while ( n > 0 ) {
-    int l;
+  zz_assert( d );
+  zz_assert( K );
+  zz_assert( n > 0 );
 
-    if (!K->ptr) {
-      zz_memclr(d,n*sizeof(*d));
-      break;
-    }
-    zz_assert( K->ptr >= K->pta );
-    zz_assert( K->ptr < K->pte );
+  while ( K->ptr && n ) {
+    uint8_t * const ptr = K->ptr;
+    int l = K->pte - K->ptr;
 
-    l = K->pte - K->ptr;
-    zz_assert( l > 0 );
+    if (l > n)
+      K->ptr += ( l = n );
+    else
+      K->ptr = K->ptl;
 
-    if ( l > n )
-      l = n;
-    i8tofl(d, K->ptr, l);
+    i8tofl(d, ptr, l);
     d += l;
     n -= l;
-    if ( (K->ptr += l) == K->pte )
-      K->ptr = K->ptl;
   }
+  while (n--)
+    *d++ = 0;
 }
 
-#if SRATE_USER_SUPPLY
 static long
 fill_cb(void *_K, float **data)
 {
   mix_chan_t * const restrict K = _K;
+  int len;
 
-  zz_assert( K->imax == FLIMAX );
-  K->ilen = K->imax;
-  chan_flread(K->iflt,K,K->ilen);
   *data = K->iflt;
-  return K->ilen;
+  len = !K->ptr ? 0 : FLIMAX;
+  if (len > 0)
+    chan_flread(K->iflt, K, len);
+  return len;
 }
-#endif
 
 static zz_err_t
 restart_chan(mix_chan_t * const K)
 {
-  int err;
-  K->ilen = 0;
-  K->imax = FLIMAX;
-  K->omax = FLOMAX;
-  if (err = src_reset(K->st), err) {
+  int err = src_reset(K->st);
+  if (err) {
     emsg_srate(K,err);
+    K->ptr = 0;
+    K->run = 0;
     return E_MIX;
   }
+  K->run = !! ( K->ptr = K->pta );
   return E_OK;
 }
 
@@ -166,33 +156,19 @@ push_cb(play_t * const P, void * pcm, i16_t N)
 
     case TRIG_NOTE:
       zz_assert( C->note.ins );
+      zz_assert( C->note.ins->len > 0 );
 
-      K->pte = ( K->pta = K->ptr = C->note.ins->pcm ) + C->note.ins->len;
+      K->pta = C->note.ins->pcm;
+      K->pte = K->pta + C->note.ins->len;
       K->ptl = C->note.ins->lpl ? (K->pte - C->note.ins->lpl) : 0;
-      /* K->end = K->pta + C->note.ins->end; */
       C->note.ins = 0;
       if (restart_chan(K))
         return -1;
 
     case TRIG_SLIDE:
       K->rate = rate_of_fp16(C->note.cur, M->rate);
-
-      /* if ( K->rate < M->rate_min || K->rate > M->rate_max ) */
-      /*   dmsg("rate out of range ! %f < %f < %f\n", */
-      /*        M->rate_min, K->rate, M->rate_max); */
-
-      /* GB: Add/Sub a small amount because these asserts are
-       *     sometimes triggered (eg. i686-mingw) by rounding errors
-       *     of sort. Weirdly enough adding the conditional debug
-       *     message above removed the assert triggering !
-       */
-      zz_assert( K->rate >= M->rate_min-1E6 );
-      zz_assert( K->rate <= M->rate_max+1E6 );
-#if !SRATE_USER_SUPPLY
-      K->sd.src_ratio = RATIO(K->rate);
-#endif
       break;
-    case TRIG_STOP: K->ptr = 0;
+    case TRIG_STOP: K->run = 0;
     case TRIG_NOP:  break;
     default:
       emsg("INTERNAL ERROR: %c: invalid trigger -- %d\n", 'A'+k, C->trig);
@@ -205,65 +181,32 @@ push_cb(play_t * const P, void * pcm, i16_t N)
   for (k=0; k<4; ++k) {
     mix_chan_t * const K = M->chan+k;
     float * restrict flt = M->flt_buf;
-    int need = N, zero = 0;
+    int need;
 
-    if (!K->ptr) {
-      /* Sound stopped. If it's channel A cleat the buffer else simply
-       * skip.
-       */
-      if (k==0)
-        zz_memclr(flt,sizeof(float)*N);
-      continue;
-    }
+    for ( need = N; need > 0; ) {
+      int i, odone, want;
 
-    while (need > 0) {
-      int i, idone, odone, want;
-
-      zz_assert( K->omax == FLOMAX );
-      zz_assert( K->imax == FLIMAX );
-
-      if ( (want=need) > K->omax)
-        want = K->omax;
-
-#if !SRATE_USER_SUPPLY
-
-      /* Refill if input is empty. */
-      if (!K->ilen) {
-        chan_flread(K->iflt, K, K->imax);
-        K->sd.input_frames = K->ilen = K->imax;
-        K->sd.data_in = K->iflt;
+      if ( ! K->run ) {
+        if (k == 0)
+          zz_memclr(flt, need * sizeof(*flt));
+        break;
       }
 
-      K->sd.data_out = K->oflt;
-      K->sd.output_frames = want;
-      if (src_process (K->st, &K->sd)) {
-        emsg_srate(K,src_error(K->st));
-        return -1;
-      }
-      idone = K->sd.input_frames_used;
-      odone = K->sd.output_frames_gen;
-      K->sd.data_in += idone;
-      K->sd.input_frames -= idone;
+      if ( (want = need) > FLOMAX )
+        want = FLOMAX;
 
-#else
-      idone = 0;
-      odone = src_callback_read(K->st, RATIO(K->rate), want, K->oflt);
+      odone = src_callback_read(K->st, 1.0/K->rate, want, K->oflt);
       if (odone < 0) {
         emsg_srate(K,src_error(K->st));
         return -1;
       }
-#endif
+      zz_assert ( odone <= want );
 
-      if ( (idone+odone) > 0) {
-        zero = 0;
-      } else {
-        zz_assert( !"keep happening ?" );
-        if (++zero > 7) {
-          emsg("%c: too many loop without data -- %u\n",K->id, zero);
-          return -1;
-        }
+      if (odone < want) {
+        zz_assert ( !K->ptr );
+        if (!K->ptr)
+          K->run = 0;
       }
-
       need -= odone;
       if (k == 0)
         for (i=0; i<odone; ++i)
@@ -273,8 +216,6 @@ push_cb(play_t * const P, void * pcm, i16_t N)
           *flt++ += K->oflt[i];
 
     }
-    zz_assert( need == 0 );
-    zz_assert( flt-N == M->flt_buf );
   }
   /* Convert back to s16 */
   fltoi16(pcm, M->flt_buf, N);
@@ -292,9 +233,10 @@ static void free_cb(play_t * const P)
     zz_assert( M == P->mixer_data );
     for (k=0; k<4; ++k) {
       mix_chan_t * const K = M->chan+k;
-      if (K->st)
+      if (K->st) {
         src_delete (K->st);
-      K->st = 0;
+        K->st = 0;
+      }
     }
     zz_free(&P->mixer_data);
   }
@@ -345,12 +287,7 @@ static zz_err_t init_srate(play_t * const P, u32_t spr, const int quality)
       mix_chan_t * const K = M->chan+k;
       int err = 0;
       K->id = 'A'+k;
-
-#if SRATE_USER_SUPPLY
       K->st = src_callback_new(fill_cb, quality, 1, &err, K);
-#else
-      K->st = src_new(quality, 1, &err);
-#endif
       if (!K->st) {
         ecode = E_MIX;
         emsg_srate(K,err);
@@ -375,14 +312,14 @@ static zz_err_t init_srate(play_t * const P, u32_t spr, const int quality)
 #define XTR(A) #A
 #define STR(A) XTR(A)
 
-#define DECL_SRATE_MIXER(Q,QQ,D)                          \
-  static zz_err_t init_##Q(play_t * const P, u32_t spr)   \
-  {                                                       \
-    return init_srate(P, spr, SRC_##QQ);                  \
-  }                                                       \
-  mixer_t mixer_srate_##Q =                               \
-  {                                                       \
-    "sinc:" XTR(Q), D, init_##Q, free_cb, push_cb         \
+#define DECL_SRATE_MIXER(Q,QQ,D)                        \
+  static zz_err_t init_##Q(play_t * const P, u32_t spr) \
+  {                                                     \
+    return init_srate(P, spr, SRC_##QQ);                \
+  }                                                     \
+  mixer_t mixer_srate_##Q =                             \
+  {                                                     \
+    "sinc:" XTR(Q), D, init_##Q, free_cb, push_cb       \
   }
 
 DECL_SRATE_MIXER(best,SINC_BEST_QUALITY,

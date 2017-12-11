@@ -28,7 +28,6 @@ A_siz:				| 16 10
 	.equiv	B_dec,A_siz+A_dec
 	.equiv	B_lpl,A_siz+A_lpl
 
-	
 	.macro	break
 	clr.l   -(a7)
 	pea     0x5C68DB61
@@ -80,60 +79,70 @@ mix_2chans:
 
 	||----------------------
 	|| Voice A/C
-	move.l	A_stp(a5),d0	| d0: stp
+	
+	move.l	A_cur(a5),d4	| d4: pcm
 	bne.s	1f		| running ?
 
 	|| Voice A/C is stopped
+	moveq	#0,d0		| d0: stp
+	move.l	d0,a0		| a0: decimal stp (=0)
+	move.l	d0,d2		| d2: decimal acu (=0)
 	move.l	d6,A_end(a5)
 	move.l	d6,d4
 	subq.l	#2,d4		| d4: pcm (zeros)
-	move.l	d0,a0		| a0: decimal stp (=0)
-	move.l	d0,d2		| d2: decimal acu (=0)
 	bra.s	2f
-
 	
 1:	|| Voice A/C is running
-	move.l	A_cur(a5),d4	| d4: pcm 
+	move.l	A_stp(a5),d0	| d0: stp
 	movea.w	d0,a0		| a0: decimal stp
 	clr.w	d0
 	swap	d0		| d0: integer stp
 	move.w	A_dec(a5),d2	| d2: decimal acu
 
 	||----------------------
-2:	|| voice B/D
-	move.l	B_stp(a5),d1	| d1: stp
-	bne.s	3f		| running ?
+	|| Voice B/D
+	
+2:	move.l	B_cur(a5),d5	| d5: pcm
+	bne.s	1f		| running ?
 
 	|| Voice B/D is stopped
+	moveq	#0,d1		| d1: stp
+	move.l	d1,a1		| a1: decimal stp (=0)
+	move.l	d1,d3		| d3: decimal acu (=0)
 	move.l	d6,B_end(a5)
 	move.l	d6,d5
 	subq.l	#2,d5		| d5: pcm (zeros)
-	move.l	d1,a1		| a1: decimal stp (0)
-	move.l	d1,d3		| d3: decimal acu (0)
-	bra.s	4f
-
-3:	|| Voice D is running
-	move.l	B_cur(a5),d5	| d5: pcm
+	bra.s	2f
+	
+1:	|| Voice B/D is running
+	move.l	B_stp(a5),d1	| d1: stp
 	movea.w	d1,a1		| a1: decimal stp
 	clr.w	d1
 	swap	d1		| d1: integer stp
 	move.w	B_dec(a5),d3	| d3: decimal acu
 	
 	||----------------------
-4:	|| Call 2 channels mixer
+	|| Call 2 channels mixer
+2:	jsr	(a6)
 
-	jsr	(a6)
-
+	|| Save voice A/C
 	swap	d0
 	move.w	a0,d0
-	move.l	d0,A_stp(a5)
-	move.l	d4,A_cur(a5)
+	tst.l	d0
+	bne.s	1f
+	moveq	#0,d2
+	moveq	#0,d4
+1:	move.l	d4,A_cur(a5)
 	move.w	d2,A_dec(a5)
 
+	|| Save voice B/D
 	swap	d1
 	move.w	a1,d1
-	move.l	d1,B_stp(a5)
-	move.l	d5,B_cur(a5)
+	tst.l	d1
+	bne.s	1f
+	moveq	#0,d3
+	moveq	#0,d5
+1:	move.l	d5,B_cur(a5)
 	move.w	d3,B_dec(a5)
 	
 	rts
@@ -165,15 +174,15 @@ part1_beg:
 	.rept   BLKLEN
         |                         16  16 nops, 22 bytes
         | ----------------------+---+---
-        add.w   a0,d2           | 1 | 7 nops, 10 bytes
+        move.l  d4,a6           | 1 | 7 nops, 10 bytes
+        add.w   a0,d2           | 1 |
         addx.l  d0,d4           | 2 | .w if segment contraint
-        move.l  d4,a6           | 1 |
 	clr.w	d7              | 1 |
         move.b  (a6),d7         | 2 |
         | ----------------------+---+---
-        add.w   a1,d3           | 1 | 6 nops, 8 bytes
+        move.l  d5,a6           | 1 | 6 nops, 8 bytes
+        add.w   a1,d3           | 1 |
         addx.l  d1,d5           | 2 | GB: .w with segment contraints
-        move.l  d5,a6           | 1 |
         move.b  (a6),d6         | 2 |
         | ----------------------+---+---
         add.w   d6,d7           | 1 | 3 nops, 4 bytes
@@ -185,7 +194,9 @@ part1_end:
 	.err
 	.endif
 
+	|| ----------------------------------------
 	|| check loop macro
+	|| ----------------------------------------
 	
 	.macro check_loop cur end acu dec int lpl
 
@@ -236,7 +247,7 @@ part1_end:
 	move.l	a6,\cur
 2:
 	.endm
-
+	
 	check_loop d4,A_end(a5),d2,a0,d0,A_lpl(a5)
 	check_loop d5,B_end(a5),d3,a1,d1,B_lpl(a5)
 
@@ -295,15 +306,15 @@ part2_beg:
         |                         33  33 nops, 42 bytes
         | ----------------------+---+---
         move.w  (a4)+,d7        | 2 | 9 nops, 12 bytes 
-        add.w   a0,d2           | 1 |
-        addx.l  d0,d4           | 2 |
         move.l  d4,a6           | 1 |
         move.b  (a6),d6         | 2 |
         add.w   d6,d7           | 1 |
+        add.w   a0,d2           | 1 |
+        addx.l  d0,d4           | 2 |
         | ----------------------+---+---
-        add.w   a1,d3           | 1 | 7 nops, 10 bytes
+        move.l  d5,a6           | 1 | 7 nops, 10 bytes
+        add.w   a1,d3           | 1 |
         addx.l  d1,d5           | 2 |
-        move.l  d5,a6           | 1 |
         move.b  (a6),d6         | 2 |
         add.w   d6,d7           | 1 |
         | ----------------------+---+---

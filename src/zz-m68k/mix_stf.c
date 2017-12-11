@@ -119,7 +119,8 @@ fill_timer_routines(timer_rout_t * rout, uint16_t n)
     );
 }
 
-static void never_inline init_timer_routines(void)
+static void never_inline
+init_timer_routines(void)
 {
   const intptr_t beg = (intptr_t) stf_buf;
   const intptr_t end = beg+sizeof(stf_buf);
@@ -269,9 +270,8 @@ static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
     case TRIG_SLIDE:
       K->xtp = xstep(C->note.cur, M->scl);
       break;
-    case TRIG_STOP: K->xtp = 0;
-    case TRIG_NOP:
-      break;
+    case TRIG_STOP: K->cur = 0;
+    case TRIG_NOP:  break;
     default:
       zz_assert(!"wtf");
       return -1;
@@ -339,7 +339,6 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
   if (spr < SPR_MIN) spr = SPR_MIN;
   if (spr > SPR_MAX) spr = SPR_MAX;
 
-  /* spr = SPR_MAX; */
   spr = set_sampling(P,spr);
   M->scl = ( divu(refspr<<13,spr) + 1 ) >> 1;
 

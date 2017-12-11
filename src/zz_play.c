@@ -94,10 +94,19 @@ int play_chan(play_t * const P, chan_t * const C)
 
   /* Portamento */
   if (C->note.stp) {
+
+    /* dmsg("%c[%hu] slide from:%08lx to:%08lx by:%08lx\n", */
+    /*      'A'+C->num, HU(seq_idx(C,C->cur)), */
+    /*      LU(C->note.cur), LU(C->note.aim), LU((uint32_t)C->note.stp)); */
+
     zz_assert(is_valid_note(C->note.cur));
     zz_assert(is_valid_note(C->note.aim));
-    if (!C->note.cur)
+    if (!C->note.cur) {
+      dmsg("%c[%hu]: slide from nothing (to:%08lx by:%08lx)\n",
+           'A'+C->num, HU(seq_idx(C,C->cur)),
+           LU(C->note.aim), LU((uint32_t)C->note.stp));
       C->note.cur = C->note.aim; /* safety net */
+    }
     C->trig = TRIG_SLIDE;
     C->note.cur += C->note.stp;
     if (C->note.stp > 0) {
@@ -122,8 +131,9 @@ int play_chan(play_t * const P, chan_t * const C)
     u32_t const par = U32(seq->par);
     ++seq;
 
-    /* dmsg("%c cmd:%c len:%04hX stp:%08lX par:%08lX\n", */
-    /*      'A'+C->num, (int)cmd, HU(len), LU(stp), LU(par)); */
+    /* dmsg("%c[%hu]: cmd:%c len:%04hX stp:%08lX par:%08lX\n", */
+    /*      'A'+C->num, HU(seq_idx(C,seq-1)), */
+    /*      (int) cmd, HU(len), LU(stp), LU(par)); */
 
     switch (cmd) {
 
@@ -238,6 +248,7 @@ int play_chan(play_t * const P, chan_t * const C)
 }
 
 /* ---------------------------------------------------------------------- */
+
 zz_err_t
 zz_tick(play_t * const P)
 {
@@ -351,7 +362,7 @@ zz_play(play_t * restrict P, void * restrict pcm, const i16_t n)
     P->chan[0].trig = P->chan[1].trig =
       P->chan[2].trig = P->chan[3].trig = TRIG_NOP;
 
-    zz_assert (  ret <= (n<0?-n:n) );
+    zz_assert( ret <= (n<0?-n:n) );
   } while ( ret < n );
 
   return ret;

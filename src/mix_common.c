@@ -41,13 +41,15 @@ static inline void
 mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
 {
   const int8_t * const pcm = (const int8_t *)K->pcm;
-  u32_t idx = K->idx, stp = K->xtp;
+  const u32_t stp = K->xtp;
+  u32_t idx = K->idx;
 
-  if (n <= 0 || !K->xtp)
+  if (n <= 0 || !K->pcm)
     return;
 
   zz_assert( K->pcm );
   zz_assert( K->end > K->pcm );
+  zz_assert( K->xtp > 0 );
   zz_assert( K->idx >= 0 && K->idx < K->len );
 
   if (!K->lpl) {
@@ -56,8 +58,7 @@ mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
       ADDPCM();
       /* Have reach end ? */
       if (idx >= K->len) {
-        dmsg("stop at %lx\n", idx>>FP);
-        idx = stp = 0;
+        K->pcm = 0;                     /* This only is mandatory */
         break;
       }
     } while(--n);
@@ -70,14 +71,13 @@ mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
       if (idx >= K->len) {
         u32_t ovf = idx - K->len;
         if (ovf >= K->lpl) ovf %= K->lpl;
-        dmsg("loop at %lx -> %lx\n", idx>>FP, (off+ovf)>>FP);
+        /* dmsg("loop at %lx -> %lx\n", idx>>FP, (off+ovf)>>FP); */
         idx = off+ovf;
         zz_assert( idx >= off && idx < K->len );
       }
     } while(--n);
   }
   K->idx = idx;
-  K->xtp = stp;
 }
 
 static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
@@ -86,12 +86,12 @@ static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
    * res is fixed-point FP
    * 1000 = 2^3 * 5^3
    */
-  u64_t tmp = (FP > 12)
+  u64_t const tmp = (FP > 12)
     ? (u64_t) stp * ikhz * (1000u >> (16-FP)) / ohz
     : (u64_t) stp * ikhz * (1000u >> 3) / (ohz << (16-FP-3))
     ;
-  u32_t res = tmp;
-  zz_assert( (u64_t)res == tmp); /* check overflow */
+  u32_t const res = tmp;
+  zz_assert( (u64_t)res == tmp );       /* check overflow */
   zz_assert( res );
   return res;
 }
@@ -114,11 +114,13 @@ push_cb(play_t * const P, void * restrict pcm, i16_t N)
     chan_t     * const C = P->chan+k;
     const u8_t trig = C->trig;
 
+    /* if (trig != TRIG_NOP) */
+    /*   dmsg("%c %s trig:%d\n",'A'+k,NAME,trig); */
+
     C->trig = TRIG_NOP;
     switch (trig) {
     case TRIG_NOTE:
-
-      zz_assert(C->note.ins);
+      zz_assert( C->note.ins == P->vset.inst+C->curi );
       K->idx = 0;
       K->pcm = (int8_t *) C->note.ins->pcm;
       K->len = C->note.ins->len << FP;
@@ -128,11 +130,12 @@ push_cb(play_t * const P, void * restrict pcm, i16_t N)
     case TRIG_SLIDE:
       K->xtp = xstep(C->note.cur, P->song.khz, P->spr);
       break;
-    case TRIG_STOP: K->xtp = 0;
+
+    case TRIG_STOP: K->pcm = 0;
     case TRIG_NOP:
       break;
     default:
-      zz_assert(!"wtf");
+      zz_assert( !"wtf" );
       return -1;
     }
   }
@@ -159,7 +162,7 @@ static zz_err_t init_cb(play_t * const P, u32_t spr)
   zz_err_t ecode = E_OK;
   mix_fp_t * M = local_calloc(sizeof(mix_fp_t), &ecode);
   if (likely(M)) {
-    zz_assert(!P->mixer_data);
+    zz_assert( !P->mixer_data );
     P->mixer_data = M;
     switch (spr) {
     case 0:
