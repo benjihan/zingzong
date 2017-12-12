@@ -21,6 +21,8 @@ pkgconfig  = $(shell $(PKGCONFIG) $(1) || echo n/a)
 # ----------------------------------------------------------------------
 
 vpath %.c $(srcdir) $(srcdir)/..
+vpath %.S $(srcdir)
+vpath %.s $(srcdir)
 
 # ----------------------------------------------------------------------
 #  Tools
@@ -186,9 +188,9 @@ MAPFLAGS = $(call maybe-wl,-Map=$*.map)
 .PRECIOUS: zingzong.elf
 zingzong.elf: START_SYMB = player_start
 zingzong.elf: START_ADDR = C0000000
-zingzong.elf: LDFLAGS    = -T zingzong.x $(ELFFLAGS)
+zingzong.elf: LDFLAGS    = -T $(srcdir)/zingzong.x $(ELFFLAGS)
 zingzong.elf: player_start.o $(addsuffix .o,$(com) $(zzz)) $(drivers)
-player_start.o: zingzong.x	# GB: force rebuild when script change
+player_start.o: $(srcdir)/zingzong.x	# GB: force rebuild when script change
 
 # ----------------------------------------------------------------------
 #  Test sc68 files
@@ -204,12 +206,13 @@ clean-test:
 .PHONY: test
 test: test.sc68
 
+test_o = sc68_start.o $(addsuffix .o,$(com) $(zzz))
 .PRECIOUS: test.elf
 test.elf: START_SYMB = sc68_start
 test.elf: START_ADDR = 00010000
-test.elf: LDFLAGS    = -T sc68.x $(ELFFLAGS)
-test.elf: sc68_start.o $(addsuffix .o,$(com) $(zzz)) $(drivers) song.elf vset.elf
-sc68_start.o: sc68.x		# GB: force rebuild when script change
+test.elf: LDFLAGS    = -T $(srcdir)/sc68.x $(ELFFLAGS)
+test.elf: $(test_o) $(drivers) song.elf vset.elf
+sc68_start.o: $(srcdir)/sc68.x	# GB: force rebuild when script change
 
 SONGFILE ?= Cowboy_Theme-01.4v
 ifndef VSETFILE
