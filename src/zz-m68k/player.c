@@ -17,13 +17,6 @@ int song_init(zz_song_t const song);
 int vset_init_header(zz_vset_t const vset, const void * hd);
 int vset_init(zz_vset_t const vset);
 
-/* https://gcc.gnu.org/bugzilla/show_bug.cgi?id=59946
- *
- * To avoid this problem we force the player not to access any static
- * variables. Everything will be addressed relative to the bear
- * struct.
- */
-
 static play_t play;
 static bin_t songbin, vsetbin;
 static volatile zz_err_t ready, ecode;
@@ -54,14 +47,10 @@ logfunc(zz_u8_t chan, void * user, const char *fmt, va_list list)
 
   switch (chan)
   {
-  case ZZ_LOG_ERR:
-    BRKMSG(fmt); break;
-    break;
+  case ZZ_LOG_ERR: BRKMSG(fmt); break;
   case ZZ_LOG_WRN:
   case ZZ_LOG_INF:
-  case ZZ_LOG_DBG:
-    DBGMSG(fmt);
-    break;
+  case ZZ_LOG_DBG: DBGMSG(fmt); break;
   }
 }
 # define LOGFUNC logfunc

@@ -367,8 +367,3 @@ part2_off:
 	
 zeros:
 	.word	0x8080
-	
-// Local Variables:
-// mode: asm
-// asm-comment-char: ?|
-// End:
