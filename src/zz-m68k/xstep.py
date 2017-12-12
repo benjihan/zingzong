@@ -7,9 +7,10 @@ if __name__ == "__main__":
     paula_pal  = 7093789.2
     paula_ntsc = 7159090.5
     R = lambda x : int(round(x))
-    s = 2.**16
+    f = 20
+    s = 2.**f
 
-    m,M = 0x04C1B,0x50A28
+    m,M = 0x04C1B<<(f-16),0x50A28<<(f-16)
 
     print "/* Sampling   PAL         NTSC       */"
     for khz in range(4,21):
@@ -22,6 +23,6 @@ if __name__ == "__main__":
                 paula, sep = paula_ntsc, ' },'
             x = s * paula / (2. * hz)
             r = R(x)
-            print ('0x%08x /* [%4u ..%4u] */'+sep) % \
+            print ('0x%08x /* %04u-%04u */'+sep) % \
                 (r, r/m, r/M),
         print
