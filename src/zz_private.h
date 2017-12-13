@@ -214,9 +214,12 @@ struct mixer_s {
 
 /** Prepared instrument (sample). */
 struct inst_s {
-  /* u8_t      num; */       /**< instrument number.                */
-  u32_t     len;             /**< size in bytes.                    */
-  u32_t     lpl;             /**< loop length in bytes.             */
+  uint8_t   num;             /**< instrument number.                */
+  uint8_t   sig;             /**< 0:unsigned 1:signed.              */
+  uint8_t   oct;             /**< octave tuning (down-sampling).    */
+  uint8_t   bit;             /**< 0:8bit 1:7bit                     */
+  u16_t     len;             /**< size in bytes.                    */
+  u16_t     lpl;             /**< loop length in bytes.             */
   u32_t     end;             /**< unrolled end.                     */
   uint8_t * pcm;             /**< sample address.                   */
 };

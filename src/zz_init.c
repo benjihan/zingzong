@@ -373,30 +373,17 @@ unroll_loop(uint8_t * dst, uint8_t * end, i32_t lpl)
   zz_assert( dst == end );
 }
 
-#ifdef DEBUG
-static uint16_t sum_part(uint16_t sum, uint8_t * pcm, i32_t len, uint8_t sig)
-{
-  while (len--)
-    sum = (sum+sum+sum) ^ sig ^ *pcm++;
-  return sum;
-}
-#endif
-
 zz_err_t
 vset_init(zz_vset_t const vset)
 {
-  u8_t nbi = vset->nbi, i;
+  u8_t nbi = vset->nbi, i, abits;
   bin_t   * const bin = vset->bin;
   uint8_t * const beg = bin->ptr;
   uint8_t * const end = beg + bin->max;
   uint8_t * e;
-
   u32_t tot, unroll, imsk;
-
   uint8_t idx[20];
-#ifdef DEBUG
-  uint16_t sum[20];
-#endif
+
   zz_assert( nbi > 0 && nbi <= 20 );
 
   /* imsk is best set before when possible so that unused (yet valid)
@@ -415,10 +402,15 @@ vset_init(zz_vset_t const vset)
    */
   imsk = vset->iref ? vset->iref : (1l<<nbi)-1;
 
-  for (i=vset->iref=0; i<20; ++i) {
+  for (i=abits=vset->iref=0; i<20; ++i) {
     const i32_t off = vset->inst[i].len - 222 + 8;
     u32_t len = 0, lpl = 0;
     uint8_t * pcm = 0;
+
+    vset->inst[i].num = i;
+    vset->inst[i].sig = 0;
+    vset->inst[i].oct = 0;
+    vset->inst[i].bit = 0;
 
 #ifdef DEBUG_LOG
     const char * tainted = 0;
@@ -429,7 +421,7 @@ vset_init(zz_vset_t const vset)
 
     do {
       /* Sanity tests */
-      TAINTED (!(1&(imsk>>i)));        /* instrument in used ? */
+      TAINTED (!(1&(imsk>>i)));         /* instrument in used ? */
       TAINTED (off < 8);                /* offset in range ? */
       TAINTED (off >= bin->len);        /* offset in range ? */
 
@@ -463,10 +455,6 @@ vset_init(zz_vset_t const vset)
       len = lpl = 0;                   /* If not used mark as dirty */
     }
 
-#ifdef DEBUG
-    sum[i] = sum_part(0xDEAD, pcm, len, 0);
-#endif
-
     zz_assert( (!!len) == (1 & (vset->iref>>i)) );
     zz_assert( len < 0x10000 );
     zz_assert( lpl <= len );
@@ -475,6 +463,7 @@ vset_init(zz_vset_t const vset)
     vset->inst[i].len = len;
     vset->inst[i].lpl = lpl;
     vset->inst[i].pcm = pcm;
+
   }
 
   nbi = sort_inst(vset->inst, idx, vset->iref );
@@ -542,13 +531,6 @@ vset_init(zz_vset_t const vset)
     zz_assert(pcm+2 < mcp);
     unroll_loop(pcm, mcp, inst->lpl);
   }
-
-#ifdef DEBUG
-  for (i=0; i<20; ++i) {
-    zz_assert( sum_part(0xDEAD, vset->inst[i].pcm, vset->inst[i].len, 0x80)
-               == sum[i] );
-  }
-#endif
 
   return E_OK;
 }
