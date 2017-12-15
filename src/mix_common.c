@@ -26,8 +26,8 @@ typedef struct mix_fp_s mix_fp_t;
 typedef struct mix_chan_s mix_chan_t;
 
 struct mix_chan_s {
-  int8_t *pcm, *end;
-  u32_t  idx, lpl, len, xtp;
+  uint8_t *pcm, *end;
+  u32_t idx, lpl, len, xtp;
 };
 
 struct mix_fp_s {
@@ -40,7 +40,7 @@ struct mix_fp_s {
 static inline void
 mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
 {
-  const int8_t * const pcm = (const int8_t *)K->pcm;
+  const uint8_t * const pcm = (const uint8_t *)K->pcm;
   const u32_t stp = K->xtp;
   u32_t idx = K->idx;
 
@@ -122,7 +122,7 @@ push_cb(play_t * const P, void * restrict pcm, i16_t N)
     case TRIG_NOTE:
       zz_assert( C->note.ins == P->vset.inst+C->curi );
       K->idx = 0;
-      K->pcm = (int8_t *) C->note.ins->pcm;
+      K->pcm = C->note.ins->pcm;
       K->len = C->note.ins->len << FP;
       K->lpl = C->note.ins->lpl << FP;
       K->end = C->note.ins->end + K->pcm;
@@ -156,6 +156,21 @@ static void * local_calloc(u32_t size, zz_err_t * err)
   *err =  zz_memnew(&ptr,size,1);
   return ptr;
 }
+    /* for (i=0; i<vset->nbi; ++i) { */
+    /*   const i32_t len = vset->inst[i].len; */
+
+    /*   if (len && vset->inst[i].end ) { */
+    /*     /\* qerp needs 2 more PCMs *\/ */
+    /*     vset->inst[i].end = len+2; */
+    /*   if (!lpl) { */
+    /*     pcm[len+0] = (pcm[len-1]+128) >> 1; */
+    /*     pcm[len+1] = 128; */
+    /*   } else { */
+    /*     pcm[len+0] = pcm[len-lpl]; */
+    /*     pcm[len+1] = pcm[len-lpl+1]; */
+    /*   } */
+    /* } */
+
 
 static zz_err_t init_cb(play_t * const P, u32_t spr)
 {
@@ -174,7 +189,10 @@ static zz_err_t init_cb(play_t * const P, u32_t spr)
     if (spr < SPR_MIN) spr = SPR_MIN;
     if (spr > SPR_MAX) spr = SPR_MAX;
     P->spr = spr;
+
+    ecode = init_meth(P);
   }
+
   return ecode;
 }
 

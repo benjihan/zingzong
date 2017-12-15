@@ -22,14 +22,14 @@
 
 /* Linear Interpolation.
  */
-static inline int lerp(const int8_t * const pcm, u32_t idx)
+static inline int lerp(const uint8_t * const pcm, u32_t idx)
 {
-  const int i = idx >> FP;
-  const int a = pcm[i+0];              /* f(0) */
-  const int b = pcm[i+1];              /* f(1) */
-  const int j = idx & ((1<<FP)-1);
+  const i32_t i = idx >> FP;
+  const i16_t a = pcm[i+0]-128;           /* f(0) */
+  const i16_t b = pcm[i+1]-128;           /* f(1) */
+  const i16_t j = idx & ((1<<FP)-1);
 
-  const int r = ( (b * j) + (a * ((1<<FP)-j)) ) >> ( FP - 6 );
+  const i16_t r = ( (b * j) + (a * ((1<<FP)-j)) ) >> ( FP - 6 );
 
 #if 0
   if ( unlikely (r < -0x2000) )
@@ -42,6 +42,29 @@ static inline int lerp(const int8_t * const pcm, u32_t idx)
 #endif
 
   return r;
+}
+
+static zz_err_t init_meth(play_t * P)
+{
+  const uint8_t * end = (uint8_t *)P->vset.bin->ptr+P->vset.bin->max;
+  int i;
+
+  for (i=0; i<P->vset.nbi; ++i) {
+    const i32_t len = P->vset.inst[i].len;
+    const i32_t lpl = P->vset.inst[i].lpl;
+
+    if (len) {
+      uint8_t * const pcm = P->vset.inst[i].pcm;
+      P->vset.inst[i].end = len+1;   /* lerp needs 1 additional PCM */
+      if (pcm+P->vset.inst[i].end > end) {
+        emsg(METH ": I#%02hu out of range\n",HU(i));
+        return E_MIX;
+      }
+
+      pcm[len] = !lpl ? 128 : pcm[len-lpl];
+    }
+  }
+  return ZZ_OK;
 }
 
 #include "mix_common.c"

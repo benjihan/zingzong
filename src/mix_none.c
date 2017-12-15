@@ -15,8 +15,13 @@
 
 #define OPEPCM(OP) do {                         \
     zz_assert( &pcm[idx>>FP] < K->end );        \
-    *b++ OP (int8_t)(pcm[idx>>FP]) << 6;        \
+    *b++ OP (pcm[idx>>FP]-128) << 6;            \
     idx += stp;                                 \
   } while (0)
+
+static zz_err_t init_meth(play_t *P)
+{
+  return ZZ_OK;
+}
 
 #include "mix_common.c"

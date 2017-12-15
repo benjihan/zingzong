@@ -200,7 +200,7 @@ CLEAN_TARGETS += clean-test
 
 .PHONY: clean-test
 clean-test:
-	@rm -f -- *.o *.dri *.elf *.map song.dat vset.dat
+	@rm -f -- *.o *.dri *.elf *.map song.dat vset.dat test.sc68
 	@echo "$@ done"
 
 .PHONY: test
@@ -214,7 +214,7 @@ test.elf: LDFLAGS    = -T $(srcdir)/sc68.x $(ELFFLAGS)
 test.elf: $(test_o) $(drivers) song.elf vset.elf
 sc68_start.o: $(srcdir)/sc68.x	# GB: force rebuild when script change
 
-SONGFILE ?= Cowboy_Theme-01.4v
+SONGFILE ?= test.4v
 ifndef VSETFILE
 VSETFILE = $(SONGFILE:%.4v=%.set)
 endif

@@ -36,14 +36,14 @@
  *     For down-sampling we need anti-aliasing filter usually some
  *     kind of low-pass filter prior to a simple decimation process.
  */
-static inline int16_t lagrange(const int8_t * const pcm, u32_t idx)
+static inline int16_t lagrange(const uint8_t * const pcm, u32_t idx)
 {
   const i32_t i = idx >> FP;
   const i32_t j = (idx >> (FP-7u)) & 0x7F; /* the mid poi32_t is f(.5) */
 
-  const i32_t p1 = pcm[i+0];              /* f(0) */
-  const i32_t p2 = pcm[i+1];              /* f(.5) */
-  const i32_t p3 = pcm[i+2];              /* f(1) */
+  const i32_t p1 = pcm[i+0]-128;        /* f(0) */
+  const i32_t p2 = pcm[i+1]-128;        /* f(.5) */
+  const i32_t p3 = pcm[i+2]-128;        /* f(1) */
 
   /* f(x) = ax^2+bx+c */
   const i32_t c =    p1            ;
@@ -74,6 +74,36 @@ static inline int16_t lagrange(const int8_t * const pcm, u32_t idx)
 #endif
 
   return r;
+}
+
+static zz_err_t init_meth(play_t * P)
+{
+  const uint8_t * end = (uint8_t *)P->vset.bin->ptr+P->vset.bin->max;
+  int i;
+
+  for (i=0; i<P->vset.nbi; ++i) {
+    const i32_t len = P->vset.inst[i].len;
+    const i32_t lpl = P->vset.inst[i].lpl;
+
+    if (len) {
+      uint8_t * const pcm = P->vset.inst[i].pcm;
+
+      P->vset.inst[i].end = len+2;  /* qerp needs 2 additional PCMs */
+      if (pcm+P->vset.inst[i].end > end) {
+        emsg(METH ": I#%02hu out of range\n",HU(i));
+        return E_MIX;
+      }
+      if (!lpl) {
+        pcm[len+0] = (pcm[len-1]+128) >> 1;
+        pcm[len+1] = 128;
+      } else {
+        pcm[len+0] = pcm[len-lpl];
+        pcm[len+1] = pcm[len-lpl+1];
+      }
+    }
+
+  }
+  return E_OK;
 }
 
 #include "mix_common.c"

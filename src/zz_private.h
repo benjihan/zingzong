@@ -214,10 +214,6 @@ struct mixer_s {
 
 /** Prepared instrument (sample). */
 struct inst_s {
-  uint8_t   num;             /**< instrument number.                */
-  uint8_t   sig;             /**< 0:unsigned 1:signed.              */
-  uint8_t   oct;             /**< octave tuning (down-sampling).    */
-  uint8_t   bit;             /**< 0:8bit 1:7bit                     */
   u16_t     len;             /**< size in bytes.                    */
   u16_t     lpl;             /**< loop length in bytes.             */
   u32_t     end;             /**< unrolled end.                     */
@@ -352,6 +348,8 @@ struct play_s {
   uint8_t format;               /**< see ZZ_FORMAT_ enum           */
   uint8_t mixer_id;             /**< mixer identifier.             */
   chan_t chan[4];               /**< 4 channels info.              */
+
+  uint8_t tohw[256];       /**< convert u8 PCM to what mixer wants. */
 };
 
 typedef struct songhd songhd_t;
@@ -553,6 +551,26 @@ ZZ_EXTERN_C
 zz_err_t vset_load(vset_t *vset, const char *uri);
 ZZ_EXTERN_C
 zz_err_t q4_load(vfs_t vfs, q4_t *q4);
+/**
+ * @}
+ */
+
+/* ---------------------------------------------------------------------- */
+
+/**
+ * voiceset and song setup.
+ * @{
+ */
+ZZ_EXTERN_C
+zz_err_t song_init_header(zz_song_t const song, const void * hd);
+ZZ_EXTERN_C
+zz_err_t song_init(zz_song_t const song);
+ZZ_EXTERN_C
+zz_err_t vset_init_header(zz_vset_t const vset, const void * hd);
+ZZ_EXTERN_C
+zz_err_t vset_init(zz_vset_t const vset);
+ZZ_EXTERN_C
+zz_err_t vset_unroll(zz_vset_t const vset, const uint8_t * tohw);
 /**
  * @}
  */

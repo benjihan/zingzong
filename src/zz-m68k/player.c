@@ -60,8 +60,14 @@ logfunc(zz_u8_t chan, void * user, const char *fmt, va_list list)
 
 void player_init(bin_t * song, bin_t * vset, uint32_t d0)
 {
-  BRKMSG("player_init()");
+  zz_log_fun(LOGFUNC,0);
+  zz_mem(newf,delf);
 
+  /* specific m68k checks */
+  dmsg("sizeof(inst_t) == %hu\n",HU(sizeof(inst_t)));
+  zz_assert( sizeof(inst_t) == 16 );
+
+  BRKMSG("player_init()");
   ready = 0;
   zz_memclr(&play,sizeof(play));
 
@@ -71,8 +77,6 @@ void player_init(bin_t * song, bin_t * vset, uint32_t d0)
   if (!vset->ptr) vset->ptr = vset->_buf;
   play.vset.bin = set_bin(&vsetbin, vset, 222);
 
-  zz_log_fun(LOGFUNC,0);
-  zz_mem(newf,delf);
 
   d0 = (uint8_t)(d0-1);       /* 0->DEF 1->AGA 2->STF 3->STE 4->FAL */
   ready =

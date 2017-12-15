@@ -9,11 +9,6 @@
 #include "zz_private.h"
 #include "zingzong.h"
 
-ZZ_EXTERN_C int song_init_header(zz_song_t const song, const void * hd);
-ZZ_EXTERN_C int song_init(zz_song_t const song);
-ZZ_EXTERN_C int vset_init_header(zz_vset_t const vset, const void * hd);
-ZZ_EXTERN_C int vset_init(zz_vset_t const vset);
-
 zz_err_t
 song_parse(song_t *song, vfs_t vfs, uint8_t *hd, u32_t size)
 {

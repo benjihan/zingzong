@@ -178,6 +178,10 @@ static zz_err_t init_aga(play_t * const P, u32_t spr)
     K->hw->per = 0x100;
   }
 
+  for (k=0; k<256; ++k)
+    P->tohw[k] = k-128;
+  vset_unroll(&P->vset,P->tohw);
+
   for (k=0; k<20; ++k) {
     inst_t * const ins = P->vset.inst + k;
     uint32_t end;

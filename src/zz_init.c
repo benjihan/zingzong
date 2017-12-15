@@ -9,7 +9,7 @@
 #include "zz_private.h"
 #include <ctype.h>
 
-/* [0,50,200] not official, it's an extension of qts file. */
+/* An extension of qts file. */
 static int is_valid_tck(const uint16_t tck) {
   return tck == 0 || (tck >= RATE_MIN && tck <= RATE_MAX);
 }
@@ -292,99 +292,49 @@ vset_init_header(zz_vset_t vset, const void * _hd)
   int ecode = E_SET;
 
   /* header */
-  vset->khz = hd[0];
-  vset->nbi = hd[1]-1;
+  vset->khz = *hd++;
+  vset->nbi = *hd++ - 1;
   dmsg("vset: spr:%hukHz, ins:%hu/0x%05hx\n",
        HU(vset->khz), HU(vset->nbi), HU(vset->iref));
 
   if (is_valid_khz(vset->khz) && is_valid_ins(vset->nbi)) {
     i8_t i;
-    for (i=0; i<20; ++i) {
-      /* vset->inst[i].num = i; */
-      vset->inst[i].len = U32(&hd[142+4*i]);
-      dmsg("I#%02i [%7s] %08lx\n", i+1, hd+2+7*i, LU(vset->inst[i].len));
+
+    /* copy instrument names */
+#if 0
+    for (i=0; i<20; ++i, hd += 7) {
+      i8_t j;
+      for (j=0; j<6; ++j)
+        vset->inst[i].nam[j] = (uint8_t)(hd[j]-32) <= 126-32 ? hd[j] : 32;
+      vset->inst[i].nam[j] = 0;
+    }
+#else
+    hd += 7*20;                         /* skip instrument names */
+#endif
+
+    /* copy instrument offset and setup */
+    for (i=0; i<20; ++i, hd+=4) {
+      inst_t * const inst = vset->inst+i;
+      /* inst->num = i+1; */
+      /* inst->oct = 0; */
+      /* inst->nul = 128; */
+      /* inst->lsr = 0; */
+      inst->pcm = (uint8_t *) (intptr_t) U32(hd);
+      dmsg("I#%02hu [%6s] %p\n", HU(i+1), (char*)_hd+2+i*7, inst->pcm);
     }
     ecode = E_OK;
   }
   return ecode;
 }
 
-static u8_t
-sort_inst(const inst_t inst[], uint8_t idx[], u32_t iuse)
-{
-  uint8_t nbi;
-
-  /* while instruments remaining */
-  for ( nbi=0; iuse; ) {
-    u8_t i, j; u32_t irem;
-
-    /* find first */
-    for (i=0; ! ( iuse & (1l<<i) )  ; ++i)
-      ;
-    irem = iuse & ~(1l<<i);
-    zz_assert ( inst[i].pcm );
-    zz_assert ( inst[i].len );
-
-    /* find best */
-    for (j=i+1; irem; ++j) {
-      if (irem & (1l<<j)) {
-        irem &= ~(1l<<j);
-        zz_assert ( inst[j].pcm );
-        zz_assert ( inst[j].len );
-        if ( inst[j].pcm < inst[i].pcm )
-          i = j;
-      }
-    }
-    idx[nbi++] = i;
-    iuse &= ~(1l<<i);
-  }
-
-  return nbi;
-}
-
-
-static void
-change_sign(uint8_t * dst, uint8_t * src, u16_t len)
-{
-  zz_assert( dst >= src );
-  zz_assert( len );
-
-  dst += len; src += len;
-  do {
-    *--dst = 0x80 ^ *--src;
-  } while (--len);
-}
-
-static void
-unroll_loop(uint8_t * dst, uint8_t * end, i32_t lpl)
-{
-  zz_assert( dst < end );
-  if (lpl)
-    do {
-      *dst = dst[-lpl];
-    } while (++dst < end);
-  else {
-    i16_t r=0, v = (int8_t) dst[-1];
-    do {
-      v = v+v+v+r; r = v & 3;
-      *dst = v >>= 2;
-    } while (++dst < end);
-  }
-  zz_assert( dst == end );
-}
-
 zz_err_t
 vset_init(zz_vset_t const vset)
 {
-  u8_t nbi = vset->nbi, i, abits;
-  bin_t   * const bin = vset->bin;
-  uint8_t * const beg = bin->ptr;
-  uint8_t * const end = beg + bin->max;
-  uint8_t * e;
-  u32_t tot, unroll, imsk;
-  uint8_t idx[20];
+  bin_t * const bin = vset->bin;
+  u32_t imsk;
+  u8_t i;
 
-  zz_assert( nbi > 0 && nbi <= 20 );
+  zz_assert( vset->nbi > 0 && vset->nbi <= 20 );
 
   /* imsk is best set before when possible so that unused (yet valid)
    * instruments can be ignored. This gives a little more space to
@@ -400,18 +350,13 @@ vset_init(zz_vset_t const vset)
    * referenced but not being used. That's the lesser of two evils.
    *
    */
-  imsk = vset->iref ? vset->iref : (1l<<nbi)-1;
+  imsk = vset->iref ? vset->iref : (1l<<vset->nbi)-1;
 
-  for (i=abits=vset->iref=0; i<20; ++i) {
-    const i32_t off = vset->inst[i].len - 222 + 8;
+  for (i=0, vset->iref=0; i<20; ++i) {
+    inst_t * const inst = vset->inst+i;
+    const i32_t off = (intptr_t)inst->pcm - 222 + 8;
     u32_t len = 0, lpl = 0;
     uint8_t * pcm = 0;
-
-    vset->inst[i].num = i;
-    vset->inst[i].sig = 0;
-    vset->inst[i].oct = 0;
-    vset->inst[i].bit = 0;
-
 #ifdef DEBUG_LOG
     const char * tainted = 0;
 #   define TAINTED(COND) if ( COND ) { tainted = #COND; break; } else
@@ -459,30 +404,93 @@ vset_init(zz_vset_t const vset)
     zz_assert( len < 0x10000 );
     zz_assert( lpl <= len );
 
-    vset->inst[i].end = len;
-    vset->inst[i].len = len;
-    vset->inst[i].lpl = lpl;
-    vset->inst[i].pcm = pcm;
-
+    inst->end = len;
+    inst->len = len;
+    inst->lpl = lpl;
+    inst->pcm = pcm;
   }
+
+  return E_OK;
+}
+
+static u8_t
+sort_inst(const inst_t inst[], uint8_t idx[], u32_t iuse)
+{
+  uint8_t nbi;
+
+  /* while instruments remaining */
+  for ( nbi=0; iuse; ) {
+    u8_t i, j; u32_t irem;
+
+    /* find first */
+    for (i=0; ! ( iuse & (1l<<i) )  ; ++i)
+      ;
+    irem = iuse & ~(1l<<i);
+    zz_assert ( inst[i].pcm );
+    zz_assert ( inst[i].len );
+
+    /* find best */
+    for (j=i+1; irem; ++j) {
+      if (irem & (1l<<j)) {
+        irem &= ~(1l<<j);
+        zz_assert ( inst[j].pcm );
+        zz_assert ( inst[j].len );
+        if ( inst[j].pcm < inst[i].pcm )
+          i = j;
+      }
+    }
+    idx[nbi++] = i;
+    iuse &= ~(1l<<i);
+  }
+
+  return nbi;
+}
+
+static void
+pcmcpy(uint8_t * dst, uint8_t * src, u16_t len, const uint8_t *tohw)
+{
+  zz_assert( dst >= src );
+  zz_assert( len );
+
+  dst += len; src += len;
+  do {
+    *--dst = tohw[ *--src ];
+  } while (--len);
+}
+
+static void
+unroll_loop(uint8_t * dst, uint8_t * end, i32_t lpl, const uint8_t nul)
+{
+  zz_assert( dst < end );
+  if (lpl)
+    do {
+      *dst = dst[-lpl];
+    } while (++dst < end);
+  else {
+    do {
+      *dst = nul;
+    } while (++dst < end);
+  }
+  zz_assert( dst == end );
+}
+
+
+zz_err_t
+vset_unroll(zz_vset_t const vset, const uint8_t *tohw)
+{
+  bin_t   * const bin = vset->bin;
+  uint8_t * const beg = bin->ptr;
+  uint8_t * const end = beg + bin->max;
+
+  u8_t nbi, i;
+  uint8_t idx[20];
+
+  uint8_t * e;
+  u32_t tot, unroll;
 
   nbi = sort_inst(vset->inst, idx, vset->iref );
   if (!nbi)
     return E_SET;
-  dmsg("Instruments: used:%hu/%hu ($%05lX/$%05lX)\n",
-       HU(nbi), HU(vset->nbi), LU(vset->iref), LU(imsk));
-
-#if 0 && defined DEBUG_LOG
-  dmsg("-------------------------------\n");
-  for (i=0; i<nbi; ++i) {
-    inst_t * const I = vset->inst + idx[i];
-    dmsg("#%02hu I#%02hu [$%05lX:$%05lX:$%05lX]\n",
-         HU(i+1),HU(idx[i]+1),
-         LU(I->pcm-beg), LU(&I->pcm[I->len-I->lpl]-beg),
-         LU(&I->pcm[I->len]-beg));
-  }
-  dmsg("-------------------------------\n");
-#endif
 
   /* 3 pass loop unroll is the only way to unsure not to trash some
    * sample during the process. */
@@ -491,9 +499,10 @@ vset_init(zz_vset_t const vset)
    *         sign in the process and computing the total space needed
    *         to store them all.
    */
-  for (i=1, e=end, tot=0; i<=nbi; ++i) {
+  for (i=1, e=end, tot=0; i <= nbi; ++i) {
     inst_t * const inst = &vset->inst[idx[nbi-i]];
-    change_sign(e -= inst->len, inst->pcm, inst->len);
+    pcmcpy(e -= inst->len, inst->pcm, inst->len, tohw);
+
     inst->pcm = e;
     tot += inst->len;
   }
@@ -529,8 +538,8 @@ vset_init(zz_vset_t const vset)
     inst->end = mcp-pcm;
     pcm += inst->len;
     zz_assert(pcm+2 < mcp);
-    unroll_loop(pcm, mcp, inst->lpl);
+    unroll_loop(pcm, mcp, inst->lpl, tohw[128]);
   }
 
-  return E_OK;
+  return ZZ_OK;
 }

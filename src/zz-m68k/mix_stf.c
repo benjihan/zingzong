@@ -200,16 +200,12 @@ static void never_inline prepare_sound(void)
   clear_ym_regs();                 /* A98-xx54-3210 */
 }
 
-/* GB: unsigned samples: !!! SLOW ASS METHOD !!! */
-static void never_inline prepare_insts(inst_t * inst, u8_t n)
+static void never_inline prepare_insts(play_t * P)
 {
-  u8_t i;
-  for (i=0; i<n; ++i, ++inst)
-    if (inst->len) {
-      uint8_t * pcm = inst->pcm, * const end = pcm+inst->end;
-      while (pcm < end)
-        *pcm++ ^= 0x80;
-    }
+  u8_t k;
+  for (k=0; k<256; ++k)
+    P->tohw[k] = k;
+  vset_unroll(&P->vset,P->tohw);
 }
 
 static void stop_timer(play_t * const P)
@@ -344,7 +340,7 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
 
   prepare_timer();
   prepare_sound();
-  prepare_insts(P->vset.inst, P->vset.nbi);
+  prepare_insts(P);
 
   return ecode;
 }

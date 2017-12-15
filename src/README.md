@@ -23,8 +23,7 @@
 
 If time is not set the player tries to auto detect the music duration.
 However a number of musics are going into unnecessary loops which
-makes it hard to properly detect. Detection threshold is set to 30
-minutes.
+makes it hard to properly detect.
 
 If time is set to zero `0` or `inf` the player will run forever.
 

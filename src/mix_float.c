@@ -18,14 +18,14 @@ static float i8tofl_lut[256];
 void
 i8tofl(float * const d, const uint8_t * const s, const int n)
 {
-#if 1
   static int init = 0;
+
   if (unlikely(!init)) {
     const float sc = 3.0 / (4.0*4.0*128.0);
     int i;
     init = 1;
     for (i=-128; i<128; ++i)
-      i8tofl_lut[i&0xFF] = sc * (float)i;
+      i8tofl_lut[(i^128)&0xFF] = sc * (float)i;
   }
   if (n > 0) {
     int i = 0;
@@ -33,15 +33,6 @@ i8tofl(float * const d, const uint8_t * const s, const int n)
       d[i] = i8tofl_lut[s[i]];
     } while (++i<n);
   }
-#else
-  if (n > 0) {
-    const float sc = 3.0 / (4.0*4.0*128.0);
-    int i = 0;
-    do {
-      d[i] = sc * (int8_t)s[i];
-    } while (++i<n);
-  }
-#endif
 }
 
 /* Convert normalized float PCM buffer to in16_t PCM */
