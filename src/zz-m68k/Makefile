@@ -190,7 +190,7 @@ zingzong.elf: START_SYMB = player_start
 zingzong.elf: START_ADDR = C0000000
 zingzong.elf: LDFLAGS    = -T $(srcdir)/zingzong.x $(ELFFLAGS)
 zingzong.elf: player_start.o $(addsuffix .o,$(com) $(zzz)) $(drivers)
-player_start.o: $(srcdir)/zingzong.x	# GB: force rebuild when script change
+player_start.o: $(srcdir)/zingzong.x # GB: force rebuild when script change
 
 # ----------------------------------------------------------------------
 #  Test sc68 files
@@ -200,7 +200,7 @@ CLEAN_TARGETS += clean-test
 
 .PHONY: clean-test
 clean-test:
-	@rm -f -- *.o *.dri *.elf *.map song.dat vset.dat test.sc68
+	@rm -f -- *.o *.dri *.elf *.map song.dat vset.dat test.sc68 song.dep
 	@echo "$@ done"
 
 .PHONY: test
@@ -219,6 +219,13 @@ ifndef VSETFILE
 VSETFILE = $(SONGFILE:%.4v=%.set)
 endif
 
+# Dependencies on .4v .set files
+song_deps := $(file < song.dep)
+ifneq ($(song_deps),$(SONGFILE) $(VSETFILE))
+$(file >song.dep,$(SONGFILE) $(VSETFILE))
+$(info Generating [song.dep])
+endif
+
 vset.elf song.elf: %.elf: %.o %.dat
 	@echo "[OBJ] $*";\
 	$(OBJCOPY) --add-section .$*.dat=$*.dat $< $@
@@ -227,6 +234,8 @@ song.dat: $(SONGFILE)
 vset.dat: $(VSETFILE)
 song.dat vset.dat: %.dat:
 	@test -n "$<" && echo "[DAT] $* [$(notdir $<)]" && cat "$<" >$@
+
+song.dat vset.dat: song.dep
 
 VASMBIN = vasmm68k_mot -quiet -Fbin -o 
 

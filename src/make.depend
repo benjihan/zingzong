@@ -34,12 +34,11 @@ CCDEP = true
 else
 
 dep_CFLAGS ?= $(strip $(CPPFLAGS) $(CFLAGS))
-CC_CONF_O  := $(shell cat $(cc_conf) 2>/dev/null)
+CC_CONF_O  := $(file <$(cc_conf))
 CC_CONF_N   = /* $(VERSION): $(dep_CFLAGS) */
 
 ifneq ($(CC_CONF_O),$(CC_CONF_N))
-# $(shell echo '$(CC_CONF_N)'  >$(cc_conf))
-$(file > $(cc_conf),$(CC_CONF_N))
+$(file >$(cc_conf),$(CC_CONF_N))
 $(info Generating [$(cc_conf)])
 endif
 
