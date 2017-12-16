@@ -97,9 +97,12 @@ x_close(vfs_t const _vfs)
 {
   int ret;
   vfs_file_t const fs = (vfs_file_t) _vfs;
-  if (ret = fclose(fs->fp), !ret)
+  if (!fs->fp)
+    ret = 0;
+  else if (ret = fclose(fs->fp), !ret)
     fs->fp = 0;
-  fs->X.err = errno;
+  else
+    fs->X.err = errno;
   return E_SYS & -!!ret;
 }
 
