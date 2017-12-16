@@ -62,6 +62,7 @@ struct mix_aga_s {
 
 static mix_aga_t g_aga;
 
+/* @see xstep.py */
 static uint16_t _xstep(uint32_t stp, uint8_t khz)
 {
   static const uint32_t ftbl[][2] = {
@@ -96,7 +97,7 @@ static uint16_t xstep(uint32_t stp, uint8_t khz, uint8_t inum)
      * unfortunate and the only way to prevent that would be to
      * down-sample the instruments.
      */
-    wmsg("(aga) period overflow I#%02hu stp:0x%lx per:%hu\n",
+    dmsg("period overflow I#%02hu stp:0x%lx per:%hu\n",
          HU(inum), LU(stp), HU(per));
     per = 113;
   }
@@ -204,7 +205,8 @@ static zz_err_t init_aga(play_t * const P, u32_t spr)
     if (oct) {
       uint16_t i, j, is = 1 << oct;
 
-      dmsg("I#%02hu has been downsampled by %hu\n", HU(k+1), HU(is));
+      dmsg("I#%02hu has been downsampled by %hu (per was %hu)\n",
+           HU(k+1), HU(is), HU(per>>oct));
       inst->len >>= oct;
       inst->lpl >>= oct;
       for (i=j=0; j<inst->len; i+=is, ++j)
@@ -220,29 +222,49 @@ static zz_err_t init_aga(play_t * const P, u32_t spr)
 
   for (k=0; k<20; ++k) {
     inst_t * const inst = P->vset.inst + k;
-    u32_t end;
+    u32_t nw;
 
     M->inst[k].num = k;
     M->inst[k].len = 1;
     if (!inst->len) continue;
     M->inst[k].vol = 64;
     M->inst[k].adr = -2 & ( (intptr_t) inst->pcm + 1 );
-    end = -2 & ( (intptr_t) inst->pcm + inst->end );
+
+    /* Get unrolled end with hardware limitation (even,<128KiB) */
+    nw = inst->end >> 1;
+    if (nw > 0x10000) nw = 0x10000;   /* hardware limit */
 
     if (!inst->lpl) {
-      uint32_t nw = (end - M->inst[k].adr) >> 1;
-      if (nw > 0x10000) nw = 0x10000;
-      zz_assert ( nw > 0 && nw <= 0x10000 );
+      uint8_t * lp_addr = &inst->pcm[(inst->end-2)&-2];
       M->inst[k].len = nw;
-      M->inst[k].lp_adr = M->inst[k].adr + ((nw-1)<<1);
+      M->inst[k].lp_adr = (intptr_t)lp_addr;
       M->inst[k].lp_len = 1;
+      lp_addr[0] = lp_addr[1] = 0;
     } else {
-      uint32_t nw = inst->len >> 1;
+      /* GB: Include as much as unrolled complete loop in both
+       *     runs. The 32-bit div/mul might be a bit overkill but
+       *     technically in extreme cases the classic m68k
+       *     instructions could overflow.
+       *
+       * GB: Using unrolled data in the loop partially fix de-tuning
+       *     caused by cutting very small odd length due to even
+       *     hardware limitation. We could do one better by selecting
+       *     the loop point and the loop length at even address
+       *     both. However as long as the unroll space is large enough
+       *     it should not matter that much.
+       */
+      uint32_t xtra_len = (nw<<1) - inst->len;
+      uint32_t loop_cnt = divu32(xtra_len, inst->lpl);
+      uint32_t loop_len = mulu32(loop_cnt, inst->lpl);
 
-      M->inst[k].len = nw; /* not gut: need t oextend to unrolled data */
+      dmsg("I#%02u len:%lu lpl:%lu end:%lu xtra:%lu loop:%lux%lu=%lu \n",
+           HU(k+1), LU(inst->len), LU(inst->lpl), LU(inst->end),
+           LU(xtra_len), LU(loop_cnt), LU(inst->lpl), LU(loop_len));
+
+      zz_assert( (inst->len+loop_len) >> 1 <= 0x10000 );
+      M->inst[k].len = (inst->len + loop_len) >> 1;
       M->inst[k].lp_adr = -2 & ((intptr_t)inst->pcm+inst->len-inst->lpl);
-      nw = ( ((intptr_t)inst->pcm+inst->len) - M->inst[k].lp_adr ) >> 1;
-      M->inst[k].lp_len = nw;
+      M->inst[k].lp_len = (inst->lpl+loop_len) >> 1;
     }
   }
 
