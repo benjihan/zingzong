@@ -44,22 +44,26 @@ struct mix_chan_s {
   uint16_t lp_len;
   uint8_t  status;
   uint8_t  inum;
+  uint8_t  oct;
 };
 
 struct mix_aga_s {
   mix_chan_t chan[4];
   struct aga_inst {
     uint32_t adr, lp_adr;
-    uint16_t len, lp_len, vol, num;
+    uint16_t len, lp_len;
+    uint8_t num;
+    uint8_t vol;
+    uint8_t oct;
+    uint8_t reserved;
   } inst[20];
 };
 
 
 static mix_aga_t g_aga;
 
-static uint16_t xstep(uint32_t stp, uint8_t khz, uint8_t inum)
+static uint16_t _xstep(uint32_t stp, uint8_t khz)
 {
-  uint16_t per;
   static const uint32_t ftbl[][2] = {
     /* SAMPLING   PAL         NTSC       */
     /* 04kHz */ { 0x0376b941, 0x037ee2e5 },
@@ -81,7 +85,12 @@ static uint16_t xstep(uint32_t stp, uint8_t khz, uint8_t inum)
     /* 20kHz */ { 0x00b15840, 0x00b2fa2e }
   };
   zz_assert( (stp>>3) < 0x10000 );
-  per = divu(ftbl[khz-4][0]>>3, stp>>3);
+  return divu(ftbl[khz-4][0]>>3, stp>>3);
+}
+
+static uint16_t xstep(uint32_t stp, uint8_t khz, uint8_t inum)
+{
+  uint16_t per = _xstep(stp,khz);
   if (per < 113) {
     /* Sometime we reach periods that excess the DMA speed. This is
      * unfortunate and the only way to prevent that would be to
@@ -89,7 +98,7 @@ static uint16_t xstep(uint32_t stp, uint8_t khz, uint8_t inum)
      */
     wmsg("(aga) period overflow I#%02hu stp:0x%lx per:%hu\n",
          HU(inum), LU(stp), HU(per));
-    //per = 113;
+    per = 113;
   }
   return per;
 }
@@ -113,17 +122,18 @@ static i16_t push_aga(play_t * const P, void * pcm, i16_t npcm)
       zz_assert(C->note.ins == &P->vset.inst[C->curi]);
       DMACON = K->dmacon;              /* Disable audio channel DMA */
       K->inum    = C->curi;
+      K->oct     = M->inst[C->curi].oct;
       K->lp_adr  = M->inst[C->curi].lp_adr;
       K->lp_len  = M->inst[C->curi].lp_len;
       K->hw->adr = M->inst[C->curi].adr;
       K->hw->len = M->inst[C->curi].len;
       K->hw->vol = M->inst[C->curi].vol;
-      K->hw->per = xstep(C->note.cur, P->song.khz, K->inum);
+      K->hw->per = xstep(C->note.cur >> K->oct, P->song.khz, K->inum);
       DMACON = 0x8000 | K->dmacon;      /* Enable audio channel DMA */
       break;
 
     case TRIG_SLIDE:
-      K->hw->per = xstep(C->note.cur, P->song.khz, K->inum);
+      K->hw->per = xstep(C->note.cur >> K->oct, P->song.khz, K->inum);
     case TRIG_NOP:
       if (old_status == TRIG_NOTE) {
         /* Setting the sample loop at the frame following the note
@@ -157,14 +167,7 @@ static zz_err_t init_aga(play_t * const P, u32_t spr)
 
   P->mixer_data = M;
   P->spr = mulu(P->song.khz,1000u);
-
   zz_memclr(M,sizeof(*M));
-
-  if (1)
-  {
-    xstep(P->song.stepmin, P->song.khz, 255);
-    xstep(P->song.stepmax, P->song.khz, 255);
-  }
 
   DMACON = 0x000F;                    /* disable audio DMAs */
   DMACON = 0x8200;                    /* enable DMAs */
@@ -178,30 +181,68 @@ static zz_err_t init_aga(play_t * const P, u32_t spr)
     K->hw->per = 0x100;
   }
 
+  /* Because of Paula limitation some sample need down-sampling. The
+   * song parser stores the maximum step used by instrument.
+   */
+  for (k=0; k<20; ++k) {
+    inst_t * const inst = P->vset.inst + k;
+    const uint16_t permin = 113;
+    uint16_t per;
+    uint8_t oct;
+
+    if (!inst->len) continue;
+    if (!P->song.istep[k]) continue;
+
+    oct = 0;
+    per = _xstep( (u32_t) P->song.istep[k] << 12, P->song.khz);
+    if (!per) continue;
+    while ( per < permin ) {
+      per <<= 1;
+      ++oct;
+    }
+
+    if (oct) {
+      uint16_t i, j, is = 1 << oct;
+
+      dmsg("I#%02hu has been downsampled by %hu\n", HU(k+1), HU(is));
+      inst->len >>= oct;
+      inst->lpl >>= oct;
+      for (i=j=0; j<inst->len; i+=is, ++j)
+        inst->pcm[j] = inst->pcm[i];
+      M->inst[k].oct = oct;
+    }
+  }
+
+  /* Change PCM sign and unroll loops. */
   for (k=0; k<256; ++k)
     P->tohw[k] = k-128;
   vset_unroll(&P->vset,P->tohw);
 
   for (k=0; k<20; ++k) {
-    inst_t * const ins = P->vset.inst + k;
-    uint32_t end;
+    inst_t * const inst = P->vset.inst + k;
+    u32_t end;
+
     M->inst[k].num = k;
     M->inst[k].len = 1;
-    if (!ins->len) continue;
+    if (!inst->len) continue;
     M->inst[k].vol = 64;
-    M->inst[k].adr = (intptr_t) &ins->pcm[1];
-    end = (intptr_t)&ins->pcm[ins->end];
-    if (!ins->lpl) {
-      uint32_t len = end - M->inst[k].adr;
-      if (len > 0x20000) len = 0x20000;
-      M->inst[k].len = len >> 1;
-      M->inst[k].lp_adr = M->inst[k].adr + len - 2;
+    M->inst[k].adr = -2 & ( (intptr_t) inst->pcm + 1 );
+    end = -2 & ( (intptr_t) inst->pcm + inst->end );
+
+    if (!inst->lpl) {
+      uint32_t nw = (end - M->inst[k].adr) >> 1;
+      if (nw > 0x10000) nw = 0x10000;
+      zz_assert ( nw > 0 && nw <= 0x10000 );
+      M->inst[k].len = nw;
+      M->inst[k].lp_adr = M->inst[k].adr + ((nw-1)<<1);
       M->inst[k].lp_len = 1;
     } else {
-      uint32_t len = ins->len;
-      M->inst[k].len = len >> 1;
-      M->inst[k].lp_adr = (intptr_t)&ins->pcm[ins->len - ins->lpl];
-      M->inst[k].lp_len = ins->lpl >> 1;
+      uint32_t nw = inst->len >> 1;
+
+      M->inst[k].len = nw; /* not gut: need t oextend to unrolled data */
+      M->inst[k].lp_adr = -2 & ((intptr_t)inst->pcm+inst->len-inst->lpl);
+      nw = ( ((intptr_t)inst->pcm+inst->len) - M->inst[k].lp_adr ) >> 1;
+      M->inst[k].lp_len = nw;
     }
   }
 

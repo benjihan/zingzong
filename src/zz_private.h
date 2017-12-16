@@ -273,7 +273,6 @@ struct note_s {
   inst_t *ins;               /**< Current instrument.               */
 };
 
-
 /** Played channel. */
 struct chan_s {
   sequ_t  *seq;                       /**< sequence address.        */
@@ -341,14 +340,13 @@ struct play_s {
   u16_t ms_per_tick;                 /**< ms per tick (integer).    */
   u16_t ms_err_tick;                 /**< ms per tick (correction). */
 
-  uint8_t muted_voices;         /**< channels mask.                */
-  uint8_t has_loop;             /**< channels mask.                */
-  uint8_t done;                 /**< non zero when done.           */
-  uint8_t code;                 /**< error code.                   */
-  uint8_t format;               /**< see ZZ_FORMAT_ enum           */
-  uint8_t mixer_id;             /**< mixer identifier.             */
-  chan_t chan[4];               /**< 4 channels info.              */
-
+  uint8_t muted_voices;    /**< channels mask.       */
+  uint8_t has_loop;        /**< channels mask.       */
+  uint8_t done;            /**< non zero when done.  */
+  uint8_t code;            /**< error code.          */
+  uint8_t format;          /**< see ZZ_FORMAT_ enum. */
+  uint8_t mixer_id;        /**< mixer identifier.    */
+  chan_t  chan[4];         /**< 4 channels info.     */
   uint8_t tohw[256];       /**< convert u8 PCM to what mixer wants. */
 };
 
@@ -360,7 +358,6 @@ struct songhd {
   uint8_t timesig[2];
   uint8_t reserved[2*4];
 };
-
 
 /* ---------------------------------------------------------------------- */
 
