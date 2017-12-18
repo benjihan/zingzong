@@ -34,16 +34,19 @@ CCDEP = true
 else
 
 dep_CFLAGS ?= $(strip $(CPPFLAGS) $(CFLAGS))
-CC_CONF_O  := $(file <$(cc_conf))
 CC_CONF_N   = /* $(VERSION): $(dep_CFLAGS) */
+# Can not use $(file) with some gmake.
+CC_CONF_O  := $(shell test -r "$(cc_conf)" && cat $(cc_conf))
 
 ifneq ($(CC_CONF_O),$(CC_CONF_N))
 $(file >$(cc_conf),$(CC_CONF_N))
 $(info Generating [$(cc_conf)])
+
 endif
 
 $(cc_conf): $(srcdir)/Makefile $(wildcard $(topdir)/src/make.*)
-	@echo "[UPD] $@"; touch "$@"
+	@echo "[UPD] $@"
+	$(file >$@,$(CC_CONF_N))
 
 CCDEP = $(CC)
 DEP_FLAGS = -include $(cc_conf) -MM -MG -MF $@

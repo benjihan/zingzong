@@ -219,8 +219,8 @@ ifndef VSETFILE
 VSETFILE = $(SONGFILE:%.4v=%.set)
 endif
 
-# Dependencies on .4v .set files
-song_deps := $(file < song.dep)
+# Dependencies on .4v .set files 
+song_deps := $(shell test -r song.dep && cat song.dep)
 ifneq ($(song_deps),$(SONGFILE) $(VSETFILE))
 $(file >song.dep,$(SONGFILE) $(VSETFILE))
 $(info Generating [song.dep])
