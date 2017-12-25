@@ -11,6 +11,10 @@ static zz_err_t init_aga(play_t * const, u32_t);
 static void     free_aga(play_t * const);
 static i16_t    push_aga(play_t * const, void *, i16_t);
 
+#define PER_MIN_PAL  123
+#define PER_MIN_NTSC 124
+#define PER_MIN      PER_MIN_NTSC
+
 mixer_t * mixer_aga(mixer_t * const M)
 {
   M->name = "paula";
@@ -92,14 +96,14 @@ static uint16_t _xstep(uint32_t stp, uint8_t khz)
 static uint16_t xstep(uint32_t stp, uint8_t khz, uint8_t inum)
 {
   uint16_t per = _xstep(stp,khz);
-  if (per < 113) {
+  if (per < PER_MIN) {                      /*  */
     /* Sometime we reach periods that excess the DMA speed. This is
      * unfortunate and the only way to prevent that would be to
      * down-sample the instruments.
      */
     dmsg("period overflow I#%02hu stp:0x%lx per:%hu\n",
          HU(inum), LU(stp), HU(per));
-    per = 113;
+    per = PER_MIN;
   }
   return per;
 }
@@ -187,7 +191,7 @@ static zz_err_t init_aga(play_t * const P, u32_t spr)
    */
   for (k=0; k<20; ++k) {
     inst_t * const inst = P->vset.inst + k;
-    const uint16_t permin = 113;
+    const uint16_t permin = PER_MIN;
     uint16_t per;
     uint8_t oct;
 
