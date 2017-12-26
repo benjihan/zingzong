@@ -378,7 +378,7 @@ vset_parse(vset_t *vset, vfs_t vfs, uint8_t *hd, u32_t size)
   if (0
       /* Parse header and instruments */
       || (ecode = vset_init_header(vset, hd))
-      || (ecode = bin_load(&vset->bin, vfs, size, 1024, VSET_MAX_SIZE))
+      || (ecode = bin_load(&vset->bin, vfs, size, VSET_EXTRA, VSET_MAX_SIZE))
       || (ecode = vset_init(vset)))
     bin_free(&vset->bin);
   return ecode;

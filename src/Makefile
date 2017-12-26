@@ -220,7 +220,7 @@ zz_vfs_obj = $(zz_vfs_src:.c=.o)
 zz_pla_obj = $(zz_pla_src:.c=.o)
 zz_zzz_obj = $(zz_zzz_src:.c=.o)
 
-mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
+mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float mix_test
 out := out_ao out_raw
 vfs := vfs_file
 pla := zz_init zz_play zz_log zz_fast

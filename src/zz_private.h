@@ -119,9 +119,10 @@
 # define FP 15                          /* mixer step precision */
 #endif
 
-#define VSET_MAX_SIZE (1<<19) /* arbitrary .set max size */
-#define SONG_MAX_SIZE 0xFFF0  /* not so arbitrary .4v max size */
-#define INFO_MAX_SIZE 2048    /* arbitrary .4q info max size */
+#define VSET_EXTRA    4096         /* extra space for unrolling */
+#define VSET_MAX_SIZE (1<<19)      /* arbitrary .set max size */
+#define SONG_MAX_SIZE 0xFFF0       /* not so arbitrary .4v max size */
+#define INFO_MAX_SIZE 2048         /* arbitrary .4q info max size */
 
 /* The size of the loop stack in the singsong.prg program is *67*.
  * The maximum depth encountered so far in a Quartet module is *6*.
