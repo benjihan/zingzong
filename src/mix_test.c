@@ -52,8 +52,6 @@ mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
       offset[i] = idx >> FP;
   }
 
-  dmsg("blocks: %hu\n", HU( (n+BLKSZ-1)/BLKSZ));
-
   do {
     u32_t idx;
     int m,i;
