@@ -23,7 +23,9 @@ case "$arch" in
         #########################
         # Winamp plugin special #
         #########################
-        export WADIR="`regtool -W get /user/Software/Winamp/`"
+        export WADIR="$(regtool -W get /user/Software/Winamp/)"
+	which cygpath >/dev/null 2>/dev/null && 
+	    WADIR="$(cygpath -m "$WADIR")"
         set -- "$@" NO_AO=1 NO_SRATE=1
         export arch=i686-w64-mingw32
         export ZZ_MAKEFILE=../src/zz-winamp/Makefile
@@ -39,19 +41,25 @@ case "$arch" in
        exit 1 ;;
 esac
 
-# You can always set this variable if you are trying to impersonate me
-# :)
+# ----------------------------------------------------------------------
+# You can always set the benovr variable if you are trying to
+# impersonate me. Or more seriously if you have soxr installed
+# somewhere unconventional.
 
 # Determine if that's me using my gpg footprint
 if gpg -K | grep -c 52D4145B; then
     benovr="${HOME}/_Arch"     # that's where I store my builds
 fi >/dev/null 2>/dev/null
 
+
+# ----------------------------------------------------------------------
 # Looking for soxr in here. For some reason my soxr build does not
 # have a .pc so I have to set the SOXR_ variables manually.  This will
-# set SOXR to the prefix where soxr has installed for this architecture.
+# set SOXR to the prefix where soxr has installed for this
+# architecture.
 
 if [ "${benovr}" ] && [ s${SOXR+et} != set ]; then
+
     set +f; shopt -s nullglob
     for dir in "${benovr}/${arch}"/soxr* "${benovr}/${arch}"/.; do
         if [ -r "${dir}"/include/soxr.h ]; then
@@ -59,6 +67,7 @@ if [ "${benovr}" ] && [ s${SOXR+et} != set ]; then
             SOXR="$dir"
         fi
     done
+
 fi
 
 if [ s${SOXR+et} = set ]; then
@@ -76,14 +85,18 @@ if [ s${SOXR+et} = set ]; then
 fi
 
 if [ "${SOXR_LIBS-}" ]; then
+
     NO_SOXR=0
     set -- \
         SOXR_CFLAGS="${SOXR_CFLAGS-}" \
         SOXR_LIBS="${SOXR_LIBS}" \
         NO_SOXR=0 \
         "$@"
+
 fi
 
-# Let s build
-set -x
+# ----------------------------------------------------------------------
+# Let's build
+# ----------------------------------------------------------------------
+
 exec $build "$@"
