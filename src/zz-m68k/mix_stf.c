@@ -22,6 +22,7 @@
 #define YMB ((volatile uint8_t *)0xFFFF8800)
 #define MFP ((volatile uint8_t *)0xFFFFFA00)
 #define VEC (*(timer_rout_t * volatile *)0x134)
+#define BGC(X) (*(volatile uint16_t *)0xFFFF8240) = (X)
 
 static zz_err_t init_stf(play_t * const P, u32_t spr);
 static void     free_stf(play_t * const P);
@@ -210,7 +211,8 @@ static void never_inline prepare_insts(play_t * P)
 
 static void stop_timer(play_t * const P)
 {
-  MFP[0x19] = 0;                        /* Stop timer-A */
+  MFP[0x19]  = 0;                       /* Stop timer-A */
+  MFP[0x17] |= 8;                       /* SEI */
 }
 
 static uint16_t never_inline set_sampling(play_t * const P, uint16_t spr)
@@ -226,7 +228,7 @@ static void prepare_timer(void)
   MFP[0x19]  = 0;                       /* Stop timer-A */
   MFP[0x07] |= 0x20;                    /* IER */
   MFP[0x13] |= 0x20;                    /* IMR */
-  MFP[0x17] |= 8;                       /* AEI */
+  MFP[0x17] &= ~8;                      /* AEI */
   VEC = (timer_rout_t *)&tuor[-1].rte;
 }
 
@@ -320,9 +322,7 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
   init_timer_routines();
   init_replay_table();
   P->mixer_data = M;
-  P->spr = mulu(P->song.khz,1000u);
   zz_memclr(M,sizeof(*M));
-
   refspr = mulu(P->song.khz,1000u);
 
   switch (spr) {
@@ -335,7 +335,7 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
   if (spr < SPR_MIN) spr = SPR_MIN;
   if (spr > SPR_MAX) spr = SPR_MAX;
 
-  spr = set_sampling(P,spr);
+  P->spr = spr = set_sampling(P,spr);
   M->scl = ( divu(refspr<<13,spr) + 1 ) >> 1;
 
   prepare_timer();

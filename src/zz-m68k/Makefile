@@ -198,9 +198,12 @@ player_start.o: $(srcdir)/zingzong.x # GB: force rebuild when script change
 
 CLEAN_TARGETS += clean-test
 
+CLEAN_TEST = *.o *.dri *.elf test_*.tos *.map song.dat vset.dat	\
+test.sc68 song.dep
+
 .PHONY: clean-test
 clean-test:
-	@rm -f -- *.o *.dri *.elf *.map song.dat vset.dat test.sc68 song.dep
+	@rm -f -- $(CLEAN_TEST)
 	@echo "$@ done"
 
 .PHONY: test
@@ -237,10 +240,17 @@ song.dat vset.dat: %.dat:
 
 song.dat vset.dat: song.dep
 
-VASMBIN = vasmm68k_mot -quiet -Fbin -o 
+VASMMOT = vasmm68k_mot -quiet $(VASMFLAGS)
+VASMBIN = $(VASMMOT) -Fbin -o
+VASMTOS = $(VASMMOT) -Ftos -o
 
 %.sc68: %_sc68.s test.bin
 	@echo "[ASM] $@"; $(VASMBIN) $@ $<
+
+test_stf.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=2
+test_stf.tos: test_tos.s test.bin
+
+%.tos:;	@echo "[TOS] $@"; $(VASMTOS) $@ $<
 
 .INTERMEDIATE: test.bin
 

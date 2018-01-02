@@ -1,4 +1,4 @@
-# -*- Makefile -*-
+# -*- makefile-gmake -*-
 #
 # ----------------------------------------------------------------------
 # @file    make.depend
@@ -40,8 +40,7 @@ CC_CONF_O  := $(shell test -r "$(cc_conf)" && cat $(cc_conf))
 
 ifneq ($(CC_CONF_O),$(CC_CONF_N))
 $(file >$(cc_conf),$(CC_CONF_N))
-$(info Generating [$(cc_conf)])
-
+$(info [GEN] $(cc_conf))
 endif
 
 $(cc_conf): $(srcdir)/Makefile $(wildcard $(topdir)/src/make.*)
