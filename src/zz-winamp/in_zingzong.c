@@ -392,7 +392,6 @@ load(zz_play_t P, zz_info_t *I, const char * uri, zz_u8_t measure)
 {
   zz_err_t ecode = E_INP;
   zz_i32_t dms=g_dms, spr=g_spr, mid=g_mid;
-  zz_u8_t forced = 0;
 
   zz_assert( P );
   zz_assert( I );
