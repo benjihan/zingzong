@@ -28,7 +28,7 @@ ZZ_EXTERN_C mixer_t mixer_srate_best, mixer_srate_medium, mixer_srate_fast;
 # endif
 #endif
 
-#if WITH_TEST == 1
+#if WITH_TEST >= 1
 ZZ_EXTERN_C mixer_t mixer_test;
 #endif
 
@@ -43,7 +43,7 @@ static mixer_t * const zz_mixers[] = {
   &mixer_srate_best, &mixer_srate_medium, &mixer_srate_fast,
 #endif
 
-#if WITH_TEST == 1
+#if WITH_TEST >= 1
   &mixer_test,
 #endif
 

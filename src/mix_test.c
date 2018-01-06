@@ -5,12 +5,23 @@
  * @brief  Low quality no interpolation mixer.
  */
 
-#if WITH_TEST == 1
+#ifdef WITH_TEST
+
+#define BLKSZ 16                        /* TEST 1 */
+#define ZSTR(A) #A
+#define XSTR(A) ZSTR(A)
 
 #define NAME "int"
 #define METH "test"
 #define SYMB mixer_test
-#define DESC "testing stuff"
+
+#if WITH_TEST == 1
+#define DESC "testing pre-indexed block of " XSTR(BLKSZ)
+#elif WITH_TEST == 2
+#define DESC "testing interleaved voices"
+#else
+#error unknown WITH_TEST value
+#endif
 
 #define ZZ_DBG_PREFIX "(mix-" METH  ") "
 #include "zz_private.h"
@@ -29,29 +40,32 @@ struct mix_fp_s {
   mix_chan_t chan[4];
 };
 
-#define BLKSZ 16
+
 
 static void
-mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
+mix_add1(mix_chan_t * const restrict K, u8_t k, int16_t * restrict b, int n)
 {
   const uint8_t * const pcm = (const uint8_t *)K->pcm;
+
+#if WITH_TEST == 1
   const u32_t rnd = 0; /* (1<<(FP-1))-1; */
   u32_t offset[BLKSZ];
+
+#elif WITH_TEST == 2
+  n >>= 2;
+
+#endif
 
   if (n <= 0 || !K->pcm)
     return;
 
-  zz_assert( K->pcm );
-  zz_assert( K->end > K->pcm );
-  zz_assert( K->xtp > 0 );
-
+#if WITH_TEST == 1
   if (1) {
     int i;
     u32_t idx = 0;
     for (i=0; i<BLKSZ; ++i, idx += K->xtp)
       offset[i] = idx >> FP;
   }
-
   do {
     u32_t idx;
     int m,i;
@@ -85,6 +99,33 @@ mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
       }
     }
   } while (n > 0);
+
+#elif WITH_TEST == 2
+
+  b += k;
+  do {
+    *b = (pcm[ K->idx >> FP ] - 128) << 8;
+    b += 4;
+    K->idx += K->xtp;
+    if (K->idx >= K->len) {
+      if (!K->lpl) {
+        K->pcm = 0; break;
+      }
+      else {
+        const u32_t off = K->len - K->lpl;  /* loop start index */
+        u32_t ovf = K->idx - K->len;
+        if (ovf >= K->lpl) ovf %= K->lpl;
+        K->idx = off+ovf;
+        zz_assert( K->idx >= off && K->idx < K->len );
+      }
+    }
+  } while ( --n > 0 );
+
+#else
+#error invalid WITH_TEST value
+#endif
+
+
 }
 
 static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
@@ -100,7 +141,12 @@ static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
   u32_t const res = tmp;
   zz_assert( (u64_t)res == tmp );       /* check overflow */
   zz_assert( res );
+
+#if WITH_TEST == 2                      /* INTERLEAVED */
+  return res << 2;
+#else
   return res;
+#endif
 }
 
 static i16_t
@@ -149,7 +195,11 @@ push_cb(play_t * const P, void * restrict pcm, i16_t N)
 
   /* Add voices */
   for (k=0; k<4; ++k)
-    mix_add1(M->chan+k, pcm, N);
+    mix_add1(M->chan+k, k, pcm, N);
+
+#if WITH_TEST == 2                      /* INTERLEAVED */
+  N = N & ~3;
+#endif
 
   return N;
 }
