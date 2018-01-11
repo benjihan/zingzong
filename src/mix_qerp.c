@@ -39,7 +39,7 @@
 static inline int16_t lagrange(const uint8_t * const pcm, u32_t idx)
 {
   const i32_t i = idx >> FP;
-  const i32_t j = (idx >> (FP-7u)) & 0x7F; /* the mid poi32_t is f(.5) */
+  const i32_t j = (idx >> (FP-7u)) & 0x7F; /* the mid point is f(.5) */
 
   const i32_t p1 = pcm[i+0]-128;        /* f(0) */
   const i32_t p2 = pcm[i+1]-128;        /* f(.5) */
