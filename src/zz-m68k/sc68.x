@@ -68,7 +68,7 @@ SECTIONS
     vset.elf(.vset.dat);
     vset_len = ABSOLUTE(.) - vset_adr;
     . = ALIGN(16);
-    . += 1024;
+    . += 2048;
     vset_max = ABSOLUTE(.) - vset_adr;
   }
 }
