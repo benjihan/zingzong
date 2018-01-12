@@ -25,8 +25,10 @@ mixer_t * mixer_ste(mixer_t * const M)
 
 /* ---------------------------------------------------------------------- */
 
-/* !!! change in m68k_ste.S as well !!! */
 typedef struct mix_fast_s mix_fast_t;
+typedef struct mix_ste_s mix_ste_t;
+
+/* !!! change in m68k_ste.S as well !!! */
 struct mix_fast_s {
   uint8_t *end;                         /*  0 */
   uint8_t *cur;                         /*  4 */
@@ -35,7 +37,6 @@ struct mix_fast_s {
   uint16_t lpl;                         /* 14 */
 };                                      /* 16 bytes */
 
-typedef struct mix_ste_s mix_ste_t;
 struct mix_ste_s {
   mix_fast_t fast[4];
   int8_t * wptr;
@@ -45,8 +46,13 @@ struct mix_ste_s {
 
 static mix_ste_t g_ste;
 static int8_t  mixtbl[1024];            /* mix 4 voices together */
+static int16_t temp[1024];
 static int8_t  mixbuf[2048];            /* >2002 (50066/50*2) */
-static int16_t temp[1024];              /* $$$ Only for C test */
+
+ZZ_EXTERN_C
+void fast_ste(int8_t  * Tmix, int8_t     * dest,
+              int16_t * temp, mix_fast_t * voices,
+              int32_t n);
 
 /* ---------------------------------------------------------------------- */
 
@@ -84,8 +90,8 @@ static void * dma_position(void)
 {
   void * pos;
   asm volatile(
-    "   lea 0x8909.w,%%a0     \n\t"
-    "   moveq #-1,%[pos]      \n\t"
+    "   lea 0x8909.w,%%a0      \n\t"
+    "   moveq #-1,%[pos]       \n\t"
     "0:"
     "   move.l %[pos],%%d1     \n\t"
     "   moveq #0,%[pos]        \n\t"
@@ -143,7 +149,6 @@ static void never_inline init_mix(play_t * P)
     int i;
     for (i=0; i<1024; ++i)
       mixtbl[i] = (i>>2) - 128;
-
 #else
     int8_t * tbl = mixtbl+512;
     int16_t i, j, x, x0;
@@ -174,6 +179,7 @@ static void never_inline init_spl(play_t * P)
   vset_unroll(&P->vset,P->tohw);
 }
 
+#if 0
 static void
 fast_ste(const int8_t mixtbl[], int8_t * d, int16_t * temp,
          mix_fast_t * fast, int16_t n)
@@ -229,7 +235,7 @@ fast_ste(const int8_t mixtbl[], int8_t * d, int16_t * temp,
   } while (--n);
 
 }
-
+#endif
 
 static inline u32_t xstep(u32_t stp, uint16_t f12)
 {
@@ -310,6 +316,14 @@ static i16_t push_ste(play_t * const P, void *pcm, i16_t n)
       M->wptr = r0 + (M->wptr-re);
   }
 
+  zz_assert( n1 + n2 == n );
+  zz_assert( n1 <= n );
+  zz_assert( n2 <= n );
+  zz_assert( r1 >= r0 );
+  zz_assert( r2 >= r0 );
+  zz_assert( r1 + n1 <= re );
+  zz_assert( r2 + n2 <= re );
+
   fast_ste(mixtbl, r1, temp, M->fast, n1);
   fast_ste(mixtbl, r2, temp, M->fast, n2);
 
@@ -352,6 +366,7 @@ static zz_err_t init_ste(play_t * const P, u32_t spr)
   init_dma(P);
   init_mix(P);
   init_spl(P);
+  zz_memclr(mixbuf,sizeof(mixbuf));
 
   return ecode;
 }

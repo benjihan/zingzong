@@ -38,9 +38,12 @@ mixer_t * mixer_stf(mixer_t * const M)
   return M;
 }
 
-#include "ym10_pack.h"
+/* ---------------------------------------------------------------------- */
 
 typedef struct timer_rout_s timer_rout_t;
+typedef struct mix_fast_s mix_fast_t;
+typedef struct mix_chan_s mix_chan_t;
+typedef struct mix_stf_s mix_stf_t;
 
 /* !!! change in m68k_stf.S as well !!! */
 struct mix_fast_s {
@@ -51,23 +54,12 @@ struct mix_fast_s {
   uint16_t lpl;                         /* 14 */
 };                                      /* 16 bytes */
 
-typedef struct mix_fast_s mix_fast_t;
-
-ZZ_EXTERN_C
-void fast_stf(uint8_t * Tpcm, timer_rout_t * routs,
-              int16_t * temp, mix_fast_t   * voices,
-              int32_t n);
-
-
-typedef struct mix_chan_s mix_chan_t;
-
 struct mix_stf_s {
   mix_fast_t fast[4];
   timer_rout_t * wptr;
   uint16_t scl;
   uint8_t tcr, tdr;
 };
-typedef struct mix_stf_s mix_stf_t;
 
 struct timer_rout_s {
   struct  {
@@ -81,6 +73,8 @@ struct timer_rout_s {
   uint16_t rte;
 };
 
+#include "ym10_pack.h"
+
 static mix_stf_t      g_stf;
 static int16_t      * temp;             /* intermediat mix buffer */
 static timer_rout_t * rout;             /* first timer routine */
@@ -89,6 +83,12 @@ static timer_rout_t * tuor;             /* last  timer routine */
 static uint8_t stf_buf[32*4*MIX_MAX+16];
 static uint8_t Tpcm[1024*4];
 
+ZZ_EXTERN_C
+void fast_stf(uint8_t * Tpcm, timer_rout_t * routs,
+              int16_t * temp, mix_fast_t   * voices,
+              int32_t n);
+
+/* ---------------------------------------------------------------------- */
 
 static void /* never_inline */
 fill_timer_routines(timer_rout_t * rout, uint16_t n)

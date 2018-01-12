@@ -250,6 +250,12 @@ VASMTOS = $(VASMMOT) -Ftos -o
 test_stf.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=2
 test_stf.tos: test_tos.s test.bin
 
+test_ste.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=3
+test_ste.tos: test_tos.s test.bin
+
+test_def.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=0
+test_def.tos: test_tos.s test.bin
+
 %.tos:;	@echo "[TOS] $@"; $(VASMTOS) $@ $<
 
 .INTERMEDIATE: test.bin

@@ -24,10 +24,14 @@ static mixer_t mixer;
 /* Amiga DMACON register */
 #define DMACON (*(volatile uint16_t *)0xDFF096)
 
-static void __attribute__((interrupt)) exception_handler(void)
+
+static void __attribute__((interrupt)) bus_error(void)
 {
   /* address register must match the one in guess_hardware() */
-  asm volatile ("move.l %a4,2(%a7) \n\t");
+  asm volatile (
+    "addq.w #8,%a7     \n\t"
+    "move.l %a4,2(%a7) \n\t"
+    );
 }
 
 /* #pragma GCC diagnostic ignored "-Wmultichar" */
@@ -42,43 +46,45 @@ int isalpha(int c)
 
 
 /* The guess_hardware() function determines the kind of machine the
- * program is running. It currently supports Amiga and Atari ST
+ * program is running on. It currently supports Amiga and Atari ST
  * machine. The method is to firstly try to write at Amiga/Paula IO
- * address space after trapping the bus and address exceptions (not
- * sure which it triggers I have to check that). If it's not an Amiga
- * machine we assume it's an Atari ST. The default is to assume a good
- * old Atari ST without any sound DMA. Then we use the _SND cookie to
- * determine which hardware is supported.
+ * address space after trapping the bus error exceptions. If it's not
+ * an Amiga machine we assume it's an Atari ST. The default is to
+ * assume a good old Atari ST without any sound DMA. Then we use the
+ * _SND cookie to determine which hardware is supported.
  */
 
 static
 uint8_t guess_hardware(void)
 {
   uint8_t id = MIXER_LAST, aga;
-  volatile intptr_t bus_vector, adr_vector;
+  volatile intptr_t bus_vector/* , adr_vector */;
+
+  /* asm volatile("illegal\n\t"); */
 
   /* Save vectors */
   bus_vector = 2[(volatile uint32_t *)0];
-  adr_vector = 3[(volatile uint32_t *)0];
+  /* adr_vector = 3[(volatile uint32_t *)0]; */
 
   /* Install handlers */
-  2[(volatile uint32_t *)0] = (intptr_t) exception_handler;
-  3[(volatile uint32_t *)0] = (intptr_t) exception_handler;
+  2[(volatile uint32_t *)0] = (intptr_t) bus_error;
+  /* 3[(volatile uint32_t *)0] = (intptr_t) address_error; */
 
   /* GB: Totally hacked !!! */
   asm volatile (
-    "sf.b  %[flag]     \n\t"
-    "lea   1f,%%a4     \n\t"
-    "move  #0,0xDFF096 \n\t"
-    "st.b  %[flag]     \n"
-    "1:                \n\t"
-    : [flag] "=d" (aga)
+    "sf.b  %[flag]   \n\t"
+    "lea   1f,%%a4   \n\t"
+    "sf.b  0xDFF096  \n\t"
+    "st.b  %[flag]   \n"
+    "1:              \n\t"
+    : [flag] "=g" (aga)
     :
     : "a4","cc" );
 
   /* Restore vectors */
   2[(volatile uint32_t *)0] = bus_vector;
-  3[(volatile uint32_t *)0] = adr_vector;
+  /* 3[(volatile uint32_t *)0] = adr_vector; */
+
 
   if (aga)
     id = MIXER_AGA;

@@ -2,7 +2,7 @@
  * @file    m68k_stf.s
  * @author  Benjmain Gerard AKA Ben/OVR
  * @date    2017-09
- * @brief   Assembler routine for STf quartet mixer
+ * @brief   Assembler routine for STf and STe quartet mixer
  */
 
         .cpu    68000
@@ -11,6 +11,7 @@
 #define BLKLEN  12
 #define BLKSIZ1 22
 #define BLKSIZ2 42
+#define BLKSIZ3 26
 #define IRQSIZ  32
 	
 /// @see mix_stf.c:mix_fast_t
@@ -36,7 +37,7 @@ A_siz:				| 16 10
 	.endm
 	
 	.section .text
-        .global fast_stf
+        .global fast_stf,fast_ste
 	
 ///                a2      a3      a4       a5        d7
 /// void fast_stf(Tpcm.l, routs.l, temp.l, voices.l, cnt.l)
@@ -45,7 +46,7 @@ A_siz:				| 16 10
 fast_stf:
         move.l  20(a7),d0	| d0: count
         beq.s	0f
-
+	
 	|| 11 regs (d0/d1/a0/a1 not saved by m68k ABI)
 	movem.l	d2-d7/a2-a6,-(a7)
 
@@ -56,7 +57,7 @@ fast_stf:
 
 	|| Mix A/B
 	lea	fast_stf_AB(pc),a6
-	bsr.s	mix_2chans
+	bsr	mix_2chans
 
 	|| Arguments
 	move.l	56(a7),a4	| a4: temp
@@ -66,11 +67,52 @@ fast_stf:
 
 	|| Mix C/D
 	lea	fast_stf_CD(pc),a6
-	bsr.s	mix_2chans
+	bsr	mix_2chans
 	
 	movem.l	(a7)+,d2-d7/a2-a6 | 11 regs
 0:	rts
 
+///                a2      a3      a4       a5        d7
+/// void fast_ste(Tmix.l, dest.l, temp.l, voices.l, cnt.l)
+///                4(a7)   8(a7)  12(a7)  16(a7)    20(a7)	
+///      +11*4=44 48(a7)  52(a7)  56(a7)  60(a7)    64(a7)	
+fast_ste:
+        move.l  20(a7),d0	| d0: count
+        beq	0f
+
+	|| 11 regs (d0/d1/a0/a1 not saved by m68k ABI)
+	movem.l	d2-d7/a2-a6,-(a7)
+
+	|| Arguments		|     (48)      (52)      (56)     (60)
+	movem.l	48(a7),a2-a5	| a2: Tmix, a3: dest, a4: temp, a5:voices
+	move.l	d0,d7		| d7: count
+	add.w	d7,d7		| d7: count*2
+
+	|| Mix A/B
+	lea	fast_stf_AB(pc),a6
+	bsr	mix_2chans
+
+	|| Arguments
+	move.l	56(a7),a4	| a4: temp
+	move.w	66(a7),d7	| d7: count
+	add.w	d7,d7		| d7: count*2
+	lea	2*A_siz(a5),a5	| a5: voice#C
+
+	|| Mix C/D
+	lea	fast_ste_CD(pc),a6
+	bsr	mix_2chans
+	
+	movem.l	(a7)+,d2-d7/a2-a6 | 11 regs
+0:	rts
+
+;; copy_temp:
+;; 	lsr	#1,d7
+;; 	subq	#1,d7
+;; 0:	move.w	(a4)+,d6
+;; 	add.w	#256,d6
+;; 	move.b	(a2,d6.w),(a3)+
+;; 	dbf	d7,0b
+;; 	rts
 	
 mix_2chans:
 	move.l	a6,d6		| d6: mixer routine
@@ -282,8 +324,8 @@ part1_off:
 /// routines.
 /// ----------------------------------------
 ///
-/// a2    .l PCM table (unused)
-/// a3    .l IRQ routines (unused)
+/// a2    .l PCM table
+/// a3    .l IRQ routines
 /// a4    .l intermediate buffer
 /// a5    .l voices	
 /// a6    .l scratch
@@ -320,7 +362,7 @@ part2_beg:
         | ----------------------+---+---
         add.w   d7,d7           | 1 | 5 nops, 8 bytes
         add.w   d7,d7           | 1 |
-        lea     0(a2,d7.w),a6   | 3 | GB: could move.l d7,a6
+        lea     0(a2,d7.w),a6   | 3 |
         | ----------------------+---+---
         move.b	(a6)+,i+4(a3)   | 4 | 12 nops, 12 bytes
         move.b	(a6)+,i+12(a3)  | 4 |
@@ -364,6 +406,80 @@ part2_off:
 	.short	2		| jump to next rts
 0:	rts
 
+/// ----------------------------------------
+/// Add 2 voices (C&D) to the 2 voices (A&B)
+/// already in the intermediate buffer.
+/// Convert to signed 8bit PCM using the mix
+/// dynamic range mix table.
+/// ----------------------------------------
+///
+/// a2    .l Mix table (byte[1024])
+/// a3    .l s8 pcm buffer (output)
+/// a4    .l intermediate buffer
+/// a5    .l voices	
+/// a6    .l scratch
+/// ----- -- -------------------------------
+/// a0/a1 .w dec-stp
+/// d2/d3 .w dec-acu
+/// d0/d1 .l int-stp
+/// d4/d5 .l int-acu (adr)
+/// d6/d7 .w scratch
+/// ----- -- -------------------------------
+///
+	
+part3_all:
+	clr.w	d6		| clear MSB
+	swap	d7		| store count in msw
+part3_beg:
+	.rept   BLKLEN
+        |                         21  21 nops, 26 bytes
+        | ----------------------+---+---
+        move.w  (a4)+,d7        | 2 | 9 nops, 12 bytes 
+        move.l  d4,a6           | 1 |
+        move.b  (a6),d6         | 2 |
+        add.w   d6,d7           | 1 |
+        add.w   a0,d2           | 1 |
+        addx.l  d0,d4           | 2 |
+        | ----------------------+---+---
+        move.l  d5,a6           | 1 | 7 nops, 10 bytes
+        add.w   a1,d3           | 1 |
+        addx.l  d1,d5           | 2 |
+        move.b  (a6),d6         | 2 |
+        add.w   d6,d7           | 1 |
+        | ----------------------+---+---
+        move.b  (a2,d7.w),(a3)+ | 5 | 5 nops, 4 bytes
+	|
+        .endr
+part3_end:
+	.if	(part3_end-part3_beg)/BLKLEN != BLKSIZ3
+	.err
+	.endif
+
+	|| adr,end,acu,dec,int,lpl
+	check_loop d4,A_end(a5),d2,a0,d0,A_lpl(a5)
+	check_loop d5,B_end(a5),d3,a1,d1,B_lpl(a5)
+	
+	swap	d7		| d7: count in LSW
+fast_ste_CD:	
+        sub.w	#BLKLEN*2,d7
+	bpl	part3_all
+
+	bset	#0,d7		| d7#0: set to detect end
+	bne.s	0f
+	move.w	d7,d6
+	swap	d7		| d7: count in MSW
+	not.w	d6		| -2:0 -2:1 ...
+	lea	part3_off(pc,d6.w),a6
+	adda.w	(a6),a6
+	jmp	(a6)
+part3_off:	
+	.set	i,0
+	.rept	BLKLEN-1
+	.set	i,i+BLKSIZ3
+	.short	part3_beg+i-.
+	.endr
+	.short	2		| jump to next rts
+0:	rts
 	
 zeros:
 	.word	0x8080
