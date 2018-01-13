@@ -32,9 +32,8 @@ enum {
   ZZ_FAST_VOICE,
 };
 
-int zz_fast_init(play_t * const P, const u8_t k)
+int zz_fast_init(play_t * const P, chan_t * const C)
 {
-  chan_t * const C = P->chan+k;
   sequ_t * seq;
 
   zz_assert( sizeof(zz_fast_t) <= 12 );
@@ -99,9 +98,8 @@ sequ_t * off2seq(const chan_t * const C, const u16_t off)
   return (sequ_t *) ( (intptr_t)C->seq + off );
 }
 
-int zz_fast_chan(play_t * const P, const u8_t k)
+int zz_fast_chan(play_t * const P, chan_t * const C)
 {
-  chan_t * const C = P->chan+k;
   sequ_t * seq = C->cur;
 
   if ( 0x0F & P->muted_voices & C->msk )

@@ -83,7 +83,9 @@ enum {
   /* Constants */
   DMA_CNTL_ON   = 0x01,
   DMA_CNTL_LOOP = 0x02,
-  DMA_MODE_MONO = 0x80,
+
+  DMA_MODE_MONO   = 0x80,
+  DMA_MODE_16BIT  = 0x40,
 };
 
 static void * dma_position(void)
@@ -120,7 +122,8 @@ static void write_dma_ptr(volatile uint8_t * reg, const void * adr)
 
 static void stop_dma(void)
 {
-  DMA[DMA_CNTL] = 0;
+  DMA[DMA_CNTL] &= ~(DMA_CNTL_ON|DMA_CNTL_LOOP);
+  DMA[DMA_MODE] &= 0;
 }
 
 static void start_dma(void * adr, void * end, uint8_t mode)
@@ -129,7 +132,7 @@ static void start_dma(void * adr, void * end, uint8_t mode)
   write_dma_ptr(DMA+DMA_ADR, adr);
   write_dma_ptr(DMA+DMA_END, end);
   DMA[DMA_MODE] = mode;
-  DMA[DMA_CNTL] = 3;                    /* run in loop */
+  DMA[DMA_CNTL] |= DMA_CNTL_ON|DMA_CNTL_LOOP;
 }
 
 static void never_inline init_dma(play_t * P)

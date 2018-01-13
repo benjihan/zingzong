@@ -27,13 +27,15 @@ uint8_t mix_fal_bss[256];
 static i16_t push_fal(play_t * const P, void *pcm, i16_t n)
 {
   zz_assert( 0 );
-  return -1;
+  return n;
 }
 
 static zz_err_t init_fal(play_t * const P, u32_t spr)
 {
   zz_assert( 0 );
-  return E_666;
+  if (!spr) spr = 50066;
+  P->spr = spr;
+  return ZZ_OK;
 }
 
 static void free_fal(play_t * const P)

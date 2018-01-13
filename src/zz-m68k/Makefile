@@ -247,16 +247,15 @@ VASMTOS = $(VASMMOT) -Ftos -o
 %.sc68: %_sc68.s test.bin
 	@echo "[ASM] $@"; $(VASMBIN) $@ $<
 
-test_stf.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=2
-test_stf.tos: test_tos.s test.bin
-
-test_ste.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=3
-test_ste.tos: test_tos.s test.bin
+test_tos: test_def.tos test_stf.tos test_ste.tos test_fal.tos
+PHONY: test_tos
 
 test_def.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=0
-test_def.tos: test_tos.s test.bin
-
-%.tos:;	@echo "[TOS] $@"; $(VASMTOS) $@ $<
+test_stf.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=2
+test_ste.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=3
+test_fal.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=4
+test_%.tos: test_tos.s test.bin
+	@echo "[TOS] $@"; $(VASMTOS) $@ $<
 
 .INTERMEDIATE: test.bin
 

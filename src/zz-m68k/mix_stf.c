@@ -14,7 +14,7 @@
 #define SPR_MIN 4000
 
 #undef SPR_MAX
-#define SPR_MAX 20000
+#define SPR_MAX 15650
 
 #define MIX_MAX (SPR_MAX/200u+2)
 
@@ -151,24 +151,25 @@ init_timer_routines(void)
 static void never_inline
 init_replay_table(void)
 {
-  const uint8_t * pack = ym10_pack;
-  uint8_t * table = Tpcm;
-
-  do {
-    uint8_t XY;
-    XY = *pack++;
-    *table++ = XY >> 4;
-    *table++ = XY & 15;
-    XY = *pack++;
-    *table++ = XY >> 4;
-    ++ table;
-    *table++ = XY & 15;
-    XY = *pack++;
-    *table++ = XY >> 4;
-    *table++ = XY & 15;
-    ++ table;
-  } while (pack < ym10_pack+sizeof(ym10_pack));
-  zz_assert( table == &Tpcm[sizeof(Tpcm)] );
+  if (!Tpcm[4*1023]) {
+    const uint8_t * pack = ym10_pack;
+    uint8_t * table = Tpcm;
+    do {
+      uint8_t XY;
+      XY = *pack++;
+      *table++ = XY >> 4;
+      *table++ = XY & 15;
+      XY = *pack++;
+      *table++ = XY >> 4;
+      ++ table;
+      *table++ = XY & 15;
+      XY = *pack++;
+      *table++ = XY >> 4;
+      *table++ = XY & 15;
+      ++ table;
+    } while (pack < ym10_pack+sizeof(ym10_pack));
+    zz_assert( table == &Tpcm[sizeof(Tpcm)] );
+  }
 }
 
 static void clear_ym_regs(void)
@@ -182,23 +183,27 @@ static void clear_ym_regs(void)
 static void never_inline stop_sound(void)
 {
   int16_t savesr;
-  asm volatile ("move.w %%sr,%[savesr] \n\t" : [savesr] "=m" (savesr) );
+  asm volatile ("move.w %%sr,%[savesr] \n\t"
+                "move.w #0x2700,%%sr   \n\t" : [savesr] "=m" (savesr) );
   YMB[0] = 7;
   YMB[2] = YMB[0] | 0077;
-  asm volatile ("move.w %%sr,%[savesr] \n\t" : : [savesr] "m" (savesr) );
   clear_ym_regs();
+  asm volatile ("move.w %[savesr],%%sr \n\t" :: [savesr] "m" (savesr) );
 }
 
-
+/* GB: current Hatari does not handle lowpass trick. */
 static void never_inline prepare_sound(void)
 {
+  stop_sound();
+#if 0
   int16_t savesr;
-  asm volatile ("move.w %%sr,%[savesr] \n\t" : [savesr] "=m" (savesr) );
+  asm volatile ("move.w %%sr,%[savesr] \n\t"
+                "move.w #0x2700,%%sr   \n\t" : [savesr] "=m" (savesr) );
   YMB[0] = 7;
-  /* YMB[2] = YMB[0] | 0077; */
-  YMB[2] = (YMB[0] & 0370) | 0070;
-  asm volatile ("move.w %%sr,%[savesr] \n\t" : : [savesr] "m" (savesr) );
-  clear_ym_regs();                 /* A98-xx54-3210 */
+  YMB[2] = (YMB[0] & 03FF) | 0077;
+  clear_ym_regs();
+  asm volatile ("move.w %[savesr],%%sr \n\t" :: [savesr] "m" (savesr) );
+#endif
 }
 
 static void never_inline prepare_insts(play_t * P)
@@ -291,18 +296,17 @@ static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
     if (rptr > r1) {
       if (n1 = rptr-r1, n1 > n)
         n1 = n;
-      M->wptr = r2 = r1+n1;
+      r2 = r1+n1;
       n2 = 0;
     } else if (n1 = tuor-r1, n1 > n) {
-      n1 = n;
-      M->wptr = r2 = r1+n1;
+      zz_assert( n1-n <= 1 );
+      r2 = r1 + (n1 = n);
       n2 = 0;
     } else {
       n2 = n - n1;
       r2 = rout;
-      M->wptr = r2+n2;
     }
-    if (M->wptr >= tuor)
+    if ((M->wptr = r2+n2) >= tuor)
       M->wptr = rout + (M->wptr-tuor);
   }
 
