@@ -112,9 +112,9 @@ PACKAGE_CPPFLAGS  = \
 
 com = player
 zzz = zz_m68k zz_play zz_init zz_str zz_mem zz_log zz_fast
-mix = mix_aga mix_stf mix_ste mix_fal
+mix = mix_aga mix_stf mix_ste mix_fal m68k_mix
 
-sources := $(sort $(addsuffix .c,$(com) $(zzz) $(mix)))
+sources := $(sort $(addsuffix .c,$(com) $(zzz)))
 depends := $(sources:.c=.d)
 
 # ----------------------------------------------------------------------
@@ -163,7 +163,7 @@ drivers: $(drivers)
 .PHONY: drivers
 
 dri_aga.elf: mix_aga.o
-dri_stf.elf: mix_stf.o m68k_stf.o
+dri_stf.elf: mix_stf.o
 dri_ste.elf: mix_ste.o
 dri_fal.elf: mix_fal.o
 
@@ -189,11 +189,11 @@ MAPFLAGS = $(call maybe-wl,-Map=$*.map)
 zingzong.elf: START_SYMB = player_start
 zingzong.elf: START_ADDR = C0000000
 zingzong.elf: LDFLAGS    = -T $(srcdir)/zingzong.x $(ELFFLAGS)
-zingzong.elf: player_start.o $(addsuffix .o,$(com) $(zzz)) $(drivers)
+zingzong.elf: $(addsuffix .o,player_start m68k_mix $(com) $(zzz)) $(drivers)
 player_start.o: $(srcdir)/zingzong.x # GB: force rebuild when script change
 
 # ----------------------------------------------------------------------
-#  Test sc68 files
+#  sc68 test file
 # ----------------------------------------------------------------------
 
 CLEAN_TARGETS += clean-test
@@ -209,7 +209,7 @@ clean-test:
 .PHONY: test
 test: test.sc68
 
-test_o = sc68_start.o $(addsuffix .o,$(com) $(zzz))
+test_o = $(addsuffix .o,sc68_start $(com) $(zzz) m68k_mix)
 .PRECIOUS: test.elf
 test.elf: START_SYMB = sc68_start
 test.elf: START_ADDR = 00010000
@@ -247,6 +247,10 @@ VASMTOS = $(VASMMOT) -Ftos -o
 %.sc68: %_sc68.s test.bin
 	@echo "[ASM] $@"; $(VASMBIN) $@ $<
 
+# ----------------------------------------------------------------------
+#  TOS test files
+# ----------------------------------------------------------------------
+
 test_tos: test_def.tos test_stf.tos test_ste.tos test_fal.tos
 PHONY: test_tos
 
@@ -264,19 +268,19 @@ test_%.tos: test_tos.s test.bin
 # ----------------------------------------------------------------------
 
 %.o : %.c
-	@echo "[GCC] $* <$(call filter-m,$(CFLAGS))>";\
+	echo "[GCC] $* <$(call filter-m,$(CFLAGS))>";\
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c  "$<" -o "$@"
 
 %.o : %.S
-	@echo "[GAS] $* <$(call filter-m,$(CFLAGS))>";\
+	echo "[GAS] $* <$(call filter-m,$(CFLAGS))>";\
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(ASFLAGS) -c "$<" -o "$@"
 
 %.elf dri_%.elf:
-	@echo "[ELF] $* [$(START_SYMB)=$(START_ADDR)]";\
+	echo "[ELF] $* [$(START_SYMB)=$(START_ADDR)]";\
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 %.bin : %.elf
-	@echo "[BIN] $*";\
+	echo "[BIN] $*";\
 	$(ELF2BIN) $< $@
 
 # ----------------------------------------------------------------------

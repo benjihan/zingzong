@@ -1,18 +1,22 @@
 /**
- * @file    m68k_stf.s
+ * @file    m68k_mix.s
  * @author  Benjmain Gerard AKA Ben/OVR
  * @date    2017-09
- * @brief   Assembler routine for STf and STe quartet mixer
+ * @brief   m68K assembler routine for 4 voices mixing.			
+ *		
+ * 
+ *
  */
 
         .cpu    68000
         .arch   68000
 
-#define BLKLEN  12
-#define BLKSIZ1 22
-#define BLKSIZ2 42
-#define BLKSIZ3 26
-#define IRQSIZ  32
+#define BLKLEN  12	// Mix that many PCM per pass (no loop check)
+#define BLKSIZ1 22      // Size of the first mix routine (= A+B)
+#define BLKSIZ2 42	// Size of the STf 2nd mix routine (+= C+B)
+#define BLKSIZ3 26	// Size of the STe 2nd mix routine (+= C+B)
+#define IRQSIZ  32      // Size of the STf replay chained timer routine
+
 	
 /// @see mix_stf.c:mix_fast_t
 	.struct	0
@@ -37,7 +41,7 @@ A_siz:				| 16 10
 	.endm
 	
 	.section .text
-        .global fast_stf,fast_ste
+        .global fast_stf,fast_ste,fast_fal
 	
 ///                a2      a3      a4       a5        d7
 /// void fast_stf(Tpcm.l, routs.l, temp.l, voices.l, cnt.l)
@@ -451,6 +455,9 @@ part3_beg:
 	|
         .endr
 part3_end:
+	
+
+	
 	.if	(part3_end-part3_beg)/BLKLEN != BLKSIZ3
 	.err
 	.endif
