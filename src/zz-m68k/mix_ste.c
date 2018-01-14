@@ -10,9 +10,18 @@
 #undef FP
 #define FP 16
 
+#if 1
+# define init_spl(P)   init_spl8(P)
+# define fast_mix(R,N) fast_ste(mixtbl, R, temp, M->fast, N)
+#else
+# define init_spl(P)   init_spl6(P)
+# define fast_mix(R,N) fast_ste_6bit(R, M->fast, N)
+#endif
+
 static zz_err_t init_ste(play_t * const, u32_t);
 static void     free_ste(play_t * const);
 static i16_t    push_ste(play_t * const, void *, i16_t);
+
 mixer_t * mixer_ste(mixer_t * const M)
 {
   M->name = "stdma8";
@@ -53,6 +62,9 @@ ZZ_EXTERN_C
 void fast_ste(int8_t  * Tmix, int8_t     * dest,
               int16_t * temp, mix_fast_t * voices,
               int32_t n);
+
+ZZ_EXTERN_C
+void fast_ste_6bit(int8_t * dest, mix_fast_t * voices, int32_t n);
 
 /* ---------------------------------------------------------------------- */
 
@@ -174,13 +186,22 @@ static void never_inline init_mix(play_t * P)
 
 /* Unroll instrument loops (samples stay in u8 format).
  */
-static void never_inline init_spl(play_t * P)
+static void never_inline init_spl8(play_t * P)
 {
   u8_t k;
   for (k=0; k<256; ++k)
     P->tohw[k] = k;
   vset_unroll(&P->vset,P->tohw);
 }
+
+static void never_inline init_spl6(play_t * P)
+{
+  u8_t k;
+  for (k=0; k<256; ++k)
+    P->tohw[k] = k>>2;
+  vset_unroll(&P->vset,P->tohw);
+}
+
 
 #if 0
 static void
@@ -304,19 +325,22 @@ static i16_t push_ste(play_t * const P, void *pcm, i16_t n)
     if (rptr > r1) {
       if (n1 = rptr-r1, n1 > n)
         n1 = n;
-      M->wptr = r2 = r1+n1;
+      r2 = r1+n1;
       n2 = 0;
     } else if (n1 = re-r1, n1 > n) {
       n1 = n;
-      M->wptr = r2 = r1+n1;
+      r2 = r1+n1;
       n2 = 0;
     } else {
       n2 = n - n1;
+      if (n2 > rptr-r0)
+        n2 = rptr-r0;
       r2 = r0;
-      M->wptr = r2+n2;
     }
+
+    M->wptr = r2+n2;
     if (M->wptr >= re)
-      M->wptr = r0 + (M->wptr-re);
+      M->wptr -= re-r0;
   }
 
   zz_assert( n1 + n2 == n );
@@ -327,8 +351,8 @@ static i16_t push_ste(play_t * const P, void *pcm, i16_t n)
   zz_assert( r1 + n1 <= re );
   zz_assert( r2 + n2 <= re );
 
-  fast_ste(mixtbl, r1, temp, M->fast, n1);
-  fast_ste(mixtbl, r2, temp, M->fast, n2);
+  fast_mix(r1, n1);
+  fast_mix(r2, n2);
 
   return n;
 }
@@ -363,12 +387,14 @@ static zz_err_t init_ste(play_t * const P, u32_t spr)
   case ZZ_HQ: spr = 50066; M->dma_mode = 3|DMA_MODE_MONO; break;
   default:    spr = 25033; M->dma_mode = 2|DMA_MODE_MONO; break;
   }
+
   P->spr = spr;
   M->scl = ( divu(refspr<<13,spr) + 1 ) >> 1;
 
   init_dma(P);
   init_mix(P);
   init_spl(P);
+
   zz_memclr(mixbuf,sizeof(mixbuf));
 
   return ecode;

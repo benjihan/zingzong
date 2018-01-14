@@ -16,7 +16,10 @@
 #undef SPR_MAX
 #define SPR_MAX 15650
 
-#define MIX_MAX (SPR_MAX/200u+2)
+
+#define BUF_MAX 20000
+
+#define MIX_MAX (BUF_MAX/200u+2)
 
 #define YML ((volatile uint32_t *)0xFFFF8800)
 #define YMB ((volatile uint8_t *)0xFFFF8800)
@@ -104,9 +107,10 @@ fill_timer_routines(timer_rout_t * rout, uint16_t n)
     "   movem.l  %[tpl],%%d1-%%a0  \n"
     "   movea.l  %[buf],%%a1       \n"
     "   move.w   %%a1,%%d7         \n"
+    "   moveq    #0,%%d0           \n"
     "   move.w   %[cnt],%%d0       \n"
-    "   lsl.w    #5,%%d0           \n"
-    "   adda.w   %%d0,%%a1         \n"
+    "   lsl.l    #5,%%d0           \n"
+    "   adda.l   %%d0,%%a1         \n"
     "   move.w   %[cnt],%%d0       \n"
     "   subq.w   #1,%%d0           \n"
     "0: movem.l  %%d1-%%a0,-(%%a1) \n"
@@ -127,6 +131,8 @@ init_timer_routines(void)
   const intptr_t end = beg+sizeof(stf_buf);
   const intptr_t seg = end & 0xFFFF0000;
 
+  zz_assert( sizeof( timer_rout_t) == 32 );
+
   /* default setup */
   rout = (timer_rout_t *) beg;
   temp = (int16_t *) end - MIX_MAX;
@@ -142,7 +148,14 @@ init_timer_routines(void)
       }
     }
   }
+
   tuor = rout+MIX_MAX*2;
+
+
+  dmsg("rout: %p  tuor: %p  max: %lu\n", rout, tuor, LU(tuor-rout));
+  zz_assert ( (intptr_t)rout >> 16 == (intptr_t)tuor >> 16 );
+
+
   fill_timer_routines(rout, MIX_MAX*2);
 }
 
@@ -242,6 +255,73 @@ static inline u32_t xstep(u32_t stp, uint16_t f12)
   return mulu(stp>>4, f12) >> (24-FP);
 }
 
+
+#if 0
+
+#define fast_stf(PCM,R,TMP,FAST,N) slow_stf(PCM, R, TMP, FAST, N)
+
+static void slow_stf(const uint8_t * const Tpcm,
+                     timer_rout_t * r,
+                     int16_t * temp,
+                     mix_fast_t *fast,
+                     int16_t n)
+{
+  if (!n) return;
+
+  zz_assert(n > 0);
+  zz_memclr(temp,n<<1);
+
+  mix_fast_t * const tsaf = fast + 4;
+
+  for ( ; fast < tsaf; ++fast ) {
+    int16_t i;
+    uint32_t acu = fast->dec;
+
+    for (i=0; i<n; ++i) {
+      if (!fast->cur) break;
+
+      temp[i] += *fast->cur;
+
+      acu += fast->xtp;
+      fast->cur += acu >> FP;
+      acu &= (1l<<FP)-1;
+
+      if (fast->cur >= fast->end) {
+        if (!fast->lpl) {
+          fast->cur = 0;
+          acu = 0;
+        } else {
+          while ( (fast->cur -= fast->lpl) >= fast->end );
+        }
+      }
+    }
+    fast->dec = acu;
+    for (; i<n; ++i)
+      temp[i] += 0x80;
+  }
+
+  do  {
+    uint16_t t = *temp ++;
+    zz_assert( t < 1024 );
+    const uint8_t * const pcm = & Tpcm[ t << 2 ];
+
+    int j;
+    for (j=0; j<3; ++j) {
+      zz_assert( pcm[j] < 16 );
+      r -> movel[j].val = pcm[j];
+
+      zz_assert( r -> movel[j].opc == 0x21fc );
+      zz_assert( r -> movel[j].reg == 8+j );
+      zz_assert( r -> movel[j].adr == 0x8800 );
+    }
+    zz_assert( r -> opc = 0x31fc );
+    zz_assert( r -> adr = 0x0136 );
+    ++r;
+  } while (--n);
+}
+
+#endif
+
 static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
 {
   mix_stf_t * const M = (mix_stf_t *)P->mixer_data;
@@ -253,6 +333,9 @@ static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
   zz_assert( M );
   zz_assert( n > 0 );
   zz_assert( n < MIX_MAX );
+
+  int bias = +1;
+  n += bias;
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -281,9 +364,12 @@ static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
     }
   }
 
+  static timer_rout_t * rold;
+
   if (!M->wptr) {
     MFP[0x19] = 0;
     VEC = r1 = rout;
+    rold = rout;
     M->wptr = r2 = r1 + (n1=n);
     n2 = 0;
   }
@@ -299,21 +385,57 @@ static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
       r2 = r1+n1;
       n2 = 0;
     } else if (n1 = tuor-r1, n1 > n) {
-      zz_assert( n1-n <= 1 );
       r2 = r1 + (n1 = n);
       n2 = 0;
     } else {
       n2 = n - n1;
+      if (n2 > rptr-rout)
+        n2 = rptr-rout;
       r2 = rout;
     }
-    if ((M->wptr = r2+n2) >= tuor)
-      M->wptr = rout + (M->wptr-tuor);
+
+    if ( 0 ) {
+      int16_t rdiff = rptr - rold;
+      if (rdiff < 0)
+        rdiff += tuor-rout;
+
+      dmsg("XXX: #%04lu "
+           "r<%3lu>+<%3lu> w<%3lu> "
+           "1<%3lu:%3lu> "
+           "2<%3lu:%3lu> "
+           "n<%3lu/%3lu/%3lu>\n",
+           LU(P->tick),
+           LU(rptr-rout), LU(rdiff), LU(M->wptr-rout),
+           LU(r1-rout), LU(n1),
+           LU(r2-rout), LU(n2),
+           LU(n1+n2),LU(n), LU(tuor-rout));
+    }
+
+    {
+      timer_rout_t * r3 = r1 + n1 + n2;
+      if (r3 >= tuor)
+        r3 -= tuor-rout;
+
+      if ((M->wptr = r2+n2) >= tuor)
+        M->wptr -= tuor-rout;
+
+      zz_assert ( r3 == M->wptr );
+    }
+
+    rold = rptr;
+
   }
+
+  zz_assert( r1 >= rout );
+  zz_assert( r1+n1 <= tuor );
+
+  zz_assert( r2 >= rout );
+  zz_assert( r2+n2 <= tuor );
 
   fast_stf(Tpcm, r1, temp, M->fast, n1);
   fast_stf(Tpcm, r2, temp, M->fast, n2);
 
-  return n;
+  return n - bias;
 }
 
 
