@@ -8,7 +8,10 @@
 # ----------------------------------------------------------------------
 #
 
-depends  = $(sources:.c=.d)
+c_depends = $(patsubst %.c,%.d,$(filter %.c,$(sources)))
+s_depends = $(patsubst %.S,%.d,$(filter %.S,$(sources)))
+depends   = $(c_depends) $(s_depends)
+
 cc_conf := cc_conf.h
 
 # Avoid creating dependencies for targets matching these patterns
@@ -62,5 +65,8 @@ depend: $(depends)
 #  Static or implicite rules
 # ----------------------------------------------------------------------
 
-$(depends): %.d: %.c
+%.d: %.c
+	@echo "[DEP] $*"; $(CCDEP) $(dep_CFLAGS) $(DEP_FLAGS) -c $<
+
+%.d: %.S
 	@echo "[DEP] $*"; $(CCDEP) $(dep_CFLAGS) $(DEP_FLAGS) -c $<

@@ -9,7 +9,6 @@
 #
 
 RM ?= rm -f
-depends = $(sources:.c=.d)
 
 clean-cfg:
 	@$(RM) -- $(cc_conf)

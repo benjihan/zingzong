@@ -114,8 +114,7 @@ com = player
 zzz = zz_m68k zz_play zz_init zz_str zz_mem zz_log zz_fast
 mix = mix_aga mix_stf mix_ste mix_fal m68k_mix
 
-sources := $(sort $(addsuffix .c,$(com) $(zzz)))
-depends := $(sources:.c=.d)
+sources := $(sort $(addsuffix .c,$(com) $(zzz) $(mix)) m68k_mix.S)
 
 # ----------------------------------------------------------------------
 #  Targets
@@ -203,8 +202,7 @@ test.sc68 song.dep
 
 .PHONY: clean-test
 clean-test:
-	@rm -f -- $(CLEAN_TEST)
-	@echo "$@ done"
+	@rm -f -- $(CLEAN_TEST) && echo "$@ done"
 
 .PHONY: test
 test: test.sc68
@@ -230,13 +228,13 @@ $(info Generating [song.dep])
 endif
 
 vset.elf song.elf: %.elf: %.o %.dat
-	@echo "[OBJ] $*";\
+	echo "[OBJ] $*";\
 	$(OBJCOPY) --add-section .$*.dat=$*.dat $< $@
 
 song.dat: $(SONGFILE)
 vset.dat: $(VSETFILE)
 song.dat vset.dat: %.dat:
-	@test -n "$<" && echo "[DAT] $* [$(notdir $<)]" && cat "$<" >$@
+	test -n "$<" && echo "[DAT] $* [$(notdir $<)]" && cat "$<" >$@
 
 song.dat vset.dat: song.dep
 
@@ -245,7 +243,8 @@ VASMBIN = $(VASMMOT) -Fbin -o
 VASMTOS = $(VASMMOT) -Ftos -o
 
 %.sc68: %_sc68.s test.bin
-	@echo "[ASM] $@"; $(VASMBIN) $@ $<
+	echo "[ASM] $@";\
+	$(VASMBIN) $@ $<
 
 # ----------------------------------------------------------------------
 #  TOS test files
@@ -259,13 +258,16 @@ test_stf.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=2
 test_ste.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=3
 test_fal.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=4
 test_%.tos: test_tos.s test.bin
-	@echo "[TOS] $@"; $(VASMTOS) $@ $<
+	echo "[TOS] $@";\
+	$(VASMTOS) $@ $<
 
 .INTERMEDIATE: test.bin
 
 # ----------------------------------------------------------------------
 #  Implicite rules
 # ----------------------------------------------------------------------
+
+.SILENT:
 
 %.o : %.c
 	echo "[GCC] $* <$(call filter-m,$(CFLAGS))>";\
