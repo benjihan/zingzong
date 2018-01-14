@@ -11,10 +11,7 @@
         .cpu    68000
         .arch   68000
 
-#define BLKLEN  12	// Mix that many PCM per pass (no loop check)
-#define BLKSIZ1 22      // Size of the first mix routine (= A+B)
-#define BLKSIZ2 42	// Size of the STf 2nd mix routine (+= C+B)
-#define BLKSIZ3 26	// Size of the STe 2nd mix routine (+= C+B)
+#define BLKLEN  12	// Mix this many PCMs without loop check
 #define IRQSIZ  32      // Size of the STf replay chained timer routine
 
 	
@@ -27,11 +24,11 @@ A_dec:	.struct	.+2		| 12 0c
 A_lpl:	.struct	.+2		| 14 0d
 A_siz:				| 16 10
 
-	.equiv	B_end,A_siz+A_end
-	.equiv	B_cur,A_siz+A_cur
-	.equiv	B_stp,A_siz+A_stp
-	.equiv	B_dec,A_siz+A_dec
-	.equiv	B_lpl,A_siz+A_lpl
+	.equiv	B_end,	A_siz + A_end
+	.equiv	B_cur,	A_siz + A_cur
+	.equiv	B_stp,	A_siz + A_stp
+	.equiv	B_dec,	A_siz + A_dec
+	.equiv	B_lpl,	A_siz + A_lpl
 
 	.macro	break
 	clr.l   -(a7)
@@ -42,6 +39,7 @@ A_siz:				| 16 10
 	
 	.section .text
         .global fast_stf,fast_ste,fast_fal
+	.global	fast_ste_6bit
 	
 ///                a2      a3      a4       a5        d7
 /// void fast_stf(Tpcm.l, routs.l, temp.l, voices.l, cnt.l)
@@ -109,15 +107,6 @@ fast_ste:
 	movem.l	(a7)+,d2-d7/a2-a6 | 11 regs
 0:	rts
 
-;; copy_temp:
-;; 	lsr	#1,d7
-;; 	subq	#1,d7
-;; 0:	move.w	(a4)+,d6
-;; 	add.w	#256,d6
-;; 	move.b	(a2,d6.w),(a3)+
-;; 	dbf	d7,0b
-;; 	rts
-	
 mix_2chans:
 	move.l	a6,d6		| d6: mixer routine
 	lea	zeros+2(pc),a6	| a6: midpoint sample loop
@@ -236,9 +225,8 @@ part1_beg:
         |
         .endr
 part1_end:
-	.if	(part1_end-part1_beg)/BLKLEN != BLKSIZ1
-	.err
-	.endif
+	.equiv	PART1_SIZE,(part1_end-part1_beg)/BLKLEN
+	
 
 	|| ----------------------------------------
 	|| check loop macro
@@ -313,7 +301,7 @@ fast_stf_AB:
 part1_off:	
 	.set	i,0
 	.rept	BLKLEN-1
-	.set	i,i+BLKSIZ1
+	.set	i,i+PART1_SIZE
 	.short	part1_beg+i-.
 	.endr
 	.short	2		| jump to next rts
@@ -376,9 +364,8 @@ part2_beg:
         .endr
 part2_end:
 	lea	IRQSIZ*BLKLEN(a3),a3
-	.if	(part2_end-part2_beg)/BLKLEN != BLKSIZ2
-	.err
-	.endif
+
+	.equiv	PART2_SIZE,(part2_end-part2_beg)/BLKLEN
 
 	|| adr,end,acu,dec,int,lpl
 	check_loop d4,A_end(a5),d2,a0,d0,A_lpl(a5)
@@ -404,7 +391,7 @@ fast_stf_CD:
 part2_off:	
 	.set	i,0
 	.rept	BLKLEN-1
-	.set	i,i+BLKSIZ2
+	.set	i,i+PART2_SIZE
 	.short	part2_beg+i-.
 	.endr
 	.short	2		| jump to next rts
@@ -455,12 +442,8 @@ part3_beg:
 	|
         .endr
 part3_end:
-	
 
-	
-	.if	(part3_end-part3_beg)/BLKLEN != BLKSIZ3
-	.err
-	.endif
+	.equiv PART3_SIZE,(part3_end-part3_beg)/BLKLEN
 
 	|| adr,end,acu,dec,int,lpl
 	check_loop d4,A_end(a5),d2,a0,d0,A_lpl(a5)
@@ -482,7 +465,7 @@ fast_ste_CD:
 part3_off:	
 	.set	i,0
 	.rept	BLKLEN-1
-	.set	i,i+BLKSIZ3
+	.set	i,i+PART3_SIZE
 	.short	part3_beg+i-.
 	.endr
 	.short	2		| jump to next rts
@@ -490,3 +473,181 @@ part3_off:
 	
 zeros:
 	.word	0x8080
+
+
+#define BIS_FIX 3
+#define BIS_LEN (1<<BIS_FIX)
+
+||| Inp:
+||| 	d0: ste-fix
+||| 	a0: SMC base
+||| Out:
+|||	d0: stp-fix * BIS_LEN
+||| Use:
+||| 	d1,d2,d3
+smc_offsets:
+	move.l	d0,d1
+	swap	d0
+	move.w	d0,d2
+	move.w	d1,d3
+	
+	.set	X,0
+	.set	Y,18
+	
+	.rept	BIS_LEN-1	| C | B |
+	move.w	d0,X(a1)	| 3 | 4 |
+	add.w	d3,d1		| 1 | 2 |
+	addx.w	d2,d0		| 1 | 2 |
+	.set	X,X+Y		|---+---+
+	.endr			| 5 | 8 |
+	||
+	swap	d0
+	move.w	d1,d0
+	rts
+	
+///                 a5        a6     d7
+/// void fast_ste(dest.l, voices.l, cnt.l)
+///                4(a7)    8(a7)   12(a7)
+///      +11*4=44 48(a7)   52(a7)   56(a7)
+fast_ste_6bit:
+        move.l  12(a7),d0	| d0: count
+        beq	0f
+
+	|| 11 regs (d0/d1/a0/a1 not saved by m68k ABI)
+	movem.l	d2-d7/a2-a6,-(a7)
+
+	|| Arguments		|     (48)      (52)
+	movem.l	48(a7),a5-a6	| a5: dest, a6:voices
+	moveq	#BIS_LEN-1,d7
+	and.w	d0,d7
+	swap	d7
+	move	d0,d7
+	lsr	#BIS_FIX,d7
+
+	|| update voices offset (self modified code)
+	.macro	smc_voice num,stp
+	move.l	A_stp+\num*A_siz(a6),d0
+	lea	smc_mixer+12+\num*4(pc),a0
+	bsr	smc_offsets
+	move.l	d0,\stp
+	.endm
+	
+	smc_voice 0,d4
+	smc_voice 1,d5
+	smc_voice 2,a4
+	smc_voice 3,a5
+
+	|| Update offset v#B
+	move.l	A_stp+1*A_siz(a6),d0
+	lea	smc_mixer+16(pc),a0
+	bsr	smc_offsets
+	move.l	d0,d5	
+
+	|| Update offset v#C
+	move.l	A_stp+2*A_siz(a6),d0
+	movea.w	d0,a0
+	swap	d0
+	lea	smc_mixer+20(pc),a1
+	bsr	smc_offsets
+	move.l	d0,a4	
+	
+	|| Update offset v#D
+
+	|| Load voices
+	.macro	load_voice num
+	movea.l	A_cur+\num*A_siz(a6),a\num
+	moveq	#0,d\num
+	move.w	A_dec+\num*A_siz(a6),d\num
+	.endm
+
+	load_voice 0
+	load_voice 1
+	load_voice 2
+	load_voice 3
+	
+	moveq	#0,d6
+	subq	#1,d7
+	bmi	1f
+	
+loop_ste6:	
+
+	|| 6-bit source
+	.set	X,0
+smc_mixer:
+	.rept	BIS_LEN		| C | B |
+	|| 			|---+---|
+	move.b	X(a0),d6	| 3 | 4 | 2
+	add.b	X(a1),d6	| 3 | 4 | 2 
+	add.b	X(a2),d6	| 3 | 4 | 2
+	add.b	X(a3),d6	| 3 | 4 | 2
+	move.b	d6,(a5)+	| 3 | 2 | 2
+	.set	X,0x1234	|---+---|
+	|| 			|15 |18 |
+	.endr
+	|| 15*BIS_LEN-4 -> 116 nops
+	|| 18*BIS_LEN-8 -> 136 nops
+
+	.macro step_voice stp,acu,adr,end,lpl
+
+	add.l	\stp,\acu
+	swap	\acu
+	adda.w	\acu,\adr
+	clr.w	\acu
+	swap	\acu
+
+	cmpa.l	\end,\adr
+	bmi.s	9f
+	move.w	\lpl,d6
+	suba.l	d6,\adr
+9:
+	.endm
+
+	step_voice d4,d0,a0,A_end+0*A_siz(a6),A_lpl+0*A_siz(a6)
+	step_voice d5,d1,a1,A_end+1*A_siz(a6),A_lpl+1*A_siz(a6)
+	step_voice a4,d2,a2,A_end+2*A_siz(a6),A_lpl+2*A_siz(a6)
+	step_voice a5,d3,a3,A_end+3*A_siz(a6),A_lpl+3*A_siz(a6)
+	
+	dbf	d7,loop_ste6
+
+
+1:	
+	|| Save voices
+	.macro	save_voice num
+	move.l	a\num,A_cur+\num*A_siz(a6)
+	move.w	d\num,A_dec+\num*A_siz(a6)
+	.endm
+
+	save_voice 0
+	save_voice 1
+	save_voice 2
+	save_voice 3
+
+	movem.l	(a7)+,d2-d7/a2-a6 | 11 regs
+0:	rts
+	
+
+||| 
+||| 
+||| 
+	.if	0
+smc_mixer10:	
+	|| 10-bit dynamic range table
+	.set	X,0
+	.rept	BIS_LEN		| C | B |
+	|| 			|---+---|
+	move.l	d5,d7		| 1 | 2 |
+	move.b	X(a0),d7	| 3 | 4 |
+	move.b	X(a1),d6	| 3 | 4 |
+	add.w	d6,d7		| 1 | 2 |
+	move.b	X(a2),d6	| 3 | 4 |
+	add.w	d6,d7		| 1 | 2 |
+	move.b	X(a3),d6	| 3 | 4 |
+	add.w	d6,d7		| 1 | 2 |
+	move.l	d7,a4		| 1 | 2 |
+	move.b	(a4),(a5)+	| 3 | 4 |
+	.set	X,0x1234	|---+---|
+	|| 			|21 |24 |
+	.endr
+
+0:	rts
+	.endif
