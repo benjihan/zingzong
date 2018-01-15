@@ -11,11 +11,17 @@
 #define FP 16
 
 #if 1
+
 # define init_spl(P)   init_spl8(P)
 # define fast_mix(R,N) fast_ste(mixtbl, R, temp, M->fast, N)
+# define mix_align(N)  ((N)&~3)
+
 #else
+
 # define init_spl(P)   init_spl6(P)
 # define fast_mix(R,N) fast_ste_6bit(R, M->fast, N)
+# define mix_align(N)  ((N)&~7)
+
 #endif
 
 static zz_err_t init_ste(play_t * const, u32_t);
@@ -48,13 +54,14 @@ struct mix_fast_s {
 
 struct mix_ste_s {
   mix_fast_t fast[4];
-  int8_t * wptr;
+  int16_t  widx;
   uint16_t scl;
   uint8_t dma_mode;
 };
 
 static mix_ste_t g_ste;
 static int8_t  mixtbl[1024];            /* mix 4 voices together */
+
 static int16_t temp[1024];
 static int8_t  mixbuf[2048];            /* >2002 (50066/50*2) */
 
@@ -100,7 +107,7 @@ enum {
   DMA_MODE_16BIT  = 0x40,
 };
 
-static void * dma_position(void)
+static int8_t * dma_position(void)
 {
   void * pos;
   asm volatile(
@@ -271,14 +278,13 @@ static i16_t push_ste(play_t * const P, void *pcm, i16_t n)
 {
   mix_ste_t * const M = (mix_ste_t *)P->mixer_data;
   int k;
-  i16_t n1, n2;
-  int8_t *r1, *r2;
-  int8_t * const r0 = mixbuf, * const re = r0+sizeof(mixbuf);
+  i16_t i1, i2, n1, n2, ridx, ret = n;
+  const int16_t bmax = sizeof(mixbuf)/sizeof(*mixbuf);
+  const int16_t tmax = sizeof(temp)/sizeof(*temp);
+  const int16_t bias = 2;     /* last thing we want is to under run */
 
   zz_assert( P );
   zz_assert( M );
-  zz_assert( n > 0 );
-  zz_assert( n < 1024 );
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
@@ -306,55 +312,104 @@ static i16_t push_ste(play_t * const P, void *pcm, i16_t n)
     }
   }
 
-  if ( ! M->wptr ) {
+  n += bias;
+  n = mix_align(n) - mix_align(-1);
+  zz_assert( mix_align(n) == n );
+  zz_assert( n > 0 );
+
+
+  zz_assert( tmax*2 <= bmax );
+  zz_assert( mix_align(bmax) == bmax );
+  zz_assert( mix_align(tmax) == tmax );
+
+  if (n > tmax ) n = tmax;              /* n = min(want,imax) */
+
+  zz_assert( mix_align(n) == n );
+
+  if ( M->widx == -1 ) {
     zz_assert ( ! ( DMA[DMA_CNTL] & DMA_CNTL_ON ) );
     stop_dma();
-    r1 = r0;
-    M->wptr = r2 = r1 + (n1=n);
-    n2 = 0;
+    i1 = ridx = 0;
   } else {
-    int8_t * rptr;
     if ( ! ( DMA[DMA_CNTL] & DMA_CNTL_ON ) ) {
       start_dma(mixbuf, mixbuf+sizeof(mixbuf), M->dma_mode);
-      rptr = mixbuf;
+      ridx = 0;
     } else {
-      rptr = dma_position();
+      ridx = mix_align( dma_position() - mixbuf );
     }
+    i1 = M->widx;
 
-    r1 = M->wptr;
-    if (rptr > r1) {
-      if (n1 = rptr-r1, n1 > n)
-        n1 = n;
-      r2 = r1+n1;
-      n2 = 0;
-    } else if (n1 = re-r1, n1 > n) {
-      n1 = n;
-      r2 = r1+n1;
-      n2 = 0;
-    } else {
-      n2 = n - n1;
-      if (n2 > rptr-r0)
-        n2 = rptr-r0;
-      r2 = r0;
-    }
+    if ( mix_align(i1) != i1 )
+      dmsg("#%lu i1=%li ridx=%li widx=%li\n",
+           LU(P->tick), LI(i1), LI(ridx), LI(M->widx));
 
-    M->wptr = r2+n2;
-    if (M->wptr >= re)
-      M->wptr -= re-r0;
+    zz_assert( mix_align(i1) == i1 );
   }
 
-  zz_assert( n1 + n2 == n );
+  zz_assert( ridx >= 0 );
+  zz_assert( ridx < bmax );
+  zz_assert( mix_align(ridx) == ridx );
+
+  zz_assert( i1 >= 0 );
+  zz_assert( i1 < bmax );
+  zz_assert( mix_align(i1) == i1 );
+
+  n1 = ridx - i1;
+  if (n1 <= 0) n1 += bmax;            /* n1 = free */
+  if (n1 >  n) n1 = n;                /* n1 = min(want,free) */
+
+  n2 = 0;
+  i2 = i1 + n1;
+  if ( i2 >= bmax ) {
+    n2 = i2 - bmax;
+    i2 = 0;
+    n1 -= n2;
+  }
+
+  M->widx = i2 + n2;
+  zz_assert( M->widx >= 0 );
+  zz_assert( M->widx < bmax );
+  zz_assert( mix_align(M->widx) == M->widx );
+
+  if ( 1 ) {
+    static int16_t rold;
+    int16_t rdif = ridx - rold;
+    if (rdif < 0)
+      rdif += bmax;
+
+    dmsg("XXX: #%04lu "
+         "+%-3lu r:%-4lu w:%-4lu "
+         "1:%4lu+%-3lu "
+         "2:%4lu+%-3lu "
+         "n:%3lu/%3lu/%3lu/%4lu\n",
+         LU(P->tick),
+         LU(rdif), LU(ridx), LU(M->widx),
+         LU(i1), LU(n1),
+         LU(i2), LU(n2),
+         LU(n1+n2), LU(n), LU(ret), LU(bmax));
+    rold = ridx;
+  }
+
+  zz_assert( mix_align(i1) == i1 );
+  zz_assert( mix_align(n1) == n1 );
+  zz_assert( mix_align(i2) == i2 );
+  zz_assert( mix_align(n2) == n2 );
+
+  zz_assert( i1 >= 0 );
+  zz_assert( i2 >= 0 );
+  zz_assert( i1+n1 <= bmax );
+  zz_assert( i2+n2 <= bmax );
+
+  zz_assert( n <= bmax );
+  zz_assert( n1 + n2 <= n );
   zz_assert( n1 <= n );
   zz_assert( n2 <= n );
-  zz_assert( r1 >= r0 );
-  zz_assert( r2 >= r0 );
-  zz_assert( r1 + n1 <= re );
-  zz_assert( r2 + n2 <= re );
+  zz_assert( i2 == 0 || n2 == 0);
 
-  fast_mix(r1, n1);
-  fast_mix(r2, n2);
+  fast_mix(mixbuf+i1, n1);
+  fast_mix(mixbuf+i2, n2);
 
-  return n;
+  return ret;
 }
 
 static zz_err_t init_ste(play_t * const P, u32_t spr)
@@ -391,6 +446,7 @@ static zz_err_t init_ste(play_t * const P, u32_t spr)
   P->spr = spr;
   M->scl = ( divu(refspr<<13,spr) + 1 ) >> 1;
 
+  M->widx = -1;                         /* -1: not started */
   init_dma(P);
   init_mix(P);
   init_spl(P);

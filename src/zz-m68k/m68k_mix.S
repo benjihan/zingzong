@@ -109,7 +109,7 @@ fast_ste:
 
 mix_2chans:
 	move.l	a6,d6		| d6: mixer routine
-	lea	zeros+2(pc),a6	| a6: midpoint sample loop
+	lea	zero8+2(pc),a6	| a6: midpoint sample loop
 	exg	d6,a6		| d6: midpoint, a6: mixer
 
 	||----------------------
@@ -250,7 +250,7 @@ part1_end:
 	| ----------------------+------
 	clr.w	\int		| clear integer step
 	move.w	\int,\dec
-	lea	zeros+2(pc),a6	| 
+	lea	zero8+2(pc),a6	| 
 	move.l	a6,\end		| set end pointer
 	subq.w	#2,a6		|
 	move.l	a6,\cur		| set cur pointer
@@ -470,10 +470,6 @@ part3_off:
 	.endr
 	.short	2		| jump to next rts
 0:	rts
-	
-zeros:
-	.word	0x8080
-
 
 #define BIS_FIX 3
 #define BIS_LEN (1<<BIS_FIX)
@@ -495,7 +491,7 @@ smc_offsets:
 	.set	Y,18
 	
 	.rept	BIS_LEN-1	| C | B |
-	move.w	d0,X(a1)	| 3 | 4 |
+	move.w	d0,X(a0)	| 3 | 4 |
 	add.w	d3,d1		| 1 | 2 |
 	addx.w	d2,d0		| 1 | 2 |
 	.set	X,X+Y		|---+---+
@@ -524,42 +520,39 @@ fast_ste_6bit:
 	move	d0,d7
 	lsr	#BIS_FIX,d7
 
-	|| update voices offset (self modified code)
-	.macro	smc_voice num,stp
-	move.l	A_stp+\num*A_siz(a6),d0
-	lea	smc_mixer+12+\num*4(pc),a0
+	|| Update voices offset (self modified code)
+	.macro	smc_voice n,stp
+	|| ----------------------------------------
+	move.l	A_stp+\n*A_siz(a6),d0
+	tst.l	A_cur+\n*A_cur(a6)
+	bne.s	l\@
+	moveq	#0,d0
+l\@:	
+	lea	smc_mixer+12+\n*4(pc),a0
 	bsr	smc_offsets
 	move.l	d0,\stp
+	|| ----------------------------------------
 	.endm
-	
+
 	smc_voice 0,d4
 	smc_voice 1,d5
 	smc_voice 2,a4
-	smc_voice 3,a5
-
-	|| Update offset v#B
-	move.l	A_stp+1*A_siz(a6),d0
-	lea	smc_mixer+16(pc),a0
-	bsr	smc_offsets
-	move.l	d0,d5	
-
-	|| Update offset v#C
-	move.l	A_stp+2*A_siz(a6),d0
-	movea.w	d0,a0
-	swap	d0
-	lea	smc_mixer+20(pc),a1
-	bsr	smc_offsets
-	move.l	d0,a4	
-	
-	|| Update offset v#D
+	smc_voice 3,-(a7)
 
 	|| Load voices
-	.macro	load_voice num
-	movea.l	A_cur+\num*A_siz(a6),a\num
-	moveq	#0,d\num
-	move.w	A_dec+\num*A_siz(a6),d\num
+	.macro	load_voice n
+	|| 
+	move.l	A_cur+\n*A_siz(a6),d\n
+	bne.s	l\@
+	move.l	a3,d\n
+l\@:	
+	move.l	d\n,a\n
+	moveq	#0,d\n
+	move.w	A_dec+\n*A_siz(a6),d\n
+	|| 
 	.endm
 
+	lea	zero6(pc),a3
 	load_voice 0
 	load_voice 1
 	load_voice 2
@@ -587,36 +580,47 @@ smc_mixer:
 	|| 15*BIS_LEN-4 -> 116 nops
 	|| 18*BIS_LEN-8 -> 136 nops
 
-	.macro step_voice stp,acu,adr,end,lpl
+	.macro step_voice n,stp
+	|| ----------------------------------------
+	add.l	\stp,d\n
+	swap	d\n
+	adda.w	d\n,a\n
+	clr.w	d\n
+	swap	d\n
 
-	add.l	\stp,\acu
-	swap	\acu
-	adda.w	\acu,\adr
-	clr.w	\acu
-	swap	\acu
-
-	cmpa.l	\end,\adr
-	bmi.s	9f
-	move.w	\lpl,d6
-	suba.l	d6,\adr
-9:
+	cmpa.l	A_end+\n*A_siz(a6),a\n
+	bmi.s	l\@
+	move.w	A_lpl+\n*A_siz(a6),d6
+	suba.l	d6,a\n
+l\@:
+	|| ----------------------------------------
 	.endm
 
-	step_voice d4,d0,a0,A_end+0*A_siz(a6),A_lpl+0*A_siz(a6)
-	step_voice d5,d1,a1,A_end+1*A_siz(a6),A_lpl+1*A_siz(a6)
-	step_voice a4,d2,a2,A_end+2*A_siz(a6),A_lpl+2*A_siz(a6)
-	step_voice a5,d3,a3,A_end+3*A_siz(a6),A_lpl+3*A_siz(a6)
+	step_voice  0,  d4
+	step_voice  1,  d5
+	step_voice  2,  a4
+	step_voice  3, (a7)
 	
 	dbf	d7,loop_ste6
 
 
 1:	
+	addq	#4,sp
+
 	|| Save voices
-	.macro	save_voice num
-	move.l	a\num,A_cur+\num*A_siz(a6)
-	move.w	d\num,A_dec+\num*A_siz(a6)
+	.macro	save_voice n
+	|| ----------------------------------------
+	move.w	d\n,A_dec+\n*A_siz(a6)
+	cmp.l	a5,a\n
+	bne.s	l\@
+	move.l	d5,a\n
+l\@:
+	move.l	a\n,A_cur+\n*A_siz(a6)
+	|| ----------------------------------------
 	.endm
 
+	lea	zero6(pc),a5
+	moveq	#0,d5
 	save_voice 0
 	save_voice 1
 	save_voice 2
@@ -651,3 +655,6 @@ smc_mixer10:
 
 0:	rts
 	.endif
+
+zero8:	.word	0x8080
+zero6:	.word	0x2020
