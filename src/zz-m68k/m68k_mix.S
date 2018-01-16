@@ -2,9 +2,7 @@
  * @file    m68k_mix.s
  * @author  Benjmain Gerard AKA Ben/OVR
  * @date    2017-09
- * @brief   m68K assembler routine for 4 voices mixing.			
- *		
- * 
+ * @brief   m68K assembler routines for 4 voices mixing.			
  *
  */
 
@@ -22,8 +20,13 @@ A_cur:	.struct	.+4		| 04
 A_stp:	.struct	.+4		| 08
 A_dec:	.struct	.+2		| 12 0c
 A_lpl:	.struct	.+2		| 14 0d
-A_siz:				| 16 10
+A_usr:	.struct	.+16		| 16 10
+A_siz:	.struct	.		| 32 20	
 
+	.if A_siz != 32
+	.error
+	.endif
+	
 	.equiv	B_end,	A_siz + A_end
 	.equiv	B_cur,	A_siz + A_cur
 	.equiv	B_stp,	A_siz + A_stp

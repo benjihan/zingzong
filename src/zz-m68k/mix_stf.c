@@ -6,25 +6,23 @@
  */
 
 #include "../zz_private.h"
+#include "mix_ata.h"
 
-#undef FP
-#define FP 16
+#define mix_align(N) (N)
 
 #undef SPR_MIN
 #define SPR_MIN 4000
 
 #undef SPR_MAX
-#define SPR_MAX 15650
+#define SPR_MAX 15650                   /*  */
 
-
-#define BUF_MAX 20000
-
-#define MIX_MAX (BUF_MAX/200u+2)
+#define FRQMAX 20000                    /*  */
+#define MIXMAX (FRQMAX/200u+2)
 
 #define YML ((volatile uint32_t *)0xFFFF8800)
 #define YMB ((volatile uint8_t *)0xFFFF8800)
 #define MFP ((volatile uint8_t *)0xFFFFFA00)
-#define VEC (*(timer_rout_t * volatile *)0x134)
+#define VEC (*(trout_t * volatile *)0x134)
 #define BGC(X) (*(volatile uint16_t *)0xFFFF8240) = (X)
 
 static zz_err_t init_stf(play_t * const P, u32_t spr);
@@ -43,27 +41,13 @@ mixer_t * mixer_stf(mixer_t * const M)
 
 /* ---------------------------------------------------------------------- */
 
-typedef struct timer_rout_s timer_rout_t;
-typedef struct mix_fast_s mix_fast_t;
-typedef struct mix_chan_s mix_chan_t;
 typedef struct mix_stf_s mix_stf_t;
-
-/* !!! change in m68k_stf.S as well !!! */
-struct mix_fast_s {
-  uint8_t *end;                         /*  0 */
-  uint8_t *cur;                         /*  4 */
-  uint32_t xtp;                         /*  8 */
-  uint16_t dec;                         /* 12 */
-  uint16_t lpl;                         /* 14 */
-};                                      /* 16 bytes */
-
 struct mix_stf_s {
-  mix_fast_t fast[4];
-  timer_rout_t * wptr;
-  uint16_t scl;
-  uint8_t tcr, tdr;
+  ata_t   ata;                          /* generic atari mixer  */
+  uint8_t tcr, tdr;                     /* timer parameters */
 };
 
+typedef struct timer_rout_s trout_t;
 struct timer_rout_s {
   struct  {
     uint16_t opc;                       /* 0x21fc */
@@ -80,21 +64,21 @@ struct timer_rout_s {
 
 static mix_stf_t      g_stf;
 static int16_t      * temp;             /* intermediat mix buffer */
-static timer_rout_t * rout;             /* first timer routine */
-static timer_rout_t * tuor;             /* last  timer routine */
+static trout_t * rout;             /* first timer routine */
+static trout_t * tuor;             /* last  timer routine */
 
-static uint8_t stf_buf[32*4*MIX_MAX+16];
+static uint8_t stf_buf[32*4*MIXMAX+16];
 static uint8_t Tpcm[1024*4];
 
 ZZ_EXTERN_C
-void fast_stf(uint8_t * Tpcm, timer_rout_t * routs,
-              int16_t * temp, mix_fast_t   * voices,
+void fast_stf(uint8_t * Tpcm, trout_t * routs,
+              int16_t * temp, fast_t   * voices,
               int32_t n);
 
 /* ---------------------------------------------------------------------- */
 
 static void /* never_inline */
-fill_timer_routines(timer_rout_t * rout, uint16_t n)
+fill_timer_routines(trout_t * rout, uint16_t n)
 {
   static const uint16_t tpl[16] = {
     0x21fc,0x0800, /* d1 */    0x0000,0x8800, /* d2 */
@@ -131,32 +115,30 @@ init_timer_routines(void)
   const intptr_t end = beg+sizeof(stf_buf);
   const intptr_t seg = end & 0xFFFF0000;
 
-  zz_assert( sizeof( timer_rout_t) == 32 );
+  zz_assert( sizeof( trout_t) == 32 );
 
   /* default setup */
-  rout = (timer_rout_t *) beg;
-  temp = (int16_t *) end - MIX_MAX;
+  rout = (trout_t *) beg;
+  temp = (int16_t *) end - MIXMAX;
 
   if (seg > beg) {
     /* end is on a different segment */
     const uint16_t len0 = seg-beg;      /* => -beg */
     const uint16_t len1 = end-seg;      /* =>  end */
     if (len0 < len1) {
-      rout = (timer_rout_t *) seg;
-      if ( (len0>>1) >= MIX_MAX ) {
+      rout = (trout_t *) seg;
+      if ( (len0>>1) >= MIXMAX ) {
         temp = (int16_t *) stf_buf;
       }
     }
   }
 
-  tuor = rout+MIX_MAX*2;
-
+  tuor = rout+MIXMAX*2;
 
   dmsg("rout: %p  tuor: %p  max: %lu\n", rout, tuor, LU(tuor-rout));
   zz_assert ( (intptr_t)rout >> 16 == (intptr_t)tuor >> 16 );
 
-
-  fill_timer_routines(rout, MIX_MAX*2);
+  fill_timer_routines(rout, MIXMAX*2);
 }
 
 
@@ -219,7 +201,7 @@ static void never_inline prepare_sound(void)
 #endif
 }
 
-static void never_inline prepare_insts(play_t * P)
+static void never_inline init_spl(play_t * P)
 {
   u8_t k;
   for (k=0; k<256; ++k)
@@ -227,7 +209,7 @@ static void never_inline prepare_insts(play_t * P)
   vset_unroll(&P->vset,P->tohw);
 }
 
-static void stop_timer(play_t * const P)
+static void stop_timer(void)
 {
   MFP[0x19]  = 0;                       /* Stop timer-A */
   MFP[0x17] |= 8;                       /* SEI */
@@ -241,29 +223,47 @@ static uint16_t never_inline set_sampling(play_t * const P, uint16_t spr)
   return P->spr = (divu(2457600>>1, M->tdr) + 1) >> 1;
 }
 
-static void prepare_timer(void)
+static void start_timer(void)
 {
   MFP[0x19]  = 0;                       /* Stop timer-A */
   MFP[0x07] |= 0x20;                    /* IER */
   MFP[0x13] |= 0x20;                    /* IMR */
   MFP[0x17] &= ~8;                      /* AEI */
-  VEC = (timer_rout_t *)&tuor[-1].rte;
+  VEC = rout;
+  MFP[0x1F] = g_stf.tdr;
+  MFP[0x19] = g_stf.tcr;
 }
 
-static inline u32_t xstep(u32_t stp, uint16_t f12)
+static int16_t pb_play(void)
 {
-  return mulu(stp>>4, f12) >> (24-FP);
+  zz_assert( g_stf.ata.fifo.sz == MIXMAX*2 );
+
+  if ( ! (MFP[0x19]&7) ) {
+    start_timer();
+    prepare_sound();
+    dmsg("Timer-A cntl:%02x data:%02hx %p\n",
+         HU(MFP[0x19]), HU(MFP[0x1F]), VEC);
+    return 0;
+  } else {
+    trout_t * const pos = VEC;
+    zz_assert( pos >= rout );
+    zz_assert( pos <  tuor );
+    return mix_align( pos - rout );
+  }
 }
 
+static void pb_stop(void)
+{
+  stop_timer();
+  stop_sound();
+}
 
 #if 0
 
-#define fast_stf(PCM,R,TMP,FAST,N) slow_stf(PCM, R, TMP, FAST, N)
-
 static void slow_stf(const uint8_t * const Tpcm,
-                     timer_rout_t * r,
+                     trout_t * r,
                      int16_t * temp,
-                     mix_fast_t *fast,
+                     fast_t *fast,
                      int16_t n)
 {
   if (!n) return;
@@ -271,7 +271,7 @@ static void slow_stf(const uint8_t * const Tpcm,
   zz_assert(n > 0);
   zz_memclr(temp,n<<1);
 
-  mix_fast_t * const tsaf = fast + 4;
+  fast_t * const tsaf = fast + 4;
 
   for ( ; fast < tsaf; ++fast ) {
     int16_t i;
@@ -325,117 +325,33 @@ static void slow_stf(const uint8_t * const Tpcm,
 static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
 {
   mix_stf_t * const M = (mix_stf_t *)P->mixer_data;
-  int k;
-  i16_t n1, n2;
-  timer_rout_t *r1, *r2;
+  i16_t ret = n;
+
+  const int16_t tmax = MIXMAX;
+  const int16_t bias = 2;     /* last thing we want is to under run */
 
   zz_assert( P );
   zz_assert( M );
-  zz_assert( n > 0 );
-  zz_assert( n < MIX_MAX );
+  zz_assert( mix_align(tmax) == tmax );
 
-  int bias = +1;
   n += bias;
+  if (n > tmax)
+    n = tmax;
+  n = mix_align(n+bias) - mix_align(-1);
+  zz_assert( mix_align(n) == n );
+  zz_assert( n > 0 );
+  zz_assert( n < MIXMAX );
 
-  /* Setup channels */
-  for (k=0; k<4; ++k) {
-    mix_fast_t * const K = M->fast+k;
-    chan_t     * const C = P->chan+k;
-    const u8_t trig = C->trig;
+  play_ata(&M->ata, P->chan, n);
 
-    C->trig = TRIG_NOP;
-    switch (trig) {
-    case TRIG_NOTE:
+#define fast_mix(N) \
+  fast_stf(Tpcm, rout+M->ata.fifo.i##N, temp, M->ata.fast, M->ata.fifo.n##N)
 
-      zz_assert(C->note.ins);
-      K->cur = C->note.ins->pcm;
-      K->end = K->cur + C->note.ins->len;
-      K->dec = 0;
-      K->lpl = C->note.ins->lpl;
+  fast_mix(1);
+  fast_mix(2);
 
-    case TRIG_SLIDE:
-      K->xtp = xstep(C->note.cur, M->scl);
-      break;
-    case TRIG_STOP: K->cur = 0;
-    case TRIG_NOP:  break;
-    default:
-      zz_assert(!"wtf");
-      return -1;
-    }
-  }
+  return ret;
 
-  static timer_rout_t * rold;
-
-  if (!M->wptr) {
-    MFP[0x19] = 0;
-    VEC = r1 = rout;
-    rold = rout;
-    M->wptr = r2 = r1 + (n1=n);
-    n2 = 0;
-  }
-  else {
-    timer_rout_t * const rptr = VEC;
-    MFP[0x1f] = M->tdr;
-    MFP[0x19] = M->tcr;
-
-    r1 = M->wptr;
-    if (rptr > r1) {
-      if (n1 = rptr-r1, n1 > n)
-        n1 = n;
-      r2 = r1+n1;
-      n2 = 0;
-    } else if (n1 = tuor-r1, n1 > n) {
-      r2 = r1 + (n1 = n);
-      n2 = 0;
-    } else {
-      n2 = n - n1;
-      if (n2 > rptr-rout)
-        n2 = rptr-rout;
-      r2 = rout;
-    }
-
-    if ( 0 ) {
-      int16_t rdiff = rptr - rold;
-      if (rdiff < 0)
-        rdiff += tuor-rout;
-
-      dmsg("XXX: #%04lu "
-           "r<%3lu>+<%3lu> w<%3lu> "
-           "1<%3lu:%3lu> "
-           "2<%3lu:%3lu> "
-           "n<%3lu/%3lu/%3lu>\n",
-           LU(P->tick),
-           LU(rptr-rout), LU(rdiff), LU(M->wptr-rout),
-           LU(r1-rout), LU(n1),
-           LU(r2-rout), LU(n2),
-           LU(n1+n2),LU(n), LU(tuor-rout));
-    }
-
-    {
-      timer_rout_t * r3 = r1 + n1 + n2;
-      if (r3 >= tuor)
-        r3 -= tuor-rout;
-
-      if ((M->wptr = r2+n2) >= tuor)
-        M->wptr -= tuor-rout;
-
-      zz_assert ( r3 == M->wptr );
-    }
-
-    rold = rptr;
-
-  }
-
-  zz_assert( r1 >= rout );
-  zz_assert( r1+n1 <= tuor );
-
-  zz_assert( r2 >= rout );
-  zz_assert( r2+n2 <= tuor );
-
-  fast_stf(Tpcm, r1, temp, M->fast, n1);
-  fast_stf(Tpcm, r2, temp, M->fast, n2);
-
-  return n - bias;
 }
 
 
@@ -444,6 +360,7 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
   int ecode = E_OK;
   mix_stf_t * const M = &g_stf;
   uint32_t refspr;
+  uint16_t scale;
 
   init_timer_routines();
   init_replay_table();
@@ -462,11 +379,10 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
   if (spr > SPR_MAX) spr = SPR_MAX;
 
   P->spr = spr = set_sampling(P,spr);
-  M->scl = ( divu(refspr<<13,spr) + 1 ) >> 1;
+  scale  = ( divu( refspr<<13, spr) + 1 ) >> 1;
 
-  prepare_timer();
-  prepare_sound();
-  prepare_insts(P);
+  init_spl(P);
+  init_ata(MIXMAX*2,scale);
 
   return ecode;
 }
@@ -474,7 +390,15 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
 
 static void free_stf(play_t * const P)
 {
-  stop_timer(P);
+  if (P->mixer_data) {
+    mix_stf_t * const M = (mix_stf_t *)P->mixer_data;
+    if ( M ) {
+      zz_assert( M == &g_stf );
+      stop_ata(&M->ata);
+    }
+    P->mixer_data = 0;
+  }
+  stop_timer();
   stop_sound();
   P->mixer_data = 0;
 }

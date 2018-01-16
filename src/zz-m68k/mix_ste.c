@@ -6,21 +6,35 @@
  */
 
 #include "../zz_private.h"
+#include "mix_ata.h"
 
-#undef FP
-#define FP 16
+#define METHOD  0
+#define TICKMAX 256
+#define FIFOMAX (TICKMAX*2)
+#define TEMPMAX TICKMAX
 
-#if 1
+#define ALIGN(X)    ((X)&-(MIXALIGN))
+#define ULIGN(X)    ALIGN((X)+MIXALIGN-1)
+#define IS_ALIGN(X) ( (X) == ALIGN(X) )
+
+
+#if METHOD == 1
 
 # define init_spl(P)   init_spl8(P)
-# define fast_mix(R,N) fast_ste(mixtbl, R, temp, M->fast, N)
-# define mix_align(N)  ((N)&~3)
+# define fast_mix(R,N) slow_ste(mixtbl, R, _temp, M->ata.fast, N)
+# define MIXALIGN      1
+
+#elif METHOD == 2
+
+# define init_spl(P)   init_spl6(P)
+# define fast_mix(R,N) fast_ste_6bit(R, &M->ata.fast, N)
+# define MIXALIGN      8
 
 #else
 
-# define init_spl(P)   init_spl6(P)
-# define fast_mix(R,N) fast_ste_6bit(R, M->fast, N)
-# define mix_align(N)  ((N)&~7)
+# define init_spl(P)   init_spl8(P)
+# define fast_mix(R,N) fast_ste(mixtbl, R, _temp, M->ata.fast, N)
+# define MIXALIGN      1
 
 #endif
 
@@ -43,27 +57,17 @@ mixer_t * mixer_ste(mixer_t * const M)
 typedef struct mix_fast_s mix_fast_t;
 typedef struct mix_ste_s mix_ste_t;
 
-/* !!! change in m68k_ste.S as well !!! */
-struct mix_fast_s {
-  uint8_t *end;                         /*  0 */
-  uint8_t *cur;                         /*  4 */
-  uint32_t xtp;                         /*  8 */
-  uint16_t dec;                         /* 12 */
-  uint16_t lpl;                         /* 14 */
-};                                      /* 16 bytes */
-
 struct mix_ste_s {
-  mix_fast_t fast[4];
-  int16_t  widx;
-  uint16_t scl;
-  uint8_t dma_mode;
+  ata_t   ata;                          /* generic atari mixer  */
+  uint8_t dma;                          /* STe sound DMA mode   */
 };
 
-static mix_ste_t g_ste;
-static int8_t  mixtbl[1024];            /* mix 4 voices together */
+static mix_ste_t g_ste;                 /* STE mixer instance */
+static int8_t    mixtbl[1024];          /* mix 4 voices together */
 
-static int16_t temp[1024];
-static int8_t  mixbuf[2048];            /* >2002 (50066/50*2) */
+/* $$$ TEMP REDUCE BUFFER */
+static int16_t  _temp[TEMPMAX];         /* intermediat mix buffer */
+static int8_t   _fifo[FIFOMAX];         /* FIFO buffer */
 
 ZZ_EXTERN_C
 void fast_ste(int8_t  * Tmix, int8_t     * dest,
@@ -71,7 +75,8 @@ void fast_ste(int8_t  * Tmix, int8_t     * dest,
               int32_t n);
 
 ZZ_EXTERN_C
-void fast_ste_6bit(int8_t * dest, mix_fast_t * voices, int32_t n);
+void fast_ste_6bit(int8_t * dest, mix_fast_t * voices,
+                   int32_t n);
 
 /* ---------------------------------------------------------------------- */
 
@@ -124,7 +129,7 @@ static int8_t * dma_position(void)
     : [pos] "=d" (pos)
     :
     : "cc","d1","a0");
-    return pos;
+  return pos;
 }
 
 static void write_dma_ptr(volatile uint8_t * reg, const void * adr)
@@ -142,7 +147,6 @@ static void write_dma_ptr(volatile uint8_t * reg, const void * adr)
 static void stop_dma(void)
 {
   DMA[DMA_CNTL] &= ~(DMA_CNTL_ON|DMA_CNTL_LOOP);
-  DMA[DMA_MODE] &= 0;
 }
 
 static void start_dma(void * adr, void * end, uint8_t mode)
@@ -152,6 +156,29 @@ static void start_dma(void * adr, void * end, uint8_t mode)
   write_dma_ptr(DMA+DMA_END, end);
   DMA[DMA_MODE] = mode;
   DMA[DMA_CNTL] |= DMA_CNTL_ON|DMA_CNTL_LOOP;
+}
+
+static int16_t pb_play(void)
+{
+  zz_assert( g_ste.ata.fifo.sz == FIFOMAX );
+
+  if ( ! (DMA[DMA_CNTL] & DMA_CNTL_ON) ) {
+    start_dma(_fifo, &_fifo[g_ste.ata.fifo.sz], g_ste.dma);
+    dmsg("DMA cntl:%02hx mode:%02hx/%02hx %p\n",
+         HU(DMA[DMA_CNTL]), HU(DMA[DMA_MODE]), HU(g_ste.dma), dma_position());
+    return 0;
+
+  } else {
+    int8_t * const pos = dma_position();
+    zz_assert( pos >= _fifo );
+    zz_assert( pos <  _fifo+g_ste.ata.fifo.sz );
+    return ALIGN( pos - _fifo );
+  }
+}
+
+static void pb_stop(void)
+{
+  stop_dma();
 }
 
 static void never_inline init_dma(play_t * P)
@@ -191,6 +218,8 @@ static void never_inline init_mix(play_t * P)
   }
 }
 
+#if METHOD != 2
+
 /* Unroll instrument loops (samples stay in u8 format).
  */
 static void never_inline init_spl8(play_t * P)
@@ -201,6 +230,8 @@ static void never_inline init_spl8(play_t * P)
   vset_unroll(&P->vset,P->tohw);
 }
 
+#else
+
 static void never_inline init_spl6(play_t * P)
 {
   u8_t k;
@@ -209,22 +240,25 @@ static void never_inline init_spl6(play_t * P)
   vset_unroll(&P->vset,P->tohw);
 }
 
+#endif
 
-#if 0
+#if METHOD == 1
+
 static void
-fast_ste(const int8_t mixtbl[], int8_t * d, int16_t * temp,
+slow_ste(const int8_t mixtbl[], int8_t * d, int16_t * temp,
          mix_fast_t * fast, int16_t n)
 {
   mix_fast_t * const tsaf = fast+4;
   int16_t * const pmet = temp + n;
 
-  zz_assert( n > 0 );
+  zz_assert( n >= 0 );
+  zz_assert( n <= MIXMAX );
   if ( n <= 0 ) return;
 
   zz_memclr(temp,n<<1);
 
   for (; fast < tsaf; ++fast) {
-    int32_t acu;
+    int32_t acu = 0;
     if (fast->cur) {
       acu = fast->dec;
 
@@ -268,146 +302,24 @@ fast_ste(const int8_t mixtbl[], int8_t * d, int16_t * temp,
 }
 #endif
 
-static inline u32_t xstep(u32_t stp, uint16_t f12)
-{
-  return mulu(stp>>4, f12) >> (24-FP);
-}
-
-
 static i16_t push_ste(play_t * const P, void *pcm, i16_t n)
 {
   mix_ste_t * const M = (mix_ste_t *)P->mixer_data;
-  int k;
-  i16_t i1, i2, n1, n2, ridx, ret = n;
-  const int16_t bmax = sizeof(mixbuf)/sizeof(*mixbuf);
-  const int16_t tmax = sizeof(temp)/sizeof(*temp);
+  i16_t ret = n;
   const int16_t bias = 2;     /* last thing we want is to under run */
 
   zz_assert( P );
   zz_assert( M );
+  zz_assert( IS_ALIGN(FIFOMAX) );
+  zz_assert( IS_ALIGN(TEMPMAX) );
 
-  /* Setup channels */
-  for (k=0; k<4; ++k) {
-    mix_fast_t * const K = M->fast+k;
-    chan_t     * const C = P->chan+k;
-    const u8_t trig = C->trig;
+  n = ULIGN(n+bias);
+  if (n > TEMPMAX)
+    n = TEMPMAX;
+  play_ata(&M->ata, P->chan, n);
 
-    C->trig = TRIG_NOP;
-    switch (trig) {
-    case TRIG_NOTE:
-      zz_assert(C->note.ins);
-      K->cur = C->note.ins->pcm;
-      K->end = K->cur + C->note.ins->len;
-      K->dec = 0;
-      K->lpl = C->note.ins->lpl;
-
-    case TRIG_SLIDE:
-      K->xtp = xstep(C->note.cur, M->scl);
-      break;
-    case TRIG_STOP: K->cur = 0;
-    case TRIG_NOP:  break;
-    default:
-      zz_assert(!"wtf");
-      return -1;
-    }
-  }
-
-  n += bias;
-  n = mix_align(n) - mix_align(-1);
-  zz_assert( mix_align(n) == n );
-  zz_assert( n > 0 );
-
-
-  zz_assert( tmax*2 <= bmax );
-  zz_assert( mix_align(bmax) == bmax );
-  zz_assert( mix_align(tmax) == tmax );
-
-  if (n > tmax ) n = tmax;              /* n = min(want,imax) */
-
-  zz_assert( mix_align(n) == n );
-
-  if ( M->widx == -1 ) {
-    zz_assert ( ! ( DMA[DMA_CNTL] & DMA_CNTL_ON ) );
-    stop_dma();
-    i1 = ridx = 0;
-  } else {
-    if ( ! ( DMA[DMA_CNTL] & DMA_CNTL_ON ) ) {
-      start_dma(mixbuf, mixbuf+sizeof(mixbuf), M->dma_mode);
-      ridx = 0;
-    } else {
-      ridx = mix_align( dma_position() - mixbuf );
-    }
-    i1 = M->widx;
-
-    if ( mix_align(i1) != i1 )
-      dmsg("#%lu i1=%li ridx=%li widx=%li\n",
-           LU(P->tick), LI(i1), LI(ridx), LI(M->widx));
-
-    zz_assert( mix_align(i1) == i1 );
-  }
-
-  zz_assert( ridx >= 0 );
-  zz_assert( ridx < bmax );
-  zz_assert( mix_align(ridx) == ridx );
-
-  zz_assert( i1 >= 0 );
-  zz_assert( i1 < bmax );
-  zz_assert( mix_align(i1) == i1 );
-
-  n1 = ridx - i1;
-  if (n1 <= 0) n1 += bmax;            /* n1 = free */
-  if (n1 >  n) n1 = n;                /* n1 = min(want,free) */
-
-  n2 = 0;
-  i2 = i1 + n1;
-  if ( i2 >= bmax ) {
-    n2 = i2 - bmax;
-    i2 = 0;
-    n1 -= n2;
-  }
-
-  M->widx = i2 + n2;
-  zz_assert( M->widx >= 0 );
-  zz_assert( M->widx < bmax );
-  zz_assert( mix_align(M->widx) == M->widx );
-
-  if ( 1 ) {
-    static int16_t rold;
-    int16_t rdif = ridx - rold;
-    if (rdif < 0)
-      rdif += bmax;
-
-    dmsg("XXX: #%04lu "
-         "+%-3lu r:%-4lu w:%-4lu "
-         "1:%4lu+%-3lu "
-         "2:%4lu+%-3lu "
-         "n:%3lu/%3lu/%3lu/%4lu\n",
-         LU(P->tick),
-         LU(rdif), LU(ridx), LU(M->widx),
-         LU(i1), LU(n1),
-         LU(i2), LU(n2),
-         LU(n1+n2), LU(n), LU(ret), LU(bmax));
-    rold = ridx;
-  }
-
-  zz_assert( mix_align(i1) == i1 );
-  zz_assert( mix_align(n1) == n1 );
-  zz_assert( mix_align(i2) == i2 );
-  zz_assert( mix_align(n2) == n2 );
-
-  zz_assert( i1 >= 0 );
-  zz_assert( i2 >= 0 );
-  zz_assert( i1+n1 <= bmax );
-  zz_assert( i2+n2 <= bmax );
-
-  zz_assert( n <= bmax );
-  zz_assert( n1 + n2 <= n );
-  zz_assert( n1 <= n );
-  zz_assert( n2 <= n );
-  zz_assert( i2 == 0 || n2 == 0);
-
-  fast_mix(mixbuf+i1, n1);
-  fast_mix(mixbuf+i2, n2);
+  fast_mix(&_fifo[M->ata.fifo.i1], M->ata.fifo.n1);
+  fast_mix(&_fifo[M->ata.fifo.i2], M->ata.fifo.n2);
 
   return ret;
 }
@@ -417,6 +329,7 @@ static zz_err_t init_ste(play_t * const P, u32_t spr)
   int ecode = E_OK;
   mix_ste_t * const M = &g_ste;
   uint32_t refspr;
+  uint16_t scale;
 
   P->mixer_data = M;
   zz_memclr(M,sizeof(*M));
@@ -437,27 +350,34 @@ static zz_err_t init_ste(play_t * const P, u32_t spr)
   }
 
   switch (spr) {
-  case ZZ_LQ: spr =  6258; M->dma_mode = 0|DMA_MODE_MONO; break;
-  case ZZ_FQ: spr = 12517; M->dma_mode = 1|DMA_MODE_MONO; break;
-  case ZZ_HQ: spr = 50066; M->dma_mode = 3|DMA_MODE_MONO; break;
-  default:    spr = 25033; M->dma_mode = 2|DMA_MODE_MONO; break;
+  case ZZ_LQ: spr =  6258; M->dma = 0|DMA_MODE_MONO; break;
+  case ZZ_FQ: spr = 12517; M->dma = 1|DMA_MODE_MONO; break;
+  case ZZ_HQ: spr = 50066; M->dma = 3|DMA_MODE_MONO; break;
+  default:    spr = 25033; M->dma = 2|DMA_MODE_MONO; break;
   }
 
   P->spr = spr;
-  M->scl = ( divu(refspr<<13,spr) + 1 ) >> 1;
+  scale  = ( divu( refspr<<13, spr) + 1 ) >> 1;
 
-  M->widx = -1;                         /* -1: not started */
   init_dma(P);
   init_mix(P);
   init_spl(P);
+  init_ata(FIFOMAX,scale);
 
-  zz_memclr(mixbuf,sizeof(mixbuf));
+  dmsg("spr:%lu dma:%02hx scale:%lx\n",
+       LU(spr), HU(M->dma), LU(scale) );
 
   return ecode;
 }
 
 static void free_ste(play_t * const P)
 {
-  stop_dma();
-  P->mixer_data = 0;
+  if (P->mixer_data) {
+    mix_ste_t * const M = (mix_ste_t *)P->mixer_data;
+    if ( M ) {
+      zz_assert( M == &g_ste );
+      stop_ata(&M->ata);
+    }
+    P->mixer_data = 0;
+  }
 }
