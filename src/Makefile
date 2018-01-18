@@ -250,9 +250,9 @@ dist_rsc_lst = zingzong.rc resource.h zingzong.ico
 dist_amp_lst = README.md Makefile dialogs.c in_zingzong.c	\
 in_zingzong.h in_zingzong.nsi
 dist_68k_lst = README.md Makefile m68k_muldiv.h m68k_mix.S mix_aga.c	\
-mix_fal.c mix_ste.c mix_stf.c player.c player_start.S sc68_debug.h	\
-sc68_start.S song.S test_sc68.s vset.S ym10_pack.h zz_m68k.c		\
-zz_m68k.h zingzong.x
+mix_fal.c mix_ste.c mix_stf.c mix_ata.c mix_ata.h player.c		\
+player_start.S sc68_debug.h sc68_start.S song.S test_sc68.s vset.S	\
+ym10_pack.h zz_m68k.c zz_m68k.h zingzong.x
 
 dist_lst = $(sort \
  $(addprefix ./,$(dist_top_lst)) \

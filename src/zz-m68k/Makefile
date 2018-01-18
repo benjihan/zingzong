@@ -238,6 +238,10 @@ song.dat vset.dat: %.dat:
 
 song.dat vset.dat: song.dep
 
+song.dep:
+	@echo "[GEN] $@";\
+	echo "$(SONGFILE) $(VSETFILE)">$@
+
 VASMMOT = vasmm68k_mot -quiet $(VASMFLAGS)
 VASMBIN = $(VASMMOT) -Fbin -o
 VASMTOS = $(VASMMOT) -Ftos -o

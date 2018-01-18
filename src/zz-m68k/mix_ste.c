@@ -80,94 +80,16 @@ void fast_ste_6bit(int8_t * dest, mix_fast_t * voices,
 
 /* ---------------------------------------------------------------------- */
 
-#define DMA ((volatile uint8_t *)0xFFFF8900)
-
-enum {
-  /* STE Sound DMA registers map. */
-
-  DMA_CNTL  = 0x01,
-  /**/
-  DMA_ADR   = 0x03,
-  DMA_ADR_H = 0x03,
-  DMA_ADR_M = 0x05,
-  DMA_ADR_L = 0x07,
-  /**/
-  DMA_CNT   = 0x09,
-  DMA_CNT_H = 0x09,
-  DMA_CNT_M = 0x0B,
-  DMA_CNT_L = 0x0D,
-  /**/
-  DMA_END   = 0x0F,
-  DMA_END_H = 0x0F,
-  DMA_END_M = 0x11,
-  DMA_END_L = 0x13,
-  /**/
-  DMA_MODE  = 0x21,
-
-  /* Constants */
-  DMA_CNTL_ON   = 0x01,
-  DMA_CNTL_LOOP = 0x02,
-
-  DMA_MODE_MONO   = 0x80,
-  DMA_MODE_16BIT  = 0x40,
-};
-
-static int8_t * dma_position(void)
-{
-  void * pos;
-  asm volatile(
-    "   lea 0x8909.w,%%a0      \n\t"
-    "   moveq #-1,%[pos]       \n\t"
-    "0:"
-    "   move.l %[pos],%%d1     \n\t"
-    "   moveq #0,%[pos]        \n\t"
-    "   move.b (%%a0),%[pos]   \n\t"
-    "   swap %[pos]            \n\t"
-    "   movep.w 2(%%a0),%[pos] \n\t"
-    "   cmp.l %[pos],%%d1      \n\t"
-    "   bne.s 0b               \n\t"
-    : [pos] "=d" (pos)
-    :
-    : "cc","d1","a0");
-  return pos;
-}
-
-static void write_dma_ptr(volatile uint8_t * reg, const void * adr)
-{
-  asm volatile(
-    " swap %[adr]              \n\t"
-    " move.b %[adr],(%[hw])    \n\t"
-    " swap %[adr]              \n\t"
-    " movep.w %[adr],2(%[hw])  \n\t"
-    :
-    : [hw] "a" (reg), [adr] "d" (adr)
-    : "cc");
-}
-
-static void stop_dma(void)
-{
-  DMA[DMA_CNTL] &= ~(DMA_CNTL_ON|DMA_CNTL_LOOP);
-}
-
-static void start_dma(void * adr, void * end, uint8_t mode)
-{
-  stop_dma();
-  write_dma_ptr(DMA+DMA_ADR, adr);
-  write_dma_ptr(DMA+DMA_END, end);
-  DMA[DMA_MODE] = mode;
-  DMA[DMA_CNTL] |= DMA_CNTL_ON|DMA_CNTL_LOOP;
-}
 
 static int16_t pb_play(void)
 {
   zz_assert( g_ste.ata.fifo.sz == FIFOMAX );
 
   if ( ! (DMA[DMA_CNTL] & DMA_CNTL_ON) ) {
-    start_dma(_fifo, &_fifo[g_ste.ata.fifo.sz], g_ste.dma);
+    dma_start(_fifo, &_fifo[g_ste.ata.fifo.sz], g_ste.dma);
     dmsg("DMA cntl:%02hx mode:%02hx/%02hx %p\n",
          HU(DMA[DMA_CNTL]), HU(DMA[DMA_MODE]), HU(g_ste.dma), dma_position());
     return 0;
-
   } else {
     int8_t * const pos = dma_position();
     zz_assert( pos >= _fifo );
@@ -178,12 +100,12 @@ static int16_t pb_play(void)
 
 static void pb_stop(void)
 {
-  stop_dma();
+  dma_stop();
 }
 
 static void never_inline init_dma(play_t * P)
 {
-  stop_dma();
+  dma_stop();
 }
 
 /* Create the 4 voices mix table.

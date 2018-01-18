@@ -27,10 +27,16 @@ static mixer_t mixer;
 
 static void __attribute__((interrupt)) bus_error(void)
 {
-  /* address register must match the one in guess_hardware() */
+  /* see guess_hardware():
+   * - Restore SP
+   * - Push PC
+   * - Push SR
+   * interrupt will exit with RTE restoring SR and PC
+   */
   asm volatile (
-    "addq.w #8,%a7     \n\t"
-    "move.l %a4,2(%a7) \n\t"
+    "  move.l %d1,%a7  \n"
+    "  move.w %d0,%sr  \n"
+    "  jmp    (%a0)    \n\t"
     );
 }
 
@@ -60,31 +66,30 @@ uint8_t guess_hardware(void)
   uint8_t id = MIXER_LAST, aga;
   volatile intptr_t bus_vector/* , adr_vector */;
 
-  /* asm volatile("illegal\n\t"); */
-
-  /* Save vectors */
+  /* Save vectors & Install handlers*/
   bus_vector = 2[(volatile uint32_t *)0];
-  /* adr_vector = 3[(volatile uint32_t *)0]; */
-
-  /* Install handlers */
   2[(volatile uint32_t *)0] = (intptr_t) bus_error;
-  /* 3[(volatile uint32_t *)0] = (intptr_t) address_error; */
 
-  /* GB: Totally hacked !!! */
+  /* GB: Totally hacked !!!
+   * - CLear flag
+   * - Save SR,SP,PC in d0,d1,a0
+   * - Access Amiga Hardware -> BUS error or not
+   * - Set flag (only if no BUS error)
+   */
   asm volatile (
-    "sf.b  %[flag]   \n\t"
-    "lea   1f,%%a4   \n\t"
-    "sf.b  0xDFF096  \n\t"
-    "st.b  %[flag]   \n"
-    "1:              \n\t"
+    "  sf.b   %[flag]    \n"
+    "  move.w %%sr,%%d0  \n"
+    "  move.l %%a7,%%d1  \n"
+    "  lea    1f,%%a0    \n"
+    "  clr.w  0xDFF096   \n"
+    "  st.b   %[flag]    \n"
+    "1:                  \n\t"
     : [flag] "=g" (aga)
     :
-    : "a4","cc" );
+    : "d0","d1","a0","cc");
 
   /* Restore vectors */
   2[(volatile uint32_t *)0] = bus_vector;
-  /* 3[(volatile uint32_t *)0] = adr_vector; */
-
 
   if (aga)
     id = MIXER_AGA;
@@ -132,6 +137,12 @@ static mixer_t * mixer_of(zz_u8_t n)
   case MIXER_STF: M = mixer_stf(&mixer); break;
   case MIXER_STE: M = mixer_ste(&mixer); break;
   case MIXER_FAL: M = mixer_fal(&mixer); break;
+
+    /* $$$ XXX TEMP */
+/* #pragma message "Compiling " __FILE__ "*** FIX ME TEMP HACK ***" */
+/*   case MIXER_FAL: M = mixer_ste(&mixer); break; */
+    /* $$$ XXX TEMP */
+
   default: M = 0;
   }
   return M;

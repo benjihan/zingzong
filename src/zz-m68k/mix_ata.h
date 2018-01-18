@@ -57,5 +57,97 @@ void stop_ata(ata_t * ata);
 #undef FP
 #define FP 16
 
-#endif
+#define DMA     ((volatile uint8_t  * )0xFFFF8900)
+#define DMAB(X) ((volatile uint8_t  * )0xFFFF8900)[X]
+#define DMAW(X) *(volatile uint16_t *)(0xFFFF8900+(X))
 
+enum {
+  /* STE Sound DMA registers map. */
+
+  DMA_CTLW  = 0x00,
+  DMA_CNTL  = 0x01,
+  /**/
+  DMA_ADR   = 0x03,
+  DMA_ADR_H = 0x03,
+  DMA_ADR_M = 0x05,
+  DMA_ADR_L = 0x07,
+  /**/
+  DMA_CNT   = 0x09,
+  DMA_CNT_H = 0x09,
+  DMA_CNT_M = 0x0B,
+  DMA_CNT_L = 0x0D,
+  /**/
+  DMA_END   = 0x0F,
+  DMA_END_H = 0x0F,
+  DMA_END_M = 0x11,
+  DMA_END_L = 0x13,
+  /**/
+  DMA_MODW  = 0x20,
+  DMA_MODE  = 0x21,
+
+  /* Constants */
+  DMA_CNTL_ON   = 0x01,
+  DMA_CNTL_LOOP = 0x02,
+
+  DMA_MODE_MONO  = 0x80,
+  DMA_MODE_16BIT = 0x40,
+
+  DMA_TC_1TRK = 0x00,
+  DMA_TC_2TRK = 0x01,
+  DMA_TC_3TRK = 0x02,
+  DMA_TC_4TRK = 0x03,
+
+};
+
+static inline
+void * dma_position(void)
+{
+  void * pos;
+  asm volatile(
+    "   lea 0x8909.w,%%a0      \n\t"
+    "   moveq #-1,%[pos]       \n\t"
+    "0:"
+    "   move.l %[pos],%%d1     \n\t"
+    "   moveq #0,%[pos]        \n\t"
+    "   move.b (%%a0),%[pos]   \n\t"
+    "   swap %[pos]            \n\t"
+    "   movep.w 2(%%a0),%[pos] \n\t"
+    "   cmp.l %[pos],%%d1      \n\t"
+    "   bne.s 0b               \n\t"
+    : [pos] "=d" (pos)
+    :
+    : "cc","d1","a0");
+  return pos;
+}
+
+static inline
+void dma_write_ptr(volatile uint8_t * reg, const void * adr)
+{
+  asm volatile(
+    " swap %[adr]              \n\t"
+    " move.b %[adr],(%[hw])    \n\t"
+    " swap %[adr]              \n\t"
+    " movep.w %[adr],2(%[hw])  \n\t"
+    :
+    : [hw] "a" (reg), [adr] "d" (adr)
+    : "cc");
+}
+
+static inline
+void dma_stop(void)
+{
+  DMAW(DMA_CTLW) = 0;
+}
+
+static inline
+void dma_start(void * adr, void * end, uint16_t mode)
+{
+  dma_stop();
+  dma_write_ptr(DMA+DMA_ADR, adr);
+  dma_write_ptr(DMA+DMA_END, end);
+
+  DMAW(DMA_MODW) = mode;
+  DMAW(DMA_CTLW) = DMA_CNTL_ON|DMA_CNTL_LOOP;
+}
+
+#endif
