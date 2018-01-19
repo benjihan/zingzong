@@ -43,10 +43,12 @@ A_siz:  .struct .               | 32 20
         .section .text
         .global fast_stf,fast_ste,fast_fal
 
+/// --------------------------------------------------------
 ///                a2      a3      a4       a5        d7
 /// void fast_stf(Tpcm.l, routs.l, temp.l, voices.l, cnt.l)
 ///                4(a7)   8(a7)   12(a7)  16(a7)    20(a7)
 ///      +11*4=44 48(a7)  52(a7)   56(a7)  60(a7)    64(a7)
+
 fast_stf:
         move.l  20(a7),d0       | d0: count
         beq.s   0f
@@ -55,8 +57,8 @@ fast_stf:
         movem.l d2-d7/a2-a6,-(a7)
 
         || Arguments            |     (48)      (52)      (56)     (60)
-        movem.l 48(a7),a2-a5    | a2: Tpcm, a3: rout, a4: temp, a5:voices
-        move.l  d0,d7           | d7: count
+        movem.l 48(a7),a2-a5    | a2: Tpcm, a3: rout, a4: temp, a5: voices
+        move.l  d0,d7           |
         add.w   d7,d7           | d7: count*2
 
         || Mix A/B
@@ -65,7 +67,7 @@ fast_stf:
 
         || Arguments
         move.l  56(a7),a4       | a4: temp
-        move.w  66(a7),d7       | d7: count
+        move.w  66(a7),d7       |
         add.w   d7,d7           | d7: count*2
         lea     2*A_siz(a5),a5  | a5: voice#C
 
@@ -76,10 +78,13 @@ fast_stf:
         movem.l (a7)+,d2-d7/a2-a6 | 11 regs
 0:      rts
 
+
+/// --------------------------------------------------------
 ///                a2      a3      a4       a5        d7
 /// void fast_ste(Tmix.l, dest.l, temp.l, voices.l, cnt.l)
 ///                4(a7)   8(a7)  12(a7)  16(a7)    20(a7)
 ///      +11*4=44 48(a7)  52(a7)  56(a7)  60(a7)    64(a7)
+
 fast_ste:
         move.l  20(a7),d0       | d0: count
         beq     0f
@@ -89,7 +94,7 @@ fast_ste:
 
         || Arguments            |     (48)      (52)      (56)     (60)
         movem.l 48(a7),a2-a5    | a2: Tmix, a3: dest, a4: temp, a5:voices
-        move.l  d0,d7           | d7: count
+        move.l  d0,d7           |
         add.w   d7,d7           | d7: count*2
 
         || Mix A/B
@@ -98,7 +103,7 @@ fast_ste:
 
         || Arguments
         move.l  56(a7),a4       | a4: temp
-        move.w  66(a7),d7       | d7: count
+        move.w  66(a7),d7       |
         add.w   d7,d7           | d7: count*2
         lea     2*A_siz(a5),a5  | a5: voice#C
 
@@ -110,10 +115,12 @@ fast_ste:
 0:      rts
 
 
+/// --------------------------------------------------------
 ///                a4      a5       d7
 /// void fast_fal(dest.l, voices.l, cnt.l)
 ///                4(a7)   8(a7)    12(a7)
 ///      +10*4=40 44(a7)  48(a7)    52(a7)
+
 fast_fal:
         move.l  12(a7),d0       | d0: count
         beq     0f
@@ -121,9 +128,9 @@ fast_fal:
         || 11 regs (d0/d1/a0/a1 not saved by m68k ABI)
         movem.l d2-d7/a3-a6,-(a7)
 
-        || Arguments            |     (48)      (52)
+        || Arguments            |     (44)     (48)
         movem.l 44(a7),a4-a5    | a4: dest, a5:voices
-        move.l  d0,d7           | d7: count
+        move.l  d0,d7           |
         add.w   d7,d7           | d7: count*2
 
         || Mix A/B
@@ -131,9 +138,9 @@ fast_fal:
         bsr     mix_2chans
 
         || Arguments
-        lea     0x8000.w,a3	| a2: sign change
+        lea     0x8000.w,a3	| a3: sign change
         move.l  44(a7),a4       | a4: dest
-        move.w  54(a7),d7       | d7: count
+        move.w  54(a7),d7       |
         add.w   d7,d7           | d7: count*2
         lea     2*A_siz(a5),a5  | a5: voice#C
 
@@ -144,6 +151,13 @@ fast_fal:
         movem.l (a7)+,d2-d7/a3-a6 | 10 regs
 0:      rts
 
+/// --------------------------------------------------------
+/// a2.l: mixer specific (usually convert table)
+/// a3.l: mixer specific (usually destination)
+/// a4.l: mixer specific (usually temp)
+/// a5.l: voice-info (either A or C)
+/// a6.l: mixer routine
+/// d7.w: number of pcm * 2 (bit #0 used to detect end)
 
 mix_2chans:
         move.l  a6,d6           | d6: mixer routine
@@ -221,23 +235,21 @@ mix_2chans:
         rts
 
 
-/// ----------------------------------------
+/// --------------------------------------------------------
 /// Mix 2 voices (A&B) into the intermediate
 /// buffer.
-/// ----------------------------------------
-///
+/// --------------------------------------------------------
 /// a2    .l Unused
 /// a3    .l unused
 /// a4    .l intermediate buffer
 /// a5    .l voices
 /// a6    .l scratch
-/// ----- -- -------------------------------
+/// ----- -- -----------------------------------------------
 /// a0/a1 .w dec-stp
 /// d2/d3 .w dec-acu
 /// d0/d1 .l int-stp
 /// d4/d5 .l int-acu (adr)
 /// d6/d7 .w scratch
-/// ----- -- -------------------------------
 ///
 
 mixAB_all:
@@ -346,26 +358,26 @@ mixAB_off:
 0:      rts
 
 
-/// ----------------------------------------
+/// --------------------------------------------------------
+/// STf/YM PART 2
+/// --------------------------------------------------------
 /// Add 2 voices (C&D) to the 2 voices (A&B)
 /// already in the intermediate buffer.
 /// Convert to 3 voices volume level and
 /// store in the chained timer interrupt
 /// routines.
-/// ----------------------------------------
-///
-/// a2    .l PCM table
-/// a3    .l IRQ routines
+/// --------------------------------------------------------
+/// a2    .l PCM table (10bit)
+/// a3    .l IRQ routines (output)
 /// a4    .l intermediate buffer
 /// a5    .l voices
 /// a6    .l scratch
-/// ----- -- -------------------------------
+/// ----- -- -----------------------------------------------
 /// a0/a1 .w dec-stp
 /// d2/d3 .w dec-acu
 /// d0/d1 .l int-stp
 /// d4/d5 .l int-acu (adr)
 /// d6/d7 .w scratch
-/// ----- -- -------------------------------
 ///
 
 stfCD_all:
@@ -434,26 +446,26 @@ stfCD_off:
         .short  2               | jump to next rts
 0:      rts
 
-/// ----------------------------------------
+
+/// --------------------------------------------------------
+/// STe/DMA8 PART 2
+/// --------------------------------------------------------
 /// Add 2 voices (C&D) to the 2 voices (A&B)
 /// already in the intermediate buffer.
 /// Convert to signed 8bit PCM using the mix
 /// dynamic range mix table.
-/// ----------------------------------------
-///
+/// --------------------------------------------------------
 /// a2    .l Mix table (byte[1024])
 /// a3    .l s8 pcm buffer (output)
 /// a4    .l intermediate buffer
 /// a5    .l voices
 /// a6    .l scratch
-/// ----- -- -------------------------------
+/// ----- -- -----------------------------------------------
 /// a0/a1 .w dec-stp
 /// d2/d3 .w dec-acu
 /// d0/d1 .l int-stp
 /// d4/d5 .l int-acu (adr)
 /// d6/d7 .w scratch
-/// ----- -- -------------------------------
-///
 
 steCD_all:
         clr.w   d6              | clear MSB
@@ -509,27 +521,28 @@ steCD_off:
 0:      rts
 
 
-/// ----------------------------------------
+/// --------------------------------------------------------
+/// 
+/// --------------------------------------------------------
 /// Add 2 voices (C&D) to the 2 voices (A&B)
 /// already in the intermediate buffer.
 /// Convert to signed 16bit PCM using the
 /// mix dynamic range mix table.
-/// ----------------------------------------
-///
+/// --------------------------------------------------------
 /// a2    .l unused
 /// a3    .w $8000
 /// a4    .l s16 pcm buffer (inp/out)
 /// a5    .l voices
 /// a6    .l scratch
-/// ----- -- -------------------------------
+/// ----- -- -----------------------------------------------
 /// a0/a1 .w dec-stp
 /// d2/d3 .w dec-acu
 /// d0/d1 .l int-stp
 /// d4/d5 .l int-acu (adr)
 /// d6/d7 .w scratch
-/// ----- -- -------------------------------
 ///
-
+/// GB: timings are wrong for the Falcon 68030
+	
 falCD_all:
         clr.w   d6              | clear MSB
         swap    d7              | store count in msw

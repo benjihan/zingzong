@@ -10,38 +10,35 @@
 
 #define METHOD  0
 #define TICKMAX 256
-#define FIFOMAX (TICKMAX*2)
+#define FIFOMAX (TICKMAX*3)
 #define TEMPMAX TICKMAX
 
 #define ALIGN(X)    ((X)&-(MIXALIGN))
 #define ULIGN(X)    ALIGN((X)+MIXALIGN-1)
 #define IS_ALIGN(X) ( (X) == ALIGN(X) )
 
-#define MIXALIGN 1
-
 #if METHOD == 1
 
-# define init_spl(P)   init_spl8(P,0x00)
+# define init_spl(P)   init_spl8(P,0x80)
 # define fast_mix(R,N) slow_fal(R,M->ata.fast,N)
+# define MIXALIGN 8
+# define FAL_DMA_MODE  (DMA_MODE_MONO|DMA_MODE_16BIT)
 typedef int16_t spl_t;
-
-#define FAL_DMA_MODE (DMA_MODE_MONO|DMA_MODE_16BIT)
-
 
 #elif METHOD == 2
 
 # define init_spl(P)   init_spl8(P,0x80)
 # define fast_mix(R,N) ilace_fal(R,M->ata.fast,N)
-typedef int8_t spl_t[4];
-
-#define FAL_DMA_MODE 0x0380
+# define MIXALIGN 8
+# define FAL_DMA_MODE 0x0380
+typedef int32_t spl_t;
 
 #else
 
 # define init_spl(P)   init_spl8(P,0x00)
 # define fast_mix(R,N) fast_fal(R,M->ata.fast,N)
-#define FAL_DMA_MODE (DMA_MODE_MONO|DMA_MODE_16BIT)
-
+# define MIXALIGN 1
+# define FAL_DMA_MODE  (DMA_MODE_MONO|DMA_MODE_16BIT)
 typedef int16_t spl_t;
 
 #endif
@@ -78,7 +75,6 @@ void fast_fal(int16_t * dest, mix_fast_t * voices, int32_t n);
 
 /* ---------------------------------------------------------------------- */
 
-
 static int16_t pb_play(void)
 {
   zz_assert( g_fal.ata.fifo.sz == FIFOMAX );
@@ -86,7 +82,8 @@ static int16_t pb_play(void)
   if ( ! (DMA[DMA_CNTL] & DMA_CNTL_ON) ) {
     dma_start(_fifo, &_fifo[g_fal.ata.fifo.sz], g_fal.dma);
     dmsg("DMA cntl:%04hx mode:%04hx/%04hx %p\n",
-         HU(DMAW(DMA_CTL0)), HU(DMAW(DMA_MOD0)), HU(g_fal.dma), dma_position());
+         HU(DMAW(DMAW_CNTL)), HU(DMAW(DMAW_MODE)),
+         HU(g_fal.dma), dma_position());
     return 0;
   } else {
     spl_t * const pos = dma_position();
@@ -110,105 +107,154 @@ static void never_inline init_dma(play_t * P)
  */
 static void never_inline init_spl8(play_t * P, const u8_t sign)
 {
-  u8_t k;
+  int16_t k;
   for (k=0; k<256; ++k)
-    P->tohw[k] = k ^ sign;
+    P->tohw[k] = k^sign;
   vset_unroll(&P->vset,P->tohw);
 }
 
 #if METHOD == 1
 
-static void
-slow_fal(int16_t * d, mix_fast_t * fast, int16_t n)
+static uint32_t add_blk( int16_t * restrict dst,
+                         const uint8_t * restrict pcm,
+                         const uint32_t stp,
+                         uint32_t acu)
 {
-  mix_fast_t * const tsaf = fast+4;
-  int16_t * const e = d + n, * const s = d;
+  asm (
+    "  move   %[iacu],%%d5            \n"
+    "  move   %[istp],%%a4            \n"
+    "  swap   %[iacu]                 \n"
+    "  swap   %[istp]                 \n"
+    "  moveq  #7,%%d6                 \n"
+    "0:\n"
+    "  add.w  %%a4,%%d5               \n"
+    "  addx.w %[istp],%[iacu]         \n"
+    "  move.b (%[pcm],%[iacu].w),%%d7 \n"
+    "  ext.w  %%d7                    \n"
+    "  lsl.w  #6,%%d7                 \n"
+    "  add.w  %%d7,(%[dst])+          \n"
+    "  dbf    %%d6,0b                 \n"
+    "  swap   %[iacu]                 \n"
+    "  move.w %%d5,%[iacu]            \n\t"
 
-  zz_assert( n >= 0 );
-  zz_assert( n <= MIXMAX );
-  if ( n <= 0 ) return;
+    : [iacu] "+d" (acu)
+    : [istp] "d"  (stp),
+      [pcm]  "a"  (pcm),
+      [dst]  "a"  (dst)
+    : "cc","d7","d6","d5","a4"
+    );
+  return acu;
+}
 
-  zz_memclr(d,n<<1);
 
-  for (; fast < tsaf; ++fast) {
-    int32_t acu = 0;
+static void
+slow_fal(int16_t * const _d, mix_fast_t * F, int16_t n)
+{
+  mix_fast_t * const E = F+4;
 
-    d = s;
-    if (fast->cur) {
+  zz_assert( IS_ALIGN(n) );
+  zz_assert( MIXALIGN == 8 );
 
-      acu = fast->dec;
+  zz_memclr(_d,n<<1);
+  for (; F<E; ++F) {
+    int16_t * d = _d;
+    uint32_t acu = F->dec;
 
-      do {
-        zz_assert(fast->cur < fast->end);
+    for ( d = _d; F->cur && d < _d+n ; d += MIXALIGN ) {
+      acu = add_blk(d, F->cur, F->xtp, acu);
+      F->cur += acu >> 16;
+      acu = (uint16_t) acu;
 
-        *d++ += (*fast->cur-128) << 6;
-
-        acu += fast->xtp;
-        fast->cur += acu >> FP;
-        acu &= (1l<<FP) - 1;
-
-        if (fast->cur >= fast->end) {
-          if (!fast->lpl) {
-            acu = 0;
-            fast->cur = 0;
-            break;
-          } else {
-            int ovf = fast->cur - fast->end;
-            if (ovf > fast->lpl)
-              ovf = m68k_modu(ovf,fast->lpl);
-            fast->cur = fast->end - fast->lpl + ovf;
-          }
-
+      if (F->cur >= F->end) {
+        if (!F->lpl) {
+          acu = 0;
+          F->cur = 0;
         }
-      } while (d < e);
+        else {
+          uint16_t ovf = F->cur - F->end;
+          while (ovf >= F->lpl)
+            ovf -= F->lpl;
+          F->cur = F->end - F->lpl + ovf;
+        }
+      }
     }
-    fast->dec = acu;
-    while (d < e)
-      *d++ += 0x80<<6;
+    F->dec = acu;
   }
 
 }
 
 #elif METHOD == 2
 
-static void
-ilace_fal(spl_t * d, mix_fast_t * fast, int16_t n)
+static uint32_t ilace_blk( uint8_t * restrict dst,
+                           const uint8_t * restrict pcm,
+                           const uint32_t stp,
+                           uint32_t acu)
 {
-  spl_t * const e = d+n, * const s = d;
+  asm (
+    "  add.w  %[stp],%[acu]                \n"
+    "  swap   %[acu]                       \n"
+    "  swap   %[stp]                       \n"
+    "  addx.l %[stp],%[acu]                \n"
+    "  move.b (%[pcm],%[acu].w),(%[dst])   \n"
+    "  addx.l %[stp],%[acu]                \n"
+    "  move.b (%[pcm],%[acu].w),4(%[dst])  \n"
+    "  addx.l %[stp],%[acu]                \n"
+    "  move.b (%[pcm],%[acu].w),8(%[dst])  \n"
+    "  addx.l %[stp],%[acu]                \n"
+    "  move.b (%[pcm],%[acu].w),12(%[dst]) \n"
+    "  addx.l %[stp],%[acu]                \n"
+    "  move.b (%[pcm],%[acu].w),16(%[dst]) \n"
+    "  addx.l %[stp],%[acu]                \n"
+    "  move.b (%[pcm],%[acu].w),20(%[dst]) \n"
+    "  addx.l %[stp],%[acu]                \n"
+    "  move.b (%[pcm],%[acu].w),24(%[dst]) \n"
+    "  addx.w %[stp],%[acu]                \n"
+    "  move.b (%[pcm],%[acu].w),28(%[dst]) \n\t"
+
+    : [acu] "+d" (acu)
+    : [stp]  "d" (stp),
+      [pcm]  "a" (pcm),
+      [dst]  "a" (dst)
+    : "cc"
+    );
+  return acu;
+}
+
+static void
+ilace_fal(spl_t * _d, mix_fast_t * fast, const int16_t n)
+{
   uint8_t k;
 
+  zz_assert( IS_ALIGN(n) );
+  zz_assert( MIXALIGN == 8 );
+
   for ( k=0; k<4; ++k ) {
-    int32_t acu = 0;
     mix_fast_t * const F = fast+k;
+    uint8_t * d = &k[(uint8_t *)_d];
+    uint32_t acu = F->dec;
+    int16_t i;
 
-    d = s;
-    if (F->cur) {
-      acu = F->dec;
+    for ( i = 0; F->cur && i < n ; i += MIXALIGN, d += MIXALIGN*4 ) {
+      acu = ilace_blk(d, F->cur, F->xtp, acu);
+      fast->cur += (int16_t) acu;
+      acu >>= 16;
 
-      do {
-        (*d++)[k] = *F->cur;
-
-        acu += F->xtp;
-        F->cur += acu >> FP;
-        acu &= (1l<<FP) - 1;
-
-        if (F->cur >= F->end) {
-          if (!F->lpl) {
-            acu = 0;
-            F->cur = 0;
-            break;
-          } else {
-            int ovf = F->cur - F->end;
-            if (ovf > F->lpl)
-              ovf = m68k_modu(ovf,F->lpl);
-            F->cur = F->end - F->lpl + ovf;
-          }
+      if (F->cur >= F->end) {
+        if (!F->lpl) {
+          acu = 0;
+          F->cur = 0;
         }
-      } while ( d < e );
+        else {
+          uint16_t ovf = F->cur - F->end;
+          while (ovf >= F->lpl)
+            ovf -= F->lpl;
+          F->cur = F->end - F->lpl + ovf;
+        }
+      }
     }
     F->dec = acu;
-    while (d < e)
-      (*d++)[k] = 0;
+    for (; i < n; ++i, d += 4)
+      *d = 0;
   }
 }
 
@@ -261,8 +307,7 @@ static zz_err_t init_fal(play_t * const P, u32_t spr)
       spr = ZZ_HQ;
   }
 
-  /* $$$ TEMP $$$ */
-  spr = ZZ_HQ;
+  /* spr = ZZ_HQ; */
 
   switch (spr) {
   case ZZ_LQ:

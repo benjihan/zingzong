@@ -64,7 +64,7 @@ void stop_ata(ata_t * ata);
 enum {
   /* STE Sound DMA registers map. */
 
-  DMA_CTLW  = 0x00,
+  DMAW_CNTL = 0x00,
   DMA_CNTL  = 0x01,
   /**/
   DMA_ADR   = 0x03,
@@ -82,7 +82,7 @@ enum {
   DMA_END_M = 0x11,
   DMA_END_L = 0x13,
   /**/
-  DMA_MODW  = 0x20,
+  DMAW_MODE = 0x20,
   DMA_MODE  = 0x21,
 
   /* Constants */
@@ -104,15 +104,15 @@ void * dma_position(void)
 {
   void * pos;
   asm volatile(
-    "   lea 0x8909.w,%%a0      \n\t"
-    "   moveq #-1,%[pos]       \n\t"
+    "   lea 0x8909.w,%%a0      \n"
+    "   moveq #-1,%[pos]       \n"
     "0:"
-    "   move.l %[pos],%%d1     \n\t"
-    "   moveq #0,%[pos]        \n\t"
-    "   move.b (%%a0),%[pos]   \n\t"
-    "   swap %[pos]            \n\t"
-    "   movep.w 2(%%a0),%[pos] \n\t"
-    "   cmp.l %[pos],%%d1      \n\t"
+    "   move.l %[pos],%%d1     \n"
+    "   moveq #0,%[pos]        \n"
+    "   move.b (%%a0),%[pos]   \n"
+    "   swap %[pos]            \n"
+    "   movep.w 2(%%a0),%[pos] \n"
+    "   cmp.l %[pos],%%d1      \n"
     "   bne.s 0b               \n\t"
     : [pos] "=d" (pos)
     :
@@ -124,10 +124,10 @@ static inline
 void dma_write_ptr(volatile uint8_t * reg, const void * adr)
 {
   asm volatile(
-    " swap %[adr]              \n\t"
-    " move.b %[adr],(%[hw])    \n\t"
-    " swap %[adr]              \n\t"
-    " movep.w %[adr],2(%[hw])  \n\t"
+    "   swap %[adr]              \n"
+    "   move.b %[adr],(%[hw])    \n"
+    "   swap %[adr]              \n"
+    "   movep.w %[adr],2(%[hw])  \n\t"
     :
     : [hw] "a" (reg), [adr] "d" (adr)
     : "cc");
@@ -136,7 +136,7 @@ void dma_write_ptr(volatile uint8_t * reg, const void * adr)
 static inline
 void dma_stop(void)
 {
-  DMAW(DMA_CTLW) = 0;
+  DMAW(DMAW_CNTL) = 0;
 }
 
 static inline
@@ -145,9 +145,8 @@ void dma_start(void * adr, void * end, uint16_t mode)
   dma_stop();
   dma_write_ptr(DMA+DMA_ADR, adr);
   dma_write_ptr(DMA+DMA_END, end);
-
-  DMAW(DMA_MODW) = mode;
-  DMAW(DMA_CTLW) = DMA_CNTL_ON|DMA_CNTL_LOOP;
+  DMAW(DMAW_MODE) = mode;
+  DMAW(DMAW_CNTL) = DMA_CNTL_ON|DMA_CNTL_LOOP;
 }
 
 #endif

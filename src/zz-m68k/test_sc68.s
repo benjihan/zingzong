@@ -180,5 +180,6 @@ sc68:
 	track	"Test AGA","test.bin",AGA,START
 	track	"Test STf",,PSG,START
 	track	"Test STe",,STE,START
+	track	"Test Falcon",,STE,START
 	
 	close	zingzong

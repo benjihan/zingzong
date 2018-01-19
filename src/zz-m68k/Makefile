@@ -166,6 +166,8 @@ dri_stf.elf: mix_stf.o
 dri_ste.elf: mix_ste.o
 dri_fal.elf: mix_fal.o
 
+#mix_fal.o: m68_CPU = 68030
+
 DRIFLAGS = -r -static $(NOSTART) $(NOLIBS)
 
 # START_* are dummies only used by the echo command

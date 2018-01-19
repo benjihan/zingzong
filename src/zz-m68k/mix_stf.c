@@ -203,7 +203,7 @@ static void never_inline prepare_sound(void)
 
 static void never_inline init_spl(play_t * P)
 {
-  u8_t k;
+  int16_t k;
   for (k=0; k<256; ++k)
     P->tohw[k] = k;
   vset_unroll(&P->vset,P->tohw);

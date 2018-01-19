@@ -60,7 +60,7 @@ static void fifo_play(fifo_t * const F, int16_t n)
 
   n2 = 0;
   i2 = i1 + n1;
-  if ( unlikely(i2 >= F->sz) ) {      /* larger FIFO => less likely */
+  if ( unlikely(i2 >= F->sz) ) { /* the larger the FIFO the less likely */
     n2 = i2 - F->sz;
     i2 = 0;
     n1 -= n2;

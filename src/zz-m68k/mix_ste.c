@@ -58,8 +58,8 @@ typedef struct mix_fast_s mix_fast_t;
 typedef struct mix_ste_s mix_ste_t;
 
 struct mix_ste_s {
-  ata_t   ata;                          /* generic atari mixer  */
-  uint8_t dma;                          /* STe sound DMA mode   */
+  ata_t    ata;                         /* generic atari mixer  */
+  uint16_t dma;                         /* STe sound DMA mode   */
 };
 
 static mix_ste_t g_ste;                 /* STE mixer instance */
@@ -146,7 +146,7 @@ static void never_inline init_mix(play_t * P)
  */
 static void never_inline init_spl8(play_t * P)
 {
-  u8_t k;
+  int16_t k;
   for (k=0; k<256; ++k)
     P->tohw[k] = k;
   vset_unroll(&P->vset,P->tohw);
