@@ -167,6 +167,7 @@ dri_ste.elf: mix_ste.o
 dri_fal.elf: mix_fal.o
 
 #mix_fal.o: m68_CPU = 68030
+mix_ata.o: JUMP_TABLE = jump-tables
 
 DRIFLAGS = -r -static $(NOSTART) $(NOLIBS)
 
