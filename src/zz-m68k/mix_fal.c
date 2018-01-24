@@ -9,6 +9,7 @@
 #include "mix_ata.h"
 
 #define METHOD  0
+
 #define TICKMAX 256
 #define FIFOMAX (TICKMAX*3)
 #define TEMPMAX TICKMAX
@@ -20,17 +21,9 @@
 #if METHOD == 1
 
 # define init_spl(P)   init_spl8(P,0x80)
-# define fast_mix(R,N) slow_fal(R,M->ata.fast,N)
-# define MIXALIGN 8
-# define FAL_DMA_MODE  (DMA_MODE_MONO|DMA_MODE_16BIT)
-typedef int16_t spl_t;
-
-#elif METHOD == 2
-
-# define init_spl(P)   init_spl8(P,0x80)
-# define fast_mix(R,N) ilace_fal(R,M->ata.fast,N)
-# define MIXALIGN 8
-# define FAL_DMA_MODE 0x0380
+# define fast_mix(R,N) fast_4x8(R,M->ata.fast,N)
+# define MIXALIGN 1
+# define FAL_DMA_MODE  (0x300|DMA_MODE_MONO)
 typedef int32_t spl_t;
 
 #else
@@ -38,8 +31,8 @@ typedef int32_t spl_t;
 # define init_spl(P)   init_spl8(P,0x00)
 # define fast_mix(R,N) fast_fal(R,M->ata.fast,N)
 # define MIXALIGN 1
-# define FAL_DMA_MODE  (DMA_MODE_MONO|DMA_MODE_16BIT)
-typedef int16_t spl_t;
+# define FAL_DMA_MODE  (DMA_MODE_16BIT)
+typedef int32_t spl_t;
 
 #endif
 
@@ -71,9 +64,158 @@ static mix_fal_t g_fal;                 /* Falcon mixer instance */
 static spl_t _fifo[FIFOMAX];            /* FIFO buffer */
 
 ZZ_EXTERN_C
-void fast_fal(int16_t * dest, mix_fast_t * voices, int32_t n);
+void fast_fal(spl_t * dest, mix_fast_t * voices, int32_t n);
+
+ZZ_EXTERN_C
+void fast_4x8(spl_t * dest, mix_fast_t * voices, int32_t n);
 
 /* ---------------------------------------------------------------------- */
+
+/* @retval     1 success
+ * @retval  -129 already locked
+ */
+int32_t Locksnd(void)
+{
+  int32_t ret;
+  asm volatile(
+    "move.w  #0x80,-(%%a7) \n\t"
+    "trap    #14           \n\t"
+    "addq.w  #2,%%a7       \n\t"
+    : [ret] "=d" (ret));
+  return ret;
+}
+
+/* @retval     0 success
+ * @retval  -128 not locked
+ */
+int32_t Unlocksnd(void)
+{
+  int32_t ret;
+  asm volatile(
+    "move.w  #0x81,-(%%a7) \n\t"
+    "trap    #14           \n\t"
+    "addq.w  #2,%%a7       \n\t"
+    : [ret] "=d" (ret));
+  return ret;
+}
+
+/* @param  mode  0:L-atten 1:R-atten 2:L-gain 3:R-gain 4:adder-in 5:adcinput
+ * @param  data -1:inquire
+ * @retval prior value ?
+ */
+int32_t Soundcmd(int16_t mode, int16_t data)
+{
+  int32_t ret;
+  asm volatile(
+    "move.w %[data],-(%%a7) \n\t"
+    "move.w %[mode],-(%%a7) \n\t"
+    "move.w #0x82,-(%%a7)   \n\t"
+    "trap   #14             \n\t"
+    "addq.w #6,%%a7         \n\t"
+    : [ret] "=g" (ret)
+    : [mode] "g" (mode), [data] "g" (data)
+    );
+  return ret;
+}
+
+/* @retval  0  on success */
+int32_t Setbuffer(int16_t mode, void * beg, void *end)
+{
+  int32_t ret;
+
+  asm volatile(
+    "move.l %[end],-(%%a7) \n\t"
+    "move.l %[beg],-(%%a7) \n\t"
+    "move.w %[mod],-(%%a7) \n\t"
+    "move.w #0x83,-(%%a7)  \n\t"
+    "trap   #14            \n\t"
+    "lea   12(%%a7),%%a7   \n\t"
+    : [ret] "=g" (ret)
+    : [beg] "g" (beg), [end] "g" (end), [mod] "g" (mode)
+    );
+  return ret;
+}
+
+/* @param  mode  0:2x8 1:2x16 2:1x8
+ * @retval 0 on success
+ */
+int32_t Setmode(int16_t mode)
+{
+  int32_t ret;
+  asm volatile(
+    "move.w %[mode],-(%%a7) \n\t"
+    "move.w #0x84,-(%%a7)   \n\t"
+    "trap   #14             \n\t"
+    "addq.w #4,%%a7         \n\t"
+    : [ret] "=g" (ret)
+    : [mode] "g" (mode)
+    );
+  return ret;
+}
+
+int32_t Settracks(int16_t play, int16_t record)
+{
+  int32_t ret;
+  asm volatile(
+    "move.w %[rec],-(%%a7) \n\t"
+    "move.w %[pla],-(%%a7) \n\t"
+    "move.w #0x83,-(%%a7)  \n\t"
+    "trap   #14            \n\t"
+    "addq.w #6,%%a7        \n\t"
+    : [ret] "=g" (ret)
+    : [pla] "g" (play), [rec] "g" (record)
+    );
+  return ret;
+}
+
+/* @param  reset  1:reset the sound system
+ * @retval #0-3   0:success
+ *         #4     set if left channel has clip
+ *         #5     set if right channel has clip
+ *         #6-31  unused
+ */
+int32_t Sndstatus(int16_t reset)
+{
+  int32_t ret;
+  reset = !!reset;
+  asm volatile(
+    "move.w %[rs],-(%%a7)  \n\t"
+    "move.w #0x8c,-(%%a7)  \n\t"
+    "trap   #14            \n\t"
+    "addq.w #4,%%a7        \n\t"
+    : [ret] "=g" (ret)
+    : [rs] "g" (reset)
+    );
+  return ret;
+}
+
+int32_t Devconnect(int16_t src, int16_t dst,
+                   int16_t clk, int16_t prescale, int16_t protocol)
+{
+  int32_t ret;
+
+  asm volatile(
+    "move.w  %[ptc],-(%%a7) \n\t"
+    "move.w  %[sca],-(%%a7) \n\t"
+    "move.w  %[clk],-(%%a7) \n\t"
+    "move.w  %[dst],-(%%a7) \n\t"
+    "move.w  %[src],-(%%a7) \n\t"
+    "move.w  #0x8B,-(%%a7)  \n\t"
+    "trap    #14            \n\t"
+    "lea     12(%%a7),%%a7  \n\t"
+    : [ret] "=g" (ret)
+    : [src] "g" (src), [dst] "g" (dst), [clk] "g" (clk),
+      [sca] "g" (prescale), [ptc] "g" (protocol)
+    );
+
+  return ret;
+}
+
+static uint16_t prescale[16] = {
+  0 /*STe*/, 49170, 32880, 24585, 19668, 16390,
+  0/*14049*/, 12292, 0/*10927 */, 9834, 0/*8940*/,
+  8195, 0/*7565*/, 0/*7024*/, 0/*6556*/, 0/*6146*/
+};
 
 static int16_t pb_play(void)
 {
@@ -113,152 +255,6 @@ static void never_inline init_spl8(play_t * P, const u8_t sign)
   vset_unroll(&P->vset,P->tohw);
 }
 
-#if METHOD == 1
-
-static uint32_t add_blk( int16_t * restrict dst,
-                         const uint8_t * restrict pcm,
-                         const uint32_t stp,
-                         uint32_t acu)
-{
-  asm (
-    "  move   %[iacu],%%d5            \n"
-    "  move   %[istp],%%a4            \n"
-    "  swap   %[iacu]                 \n"
-    "  swap   %[istp]                 \n"
-    "  moveq  #7,%%d6                 \n"
-    "0:\n"
-    "  add.w  %%a4,%%d5               \n"
-    "  addx.w %[istp],%[iacu]         \n"
-    "  move.b (%[pcm],%[iacu].w),%%d7 \n"
-    "  ext.w  %%d7                    \n"
-    "  lsl.w  #6,%%d7                 \n"
-    "  add.w  %%d7,(%[dst])+          \n"
-    "  dbf    %%d6,0b                 \n"
-    "  swap   %[iacu]                 \n"
-    "  move.w %%d5,%[iacu]            \n\t"
-
-    : [iacu] "+d" (acu)
-    : [istp] "d"  (stp),
-      [pcm]  "a"  (pcm),
-      [dst]  "a"  (dst)
-    : "cc","d7","d6","d5","a4"
-    );
-  return acu;
-}
-
-
-static void
-slow_fal(int16_t * const _d, mix_fast_t * F, int16_t n)
-{
-  mix_fast_t * const E = F+4;
-
-  zz_assert( IS_ALIGN(n) );
-  zz_assert( MIXALIGN == 8 );
-
-  zz_memclr(_d,n<<1);
-  for (; F<E; ++F) {
-    int16_t * d = _d;
-    uint32_t acu = F->dec;
-
-    for ( d = _d; F->cur && d < _d+n ; d += MIXALIGN ) {
-      acu = add_blk(d, F->cur, F->xtp, acu);
-      F->cur += acu >> 16;
-      acu = (uint16_t) acu;
-
-      if (F->cur >= F->end) {
-        if (!F->lpl) {
-          acu = 0;
-          F->cur = 0;
-        }
-        else {
-          uint16_t ovf = F->cur - F->end;
-          while (ovf >= F->lpl)
-            ovf -= F->lpl;
-          F->cur = F->end - F->lpl + ovf;
-        }
-      }
-    }
-    F->dec = acu;
-  }
-
-}
-
-#elif METHOD == 2
-
-static uint32_t ilace_blk( uint8_t * restrict dst,
-                           const uint8_t * restrict pcm,
-                           const uint32_t stp,
-                           uint32_t acu)
-{
-  asm (
-    "  add.w  %[stp],%[acu]                \n"
-    "  swap   %[acu]                       \n"
-    "  swap   %[stp]                       \n"
-    "  addx.l %[stp],%[acu]                \n"
-    "  move.b (%[pcm],%[acu].w),(%[dst])   \n"
-    "  addx.l %[stp],%[acu]                \n"
-    "  move.b (%[pcm],%[acu].w),4(%[dst])  \n"
-    "  addx.l %[stp],%[acu]                \n"
-    "  move.b (%[pcm],%[acu].w),8(%[dst])  \n"
-    "  addx.l %[stp],%[acu]                \n"
-    "  move.b (%[pcm],%[acu].w),12(%[dst]) \n"
-    "  addx.l %[stp],%[acu]                \n"
-    "  move.b (%[pcm],%[acu].w),16(%[dst]) \n"
-    "  addx.l %[stp],%[acu]                \n"
-    "  move.b (%[pcm],%[acu].w),20(%[dst]) \n"
-    "  addx.l %[stp],%[acu]                \n"
-    "  move.b (%[pcm],%[acu].w),24(%[dst]) \n"
-    "  addx.w %[stp],%[acu]                \n"
-    "  move.b (%[pcm],%[acu].w),28(%[dst]) \n\t"
-
-    : [acu] "+d" (acu)
-    : [stp]  "d" (stp),
-      [pcm]  "a" (pcm),
-      [dst]  "a" (dst)
-    : "cc"
-    );
-  return acu;
-}
-
-static void
-ilace_fal(spl_t * _d, mix_fast_t * fast, const int16_t n)
-{
-  uint8_t k;
-
-  zz_assert( IS_ALIGN(n) );
-  zz_assert( MIXALIGN == 8 );
-
-  for ( k=0; k<4; ++k ) {
-    mix_fast_t * const F = fast+k;
-    uint8_t * d = &k[(uint8_t *)_d];
-    uint32_t acu = F->dec;
-    int16_t i;
-
-    for ( i = 0; F->cur && i < n ; i += MIXALIGN, d += MIXALIGN*4 ) {
-      acu = ilace_blk(d, F->cur, F->xtp, acu);
-      fast->cur += (int16_t) acu;
-      acu >>= 16;
-
-      if (F->cur >= F->end) {
-        if (!F->lpl) {
-          acu = 0;
-          F->cur = 0;
-        }
-        else {
-          uint16_t ovf = F->cur - F->end;
-          while (ovf >= F->lpl)
-            ovf -= F->lpl;
-          F->cur = F->end - F->lpl + ovf;
-        }
-      }
-    }
-    F->dec = acu;
-    for (; i < n; ++i, d += 4)
-      *d = 0;
-  }
-}
-
-#endif
 
 static i16_t push_fal(play_t * const P, void *pcm, i16_t n)
 {
@@ -285,11 +281,10 @@ static i16_t push_fal(play_t * const P, void *pcm, i16_t n)
 static zz_err_t init_fal(play_t * const P, u32_t spr)
 {
   int ecode = E_OK;
-  mix_fal_t * const M = &g_fal;
+  mix_fal_t * M = &g_fal;
   uint32_t refspr;
   uint16_t scale;
 
-  P->mixer_data = M;
   zz_memclr(M,sizeof(*M));
   refspr = mulu(P->song.khz,1000u);
 
@@ -307,10 +302,8 @@ static zz_err_t init_fal(play_t * const P, u32_t spr)
       spr = ZZ_HQ;
   }
 
-  /* spr = ZZ_HQ; */
-
   switch (spr) {
-  case ZZ_LQ:
+  case ZZ_LQ:                     /* Falcon does not have 6Khz mode */
   case ZZ_FQ: spr = 12517; M->dma = 1|FAL_DMA_MODE; break;
   case ZZ_HQ: spr = 50066; M->dma = 3|FAL_DMA_MODE; break;
   default:    spr = 25033; M->dma = 2|FAL_DMA_MODE; break;
@@ -319,13 +312,17 @@ static zz_err_t init_fal(play_t * const P, u32_t spr)
   P->spr = spr;
   scale  = ( divu( refspr<<13, spr) + 1 ) >> 1;
 
-  init_dma(P);
-  init_spl(P);
-  init_ata(FIFOMAX,scale);
-
-  dmsg("spr:%lu dma:%02hx scale:%lx\n",
-       LU(spr), HU(M->dma), LU(scale) );
-
+  if ( Locksnd() != 1 ) {
+    M = 0;
+    ecode = E_MIX;
+  } else {
+    init_dma(P);
+    init_spl(P);
+    init_ata(FIFOMAX,scale);
+    dmsg("spr:%lu dma:%02hx scale:%lx\n",
+         LU(spr), HU(M->dma), LU(scale) );
+  }
+  P->mixer_data = M;
   return ecode;
 }
 
@@ -336,6 +333,7 @@ static void free_fal(play_t * const P)
     if ( M ) {
       zz_assert( M == &g_fal );
       stop_ata(&M->ata);
+      Unlocksnd();
     }
     P->mixer_data = 0;
   }

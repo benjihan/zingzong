@@ -137,6 +137,7 @@ static inline
 void dma_stop(void)
 {
   DMAW(DMAW_CNTL) = 0;
+  DMAW(DMAW_MODE) = 0;
 }
 
 static inline
