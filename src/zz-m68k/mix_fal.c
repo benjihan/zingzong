@@ -8,33 +8,18 @@
 #include "../zz_private.h"
 #include "mix_ata.h"
 
-#define METHOD  0
-
 #define TICKMAX 256
 #define FIFOMAX (TICKMAX*3)
 #define TEMPMAX TICKMAX
 
-#define ALIGN(X)    ((X)&-(MIXALIGN))
-#define ULIGN(X)    ALIGN((X)+MIXALIGN-1)
-#define IS_ALIGN(X) ( (X) == ALIGN(X) )
-
-#if METHOD == 1
-
-# define init_spl(P)   init_spl8(P,0x80)
-# define fast_mix(R,N) fast_4x8(R,M->ata.fast,N)
-# define MIXALIGN 1
-# define FAL_DMA_MODE  (0x300|DMA_MODE_MONO)
+#define ALIGN(X)      ((X)&-(MIXALIGN))
+#define ULIGN(X)      ALIGN((X)+MIXALIGN-1)
+#define IS_ALIGN(X)   ((X) == ALIGN(X))
+#define init_spl(P)   init_spl8(P)
+#define fast_mix(R,N) fast_fal(R,M->ata.fast,N)
+#define MIXALIGN      1
+#define FAL_DMA_MODE  (DMA_MODE_16BIT)
 typedef int32_t spl_t;
-
-#else
-
-# define init_spl(P)   init_spl8(P,0x00)
-# define fast_mix(R,N) fast_fal(R,M->ata.fast,N)
-# define MIXALIGN 1
-# define FAL_DMA_MODE  (DMA_MODE_16BIT)
-typedef int32_t spl_t;
-
-#endif
 
 static zz_err_t init_fal(play_t * const, u32_t);
 static void     free_fal(play_t * const);
@@ -138,12 +123,9 @@ static void never_inline init_dma(play_t * P)
 
 /* Unroll instrument loops (samples stay in u8 format).
  */
-static void never_inline init_spl8(play_t * P, const u8_t sign)
+static void never_inline init_spl8(play_t * P)
 {
-  int16_t k;
-  for (k=0; k<256; ++k)
-    P->tohw[k] = k^sign;
-  vset_unroll(&P->vset,P->tohw);
+  vset_unroll(&P->vset,0);
 }
 
 

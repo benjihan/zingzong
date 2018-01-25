@@ -255,6 +255,9 @@ void zz_mem(zz_new_t user_newf, zz_del_t user_delf)
 void * zz_memcpy(void * restrict _d, const void * _s, zz_u32_t n)
 {
 #ifdef NO_LIBC
+#ifdef __m68k__
+//  asm volatile ("trap #4 \n\t"); /* should be calling m68k_memcpy() */
+#endif
   if (n) {
     uint8_t * d = _d; const uint8_t * s = _s;
     if (d < s)
@@ -271,19 +274,9 @@ void * zz_memcpy(void * restrict _d, const void * _s, zz_u32_t n)
 #endif
 }
 
-#undef zz_memset
-void * zz_memset(void * restrict _d, int v, zz_u32_t n)
-{
-#ifdef NO_LIBC
-  uint8_t * restrict d = _d;
-  while (n--) *d++ = v;
-  return _d;
-#else
-  wmsg("calling %s() instead of %s()\n", __func__, __func__+3);
-  return memset(_d,v,n);
-#endif
-}
-
+/* GB: Order is important here. We don't want to un-define zz_memset
+ *     when we are going to use it.
+ */
 #undef zz_memclr
 void * zz_memclr(void * restrict _d, zz_u32_t n)
 {
@@ -295,10 +288,30 @@ void * zz_memclr(void * restrict _d, zz_u32_t n)
 #endif
 }
 
+#undef zz_memset
+void * zz_memset(void * restrict _d, int v, zz_u32_t n)
+{
+#ifdef NO_LIBC
+#ifdef __m68k__
+//  asm volatile ("trap #2 \n\t"); /* should be calling m68k_memset() */
+#endif
+  uint8_t * restrict d = _d;
+  while (n--) *d++ = v;
+  return _d;
+#else
+  wmsg("calling %s() instead of %s()\n", __func__, __func__+3);
+  return memset(_d,v,n);
+#endif
+}
+
+
 #undef zz_memcmp
 int zz_memcmp(const void *_a, const void *_b, zz_u32_t n)
 {
 #ifdef NO_LIBC
+#ifdef __m68k__
+//  asm volatile ("trap #3 \n\t"); /* should be calling m68k_memcmp() */
+#endif
   int8_t c = 0;
   const uint8_t *a = _a, *b = _b;
   if (n) do {

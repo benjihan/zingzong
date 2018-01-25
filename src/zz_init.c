@@ -455,11 +455,14 @@ pcmcpy(uint8_t * dst, uint8_t * src, u16_t len, const uint8_t *tohw)
 {
   zz_assert( dst >= src );
   zz_assert( len );
-
-  dst += len; src += len;
-  do {
-    *--dst = tohw[ *--src ];
-  } while (--len);
+  if (!tohw) {
+    zz_memcpy(dst,src,len);
+  } else {
+    dst += len; src += len;
+    do {
+      *--dst = tohw[ *--src ];
+    } while (--len);
+  }
 }
 
 static void
@@ -485,6 +488,7 @@ vset_unroll(zz_vset_t const vset, const uint8_t *tohw)
   bin_t   * const bin = vset->bin;
   uint8_t * const beg = bin->ptr;
   uint8_t * const end = beg + bin->max;
+  const uint8_t nul = tohw ? tohw[128] : 128;
 
   u8_t nbi, i;
   uint8_t idx[20];
@@ -506,7 +510,6 @@ vset_unroll(zz_vset_t const vset, const uint8_t *tohw)
   for (i=1, e=end, tot=0; i <= nbi; ++i) {
     inst_t * const inst = &vset->inst[idx[nbi-i]];
     pcmcpy(e -= inst->len, inst->pcm, inst->len, tohw);
-
     inst->pcm = e;
     tot += inst->len;
   }
@@ -542,7 +545,7 @@ vset_unroll(zz_vset_t const vset, const uint8_t *tohw)
     inst->end = mcp-pcm;
     pcm += inst->len;
     zz_assert(pcm+2 < mcp);
-    unroll_loop(pcm, mcp, inst->lpl, tohw[128]);
+    unroll_loop(pcm, mcp, inst->lpl, nul);
   }
 
   return ZZ_OK;

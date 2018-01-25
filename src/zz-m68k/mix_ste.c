@@ -8,35 +8,15 @@
 #include "../zz_private.h"
 #include "mix_ata.h"
 
-#define METHOD  0
-#define TICKMAX 256
-#define FIFOMAX (TICKMAX*2)
-#define TEMPMAX TICKMAX
-
-#define ALIGN(X)    ((X)&-(MIXALIGN))
-#define ULIGN(X)    ALIGN((X)+MIXALIGN-1)
-#define IS_ALIGN(X) ( (X) == ALIGN(X) )
-
-
-#if METHOD == 1
-
-# define init_spl(P)   init_spl8(P)
-# define fast_mix(R,N) slow_ste(mixtbl, R, _temp, M->ata.fast, N)
-# define MIXALIGN      1
-
-#elif METHOD == 2
-
-# define init_spl(P)   init_spl6(P)
-# define fast_mix(R,N) fast_ste_6bit(R, &M->ata.fast, N)
-# define MIXALIGN      8
-
-#else
-
-# define init_spl(P)   init_spl8(P)
-# define fast_mix(R,N) fast_ste(mixtbl, R, _temp, M->ata.fast, N)
-# define MIXALIGN      1
-
-#endif
+#define TICKMAX       256
+#define FIFOMAX       ((TICKMAX*3)>>1)
+#define TEMPMAX       TICKMAX
+#define ALIGN(X)      ((X)&-(MIXALIGN))
+#define ULIGN(X)      ALIGN((X)+MIXALIGN-1)
+#define IS_ALIGN(X)   ((X) == ALIGN(X))
+#define init_spl(P)   init_spl8(P)
+#define fast_mix(R,N) fast_ste(mixtbl, R, _temp, M->ata.fast, N)
+#define MIXALIGN      1
 
 static zz_err_t init_ste(play_t * const, u32_t);
 static void     free_ste(play_t * const);
@@ -140,89 +120,12 @@ static void never_inline init_mix(play_t * P)
   }
 }
 
-#if METHOD != 2
-
 /* Unroll instrument loops (samples stay in u8 format).
  */
 static void never_inline init_spl8(play_t * P)
 {
-  int16_t k;
-  for (k=0; k<256; ++k)
-    P->tohw[k] = k;
-  vset_unroll(&P->vset,P->tohw);
+  vset_unroll(&P->vset,0);
 }
-
-#else
-
-static void never_inline init_spl6(play_t * P)
-{
-  u8_t k;
-  for (k=0; k<256; ++k)
-    P->tohw[k] = k>>2;
-  vset_unroll(&P->vset,P->tohw);
-}
-
-#endif
-
-#if METHOD == 1
-
-static void
-slow_ste(const int8_t mixtbl[], int8_t * d, int16_t * temp,
-         mix_fast_t * fast, int16_t n)
-{
-  mix_fast_t * const tsaf = fast+4;
-  int16_t * const pmet = temp + n;
-
-  zz_assert( n >= 0 );
-  zz_assert( n <= MIXMAX );
-  if ( n <= 0 ) return;
-
-  zz_memclr(temp,n<<1);
-
-  for (; fast < tsaf; ++fast) {
-    int32_t acu = 0;
-    if (fast->cur) {
-      acu = fast->dec;
-
-      do {
-        zz_assert(fast->cur < fast->end);
-
-        *temp++ += *fast->cur;
-
-        acu += fast->xtp;
-        fast->cur += acu >> FP;
-        acu &= (1l<<FP) - 1;
-
-        if (fast->cur >= fast->end) {
-          if (!fast->lpl) {
-            acu = 0;
-            fast->cur = 0;
-            break;
-          } else {
-            int ovf = fast->cur - fast->end;
-            if (ovf > fast->lpl)
-              ovf = m68k_modu(ovf,fast->lpl);
-            fast->cur = fast->end - fast->lpl + ovf;
-          }
-
-        }
-      } while (temp < pmet);
-    }
-
-    do {
-      *temp++ += 128;
-    } while (temp < pmet);
-
-    fast->dec = acu;
-    temp = pmet - n;
-  }
-
-  do {
-    *d++ = mixtbl[*temp++];
-  } while (--n);
-
-}
-#endif
 
 static i16_t push_ste(play_t * const P, void *pcm, i16_t n)
 {

@@ -113,8 +113,9 @@ PACKAGE_CPPFLAGS  = \
 com = player
 zzz = zz_m68k zz_play zz_init zz_str zz_mem zz_log zz_fast
 mix = mix_aga mix_stf mix_ste mix_fal mix_ata m68k_mix 
+m68 = m68k_mix.S m68k_mem.S
 
-sources := $(sort $(addsuffix .c,$(com) $(zzz) $(mix)) m68k_mix.S)
+sources := $(sort $(addsuffix .c,$(com) $(zzz) $(mix)) $(m68))
 
 # ----------------------------------------------------------------------
 #  Targets
@@ -156,7 +157,7 @@ NOLIBS      = -nodefaultlibs -nostdlib
 #      the finale linker scripts.
 #      ----------------------------------------------------------------------
 
-drivers := $(patsubst %,dri_%.elf,aga stf ste fal) mix_ata.o m68k_mix.o
+drivers := $(patsubst %,dri_%.elf,aga stf ste fal) mix_ata.o $(m68:%.S=%.o)
 
 drivers: $(drivers)
 .PHONY: drivers

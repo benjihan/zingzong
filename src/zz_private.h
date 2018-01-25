@@ -348,7 +348,8 @@ struct play_s {
   uint8_t format;          /**< see ZZ_FORMAT_ enum. */
   uint8_t mixer_id;        /**< mixer identifier.    */
   chan_t  chan[4];         /**< 4 channels info.     */
-  uint8_t tohw[256];       /**< convert u8 PCM to what mixer wants. */
+
+  //uint8_t tohw[256];       /**< convert u8 PCM to what mixer wants. */
 };
 
 typedef struct songhd songhd_t;
@@ -377,6 +378,18 @@ struct songhd {
 # ifndef __BYTE_ORDER__
 #  define __BYTE_ORDER__ __ORDER_BIG_ENDIAN__
 # endif
+
+ZZ_EXTERN_C
+int m68k_memcmp(const void *, const void *, zz_u32_t);
+#define zz_memcmp(A,B,C) m68k_memcmp((A),(B),(C))
+
+ZZ_EXTERN_C
+void * m68k_memset(void * restrict, uint8_t, zz_u32_t);
+#define zz_memset(A,B,C) m68k_memset((A),(B),(C))
+
+ZZ_EXTERN_C
+void * m68k_memcpy(void * restrict, const void *, zz_u32_t);
+#define zz_memcpy(A,B,C) m68k_memcpy((A),(B),(C))
 
 #else /* __m68k__ */
 

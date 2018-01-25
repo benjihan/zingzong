@@ -108,6 +108,7 @@ fill_timer_routines(trout_t * rout, uint16_t n)
     );
 }
 
+
 static void never_inline
 init_timer_routines(void)
 {
@@ -167,6 +168,7 @@ init_replay_table(void)
   }
 }
 
+
 static void clear_ym_regs(void)
 {
   YML[0] = 0x00000000;  YML[0] = 0x01000000;
@@ -174,6 +176,7 @@ static void clear_ym_regs(void)
   YML[0] = 0x04000000;  YML[0] = 0x05000000;
   YML[0] = 0x08000000;  YML[0] = 0x09000000;  YML[0] = 0x0A000000;
 }
+
 
 static void never_inline stop_sound(void)
 {
@@ -186,34 +189,36 @@ static void never_inline stop_sound(void)
   asm volatile ("move.w %[savesr],%%sr \n\t" :: [savesr] "m" (savesr) );
 }
 
+
 /* GB: current Hatari does not handle lowpass trick. */
 static void never_inline prepare_sound(void)
 {
-  stop_sound();
 #if 0
+  stop_sound();
+#else
   int16_t savesr;
   asm volatile ("move.w %%sr,%[savesr] \n\t"
                 "move.w #0x2700,%%sr   \n\t" : [savesr] "=m" (savesr) );
   YMB[0] = 7;
-  YMB[2] = (YMB[0] & 03FF) | 0077;
+  YMB[2] = (YMB[0] & 0300) | 0070;
   clear_ym_regs();
   asm volatile ("move.w %[savesr],%%sr \n\t" :: [savesr] "m" (savesr) );
 #endif
 }
 
+
 static void never_inline init_spl(play_t * P)
 {
-  int16_t k;
-  for (k=0; k<256; ++k)
-    P->tohw[k] = k;
-  vset_unroll(&P->vset,P->tohw);
+  vset_unroll(&P->vset,0);
 }
+
 
 static void stop_timer(void)
 {
   MFP[0x19]  = 0;                       /* Stop timer-A */
   MFP[0x17] |= 8;                       /* SEI */
 }
+
 
 static uint16_t never_inline set_sampling(play_t * const P, uint16_t spr)
 {
@@ -234,6 +239,7 @@ static void start_timer(void)
   MFP[0x19] = g_stf.tcr;
 }
 
+
 static int16_t pb_play(void)
 {
   zz_assert( g_stf.ata.fifo.sz == MIXMAX*2 );
@@ -252,75 +258,13 @@ static int16_t pb_play(void)
   }
 }
 
+
 static void pb_stop(void)
 {
   stop_timer();
   stop_sound();
 }
 
-#if 0
-
-static void slow_stf(const uint8_t * const Tpcm,
-                     trout_t * r,
-                     int16_t * temp,
-                     fast_t *fast,
-                     int16_t n)
-{
-  if (!n) return;
-
-  zz_assert(n > 0);
-  zz_memclr(temp,n<<1);
-
-  fast_t * const tsaf = fast + 4;
-
-  for ( ; fast < tsaf; ++fast ) {
-    int16_t i;
-    uint32_t acu = fast->dec;
-
-    for (i=0; i<n; ++i) {
-      if (!fast->cur) break;
-
-      temp[i] += *fast->cur;
-
-      acu += fast->xtp;
-      fast->cur += acu >> FP;
-      acu &= (1l<<FP)-1;
-
-      if (fast->cur >= fast->end) {
-        if (!fast->lpl) {
-          fast->cur = 0;
-          acu = 0;
-        } else {
-          while ( (fast->cur -= fast->lpl) >= fast->end );
-        }
-      }
-    }
-    fast->dec = acu;
-    for (; i<n; ++i)
-      temp[i] += 0x80;
-  }
-
-  do  {
-    uint16_t t = *temp ++;
-    zz_assert( t < 1024 );
-    const uint8_t * const pcm = & Tpcm[ t << 2 ];
-
-    int j;
-    for (j=0; j<3; ++j) {
-      zz_assert( pcm[j] < 16 );
-      r -> movel[j].val = pcm[j];
-
-      zz_assert( r -> movel[j].opc == 0x21fc );
-      zz_assert( r -> movel[j].reg == 8+j );
-      zz_assert( r -> movel[j].adr == 0x8800 );
-    }
-    zz_assert( r -> opc = 0x31fc );
-    zz_assert( r -> adr = 0x0136 );
-    ++r;
-  } while (--n);
-}
-
-#endif
 
 static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
 {

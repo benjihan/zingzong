@@ -125,14 +125,15 @@ zz_log_dbg(const char * fmt,...);
 
 #define FCC_LSL(X,N) (((uint32_t)(X))<<(N))
 #define FCC(A,B,C,D) (FCC_LSL(A,24)|FCC_LSL(B,16)|FCC_LSL(C,8)|(D))
-#define FCC_EQ(A,B) (0[A]==0[B]&&1[A]==1[B]&&2[A]==2[B]&&3[A]==3[B])
+#define FCC_EQ(A,B) ((0[A]-0[B])|(1[A]-1[B])|(2[A]-2[B])|(3[A]-3[B]))
+/* #define FCC_EQ(A,B) (0[A]==0[B]&&1[A]==1[B]&&2[A]==2[B]&&3[A]==3[B]) */
 
 /**
  * memory functions (zz_mem.c).
  */
 #define zz_malloc(P,N) zz_memnew( (void *) (P), (N), 0 )
 #define zz_calloc(P,N) zz_memnew( (void *) (P), (N), 1 )
-#define zz_free(P)     zz_memdel( (void *) (P)  )
+#define zz_free(P)     zz_memdel( (void *) (P) )
 
 ZZ_EXTERN_C
 zz_err_t zz_memnew(void *  pmem, zz_u32_t size, zz_u8_t clear);
@@ -145,22 +146,22 @@ zz_err_t zz_memchk_block(const void *);
 
 #ifndef zz_memcpy
 ZZ_EXTERN_C
-void * zz_memcpy(void * _d, const void * _s, zz_u32_t n);
+void * zz_memcpy(void *, const void *, zz_u32_t);
 #endif
 
 #ifndef zz_memset
 ZZ_EXTERN_C
-void * zz_memset(void * _d, int v, zz_u32_t n);
+void * zz_memset(void *, int, zz_u32_t);
 #endif
 
 #ifndef zz_memclr
 ZZ_EXTERN_C
-void * zz_memclr(void * _d, zz_u32_t n);
+void * zz_memclr(void *, zz_u32_t);
 #endif
 
 #ifndef zz_memcmp
 ZZ_EXTERN_C
-int zz_memcmp(const void *_a, const void *_b, zz_u32_t n);
+int zz_memcmp(const void *, const void *, zz_u32_t);
 #endif
 
 /**

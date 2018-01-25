@@ -61,6 +61,7 @@ struct mix_aga_s {
     uint8_t oct;
     uint8_t reserved;
   } inst[20];
+  uint8_t tohw[256];
 };
 
 
@@ -221,8 +222,8 @@ static zz_err_t init_aga(play_t * const P, u32_t spr)
 
   /* Change PCM sign and unroll loops. */
   for (k=0; k<256; ++k)
-    P->tohw[k] = k-128;
-  vset_unroll(&P->vset,P->tohw);
+    M->tohw[k] = k-128;
+  vset_unroll(&P->vset,M->tohw);
 
   for (k=0; k<20; ++k) {
     inst_t * const inst = P->vset.inst + k;
