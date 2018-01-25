@@ -14,7 +14,7 @@
 #define SPR_MIN 4000
 
 #undef SPR_MAX
-#define SPR_MAX 15650                   /*  */
+#define SPR_MAX 14000 /* 15650 */
 
 #define FRQMAX 20000                    /*  */
 #define MIXMAX (FRQMAX/200u+2)

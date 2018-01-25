@@ -4,205 +4,279 @@
 ;;; @brief  zingzong TOS test
 ;;;
 
-	opt	a+,o+,p+
-	
-	;; Super()
-	clr.l	-(a7)
-	move.w	#32,-(a7)
-	trap	#1
-	addq	#6,a7
-	move.l	d0,-(a7)	; store user stack for later
+        ifnd    MIXERID
+MIXERID set     0               ; use default mixer
+        endc
 
-	move.w	#$2700,sr
+llea:   macro
+        lea     vars(pc),\2
+        adda.l  #\1-vars,\2
+        endm
 
-	;; No key clicks
-	lea	vars(pc),a0
-	move.b	$484.w,s484(a0)
-	move.b	#$E,$484.w
+        opt     a+,o+,p+
 
-	;; Save vectors and MFP setup
-	move.l	$070.w,s070(a0)	; VBL
-	move.l	$114.w,s114(a0)	; timer-c
-	move.l	$134.w,s134(a0)	; timer-a
-	
-	move.b	$fffffa07.w,sa07(a0)
-	move.b	$fffffa09.w,sa09(a0)
-	move.b	$fffffa13.w,sa13(a0)
-	move.b	$fffffa15.w,sa15(a0)
-	move.b	$fffffa17.w,sa17(a0)
+        ;; Welcome and initializing message
+        pea     msgA(pc)        ; >> Zingzong ...
+        move.w  #9,-(a7)        ; Cconws(msg.l)
+        trap    #1
+        addq    #6,a7
 
-	;; Cconws()
-	pea	msgA(pc)
-	move.w	#$09,-(a7)
-	trap	#1
-	addq	#6,a7
-	
-	;; Init player
-	moveq	#MIXERID,d0
-	bsr	music
+        ;; Fill stacks with a value to detect stack usage
+        llea    mytop,a6
+        move.l  #$55555555,d4
+        move.l  d4,d5
+        move.l  d4,d6
+        move.l  d4,d7
+        move.w  #(mytop-mybot)/16-1,d1
+fill:   movem.l d4-d7,-(a6)
+        dbf     d1,fill
 
-	;; Cconws()
-	pea	msgB(pc)
-	move.w	#$09,-(a7)
-	trap	#1
-	addq	#6,a7
-	
-	;; ----------------------------------------
-	move.w	#$2700,sr
-	
- 	move.b	#$12,d0		; Disable mouse
-	bsr	put_ikbd
+        ;; Become superuser
+        clr.l   -(a7)           ; null -> superuser
+        move.w  #32,-(a7)       ; Super(ssp.l)
+        trap    #1
+        addq    #6,a7
 
- 	move.b	#$15,d0		; Disable joystick
-	bsr	put_ikbd
-	
-	clr.b	$fffffa07.w	; IERA
-	clr.b	$fffffa09.w	; IERB
-	clr.b	$fffffa13.w	; IMRA
-	clr.b	$fffffa15.w	; IMRB
-	bclr.b	#3,$fffffa17.w	; AEI
-	
-	clr.b	$fffffa19.w	; TA/CR
-	clr.b	$fffffa1d.w	; TCD/CR
+        ;; Save stack pointers
+        lea     vars(pc),a6
+        move.l  d0,susp(a6)     ; returned by super()
 
-	lea	myvbl(pc),a1	; VBL
-	move.l	a1,$70.w	;
-	
-	lea	timerc(pc),a1
-	move.l	a1,$114.w
-	moveq	#$20,d0		 ; set #5
-	move.b	d0,$fffffa07.w	 ; IERA
-	move.b	d0,$fffffa13.w	 ; IMRA
-	move.b	d0,$fffffa09.w	 ; IERB
-	move.b	d0,$fffffa15.w	 ; IMRB
-	
-	move.b	#$c0,$fffffa23.w ; for 200hz timer-c
-	move.b  #$50,$fffffa1d.w ; 2457600/64/192 -> 200hz
-	not.b	d0		 ; clr #5
-	move.b	d0,$fffffa11.w	 ; ISRB
-	
-	;; ----------------------------------------
+        ;; Setup new stacks
+        move.l  a6,a1
+        adda.l  #myusp-vars,a1  ; a1: myusp
+        move.l  a1,usp
+        adda.l  #myssp-myusp,a1 ; a1: myssp
+        move.l  a1,a7
 
-	stop	#$2300
+        ;; Save stuff
+        move.w  $ffff8240.w,s240(a6)
+        move.b  $484.w,s484(a6)
+        and.b   #~3,$484.w      ; Remove click and repeat
+
+        ;; Init player
+        moveq   #MIXERID,d0
+        bsr     music
+
+        ;; Wait for key message
+        pea     msgB(pc)        ; >> Press ...
+        move.w  #9,-(a7)        ; Cconws(msg.l)
+        trap    #1
+        addq    #6,a7
+
+        move.l  $4ba.w,hz200(a6)
 mainloop:
-	btst	#1,$fffffc00.w
-	beq	mainloop
-	
-	move.b	$fffffc02.w,d0
-	cmp.b	#$39,d0
-	bne	mainloop
-	
+        ;; Test console input device (kbd)
+        move.w  #2,-(a7)        ; CON: (kbd)
+        move.w  #1,-(a7)        ; Bconstat(dev.w)
+        trap    #13
+        addq.w  #4,a7
+        tst.w   d0
+        beq.s   nokey
+
+        ;; Read console input device (kbd)
+        move.w  #2,-(a7)        ; CON: (kbd)
+        move.w  #2,-(a7)        ; Bconin(dev.w)
+        trap    #13             ; => d0.l: scan.w | code.w
+        addq.w  #4,a7
+        cmp.w   #27,d0          ; <ESC>?
+        beq     exitloop
+        cmp.w   #32,d0          ; <SPC>?
+        beq.s   exitloop
+
+nokey:
+        move.l  $4ba.w,d0
+        cmp.l   vars+hz200(pc),d0
+        beq.s   mainloop
+        lea     vars(pc),a6
+        move.l  d0,hz200(a6)
+
+        ;; Run music player
+        move.w  #$F55,$ffff8240.w
+        bsr     music+8
+        move.w  #$FFF,$ffff8240.w
+
+        bra.s   mainloop
+
 exitloop:
-	
-	;; Stop timers and musics
-	move	#$2700,sr
-	bsr	music+4
+        pea     msgC(pc)        ; >> Restoring
+        move.w  #$09,-(a7)
+        trap    #1
+        addq.w  #6,a7
 
-	;; Save vectors and MFP setup
-	move	#$2700,sr
-	lea	vars(pc),a0
-	move.l	s070(a0),$070.w	; VBL
-	move.l	s114(a0),$114.w	; timer-c
-	move.l	s134(a0),$134.w	; timer-a
-	move.b	sa07(a0),$fffffa07.w
-	move.b	sa09(a0),$fffffa09.w
-	move.b	sa13(a0),$fffffa13.w
-	move.b	sa15(a0),$fffffa15.w
-	move.b	sa17(a0),$fffffa17.w
-	move.b	s484(a0),$484.w
-	
-	stop	#$2300
-	bsr	clear_acias
+        ;; Stop timers and musics
+        bsr     music+4
 
- 	move.b	#$8,d0		; Enable mouse
-	bsr	put_ikbd
+        ;; Save vectors and MFP setup
+        lea     vars(pc),a6
+        move.b  s484(a6),$484.w
+        move.w  s240(a6),$ffff8240.w
 
-	move.w	#$fff,$ffff8240.w
-		
-	;; User()
-	move.w	#32,-(a7)
-	trap	#1
-	addq	#6,a7
+        stop    #$2300
 
-	;; Cconws()
-	pea	msgD(pc)
-	move.w	#$09,-(a7)
-	trap	#1
-	addq	#6,a7
-	
-	;; Pterm()
-	clr	-(a7)
-	trap	#1
-	illegal
+        ;; Back to user mode
+        move.l  susp(a6),-(a7)  ; previous stack
+        move.w  #32,-(a7)       ; Super(ssp.l)
+        trap    #1
+        addq    #6,a7
 
-myvbl:	move.w	#$755,$ffff8240.w
-	rte
+        ;; Check for memory commando
+        llea    prot1,a6
+        movem.l (a6),d0-d1
+        cmp.l   #"Ben/",d0
+        sne     d0
+        cmp.l   #"OVR!",d1
+        sne     d1
+        or.b    d0,d1
+        beq.s   usage
 
-;;; *******************************************************
-;;; 200hz music player
-;;; 
-timerc:
-	move.w	#$2300,sr
-	movem.l	d0-d1/a0-a1,-(a7)
-	move.w	#$566,$ffff8240.w
-	bsr	music+8
-	move.w	#$fff,$ffff8240.w
-	movem.l	(a7)+,d0-d1/a0-a1
-	rte
+        ;; CRITICAL error
+        pea     msgE(pc)        ; >> CRITICAL ERROR ...
+        move.w  #9,-(a7)        ; Cconws(msg.l)
+        trap    #1
+        addq    #6,a7
+        bra     wait_message
 
-;;; *******************************************************
-;;; Write a command to ikbd
-;;;
-;;;  Inp: d0.b command to write
-;;;
-put_ikbd:
-	btst	#1,$fffffc00.w
-	beq.s	put_ikbd
-	move.b	d0,$fffffc02.w
-	rts
+;;; a0.l : bot
+;;; a1,l : top
+;;; d0.l : => usage
+;;; d1.l : trashed
+chkstack:
+        moveq   #0,d0
+        move.l  a1,d1
+        sub.l   a0,d1
+        ble.s   .wtf
 
-;;; *******************************************************
-;;; Reset keyboard
-;;;
-clear_acias:
-	moveq	#$13,d0		; disable transfert
-	bsr	put_ikbd
-	
-.flushing:
-	moveq.l	#-95,d0		; 1010 0001
-	and.b	$fffffc00.w,d0
-	beq.s	.flushed
-	move.b	$fffffc02.w,d0
-	bra.s	.flushing
-.flushed:
-	moveq	#$11,d0		; enable transfert
-	bsr	put_ikbd
-	rts
-	
-	rsreset
-s070:	rs.l	1
-s114:	rs.l	1
-s134:	rs.l	1
-sa07:	rs.b	1
-sa09:	rs.b	1
-sa13:	rs.b	1
-sa15:	rs.b	1
-sa17:	rs.b	1
-s484:	rs.b	1
-varsz:	rs.b	0
+        moveq   #$55,d0
+        subq.w  #1,d1
+.lp:
+        cmp.b   (a0)+,d0
+        dbne    d1,.lp
+        sne     d0
+        neg.b   d0
+        add.l   a1,d0
+        sub.l   a0,d0
+.wtf:
+        rts
 
-vars:	ds.b	varsz
-	
-msgA:	dc.b	27,"E"
-	dc.b	"Zingzong quartet music player",13,10,10
-	dc.b	"By Ben/OVR 2017",13,10,10
-	dc.b	">> Please wait initializing <<",0
-msgB:	dc.b	13
-	dc.b	">> Press <SPC> to exit <<",27,"K",0
-msgC:	dc.b	13
-	dc.b	">> Restoring <<",27,"K",0
-msgD:	dc.b	27,"E","Bye !",0
-	
-	even
+xdigit: dc.b    "0123456789ABCDEF"
 
-music:	incbin	"test.bin"
+;;; a0.l : text
+;;; d0.w : value
+;;; d1.l,d2.l : trashed
+hexa:   moveq   #3,d2
+.lp:
+        moveq   #15,d1
+        rol.w   #4,d0
+        and.b   d0,d1
+        move.b  xdigit(pc,d1.w),(a0)+
+        dbf     d2,.lp
+        rts
+
+usage:
+        llea    mybot,a0
+        llea    myssp,a1
+        bsr.s   chkstack
+        lea     sspV(pc),a0
+        bsr.s   hexa
+
+        llea    myssp,a0
+        llea    myusp,a1
+        bsr.s   chkstack
+        lea     uspV(pc),a0
+        bsr.s   hexa
+
+stack_message:
+        pea     msgF(pc)        ; >> stack usage
+        move.w  #9,-(a7)        ; Cconws(msg.l)
+        trap    #1
+        addq    #6,a7
+
+wait_message:
+        pea     msgB(pc)        ; >> Press ...
+        move.w  #9,-(a7)        ; Cconws(msg.l)
+        trap    #1
+        addq    #6,a7
+
+wait:
+        ;; Read console input device (kbd)
+        move.w  #2,-(a7)        ; CON: (kbd)
+        move.w  #2,-(a7)        ; Bconin(dev.w)
+        trap    #13             ; => d0.l: scan.w | code.w
+        addq.w  #4,a7
+        cmp.w   #27,d0          ; <ESC>?
+        beq.s   exit
+        cmp.w   #32,d0          ; <SPC>?
+        bne.s   wait
+
+exit:
+        ;; Exit message
+        pea     msgD(pc)        ; >> Bye !
+        move.w  #$09,-(a7)      ; Cconws()
+        trap    #1
+        addq    #6,a7
+
+        ;; Return GEM/caller
+        clr     -(a7)           ; Pterm()
+        trap    #1
+        illegal                 ; Safety net
+
+        ;; Variable definitions
+        rsreset
+hz200:  rs.l    1
+susp:   rs.l    1
+s240:   rs.w    1
+s484:   rs.b    1
+varsz:  rs.b    0
+
+        ;; Variable allocations
+vars:   ds.b    varsz
+
+
+        ;; Text messages
+msgA:   dc.b    27,"E"
+        dc.b    "Zingzong quartet music player",13,10,10
+        dc.b    "By Ben/OVR 2017",13,10,10
+        dc.b    ">> Please wait initializing <<"
+        dc.b    0
+
+msgC:   dc.b    13
+        dc.b    ">> Restoring <<",27,"K"
+        dc.b    0
+
+msgD:   dc.b    27,"E"
+        dc.b    "Bye !"
+        dc.b    0
+
+msgE:   dc.b    27,"E"
+        dc.b    ">> CRITICAL ERROR <<",13,10
+        dc.b    "Stack or buffer overflow",10,10
+        dc.b    0
+
+msgB:   dc.b    13
+        dc.b    ">> Press <ESC> or <SPC> to exit <<",27,"K"
+        dc.b    0
+
+msgF:   dc.b    13
+        dc.b    "Stack usage: USP=$"
+uspV:   dc.b    "0000 / SSP=$"
+sspV:   dc.b    "0000",10,10
+        dc.b    0
+
+
+        ;; Music player
+        even
+music:  incbin  "test.bin"
+
+        ;; Memory commando check
+        even
+prot1:  dc.b    "Ben/OVR!"
+
+        ;; Stacks buffer
+mybot:
+        ;; Superuser stack
+        ds.l    128
+myssp:
+        ;; User stack
+        ds.l    32
+myusp:
+mytop:

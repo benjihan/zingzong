@@ -234,6 +234,10 @@ song_init(song_t * song)
       break;
 
     default:
+#ifndef NDEBUG
+      collapse_all(loops, ssp);
+      dmsg("%c (truncated) duration: %lu ticks\n",'A'+k, LU(loops[0].len));
+#endif
       emsg("song: %c[%hu] invalid sequence -- %04hx-%04hx-%08lx-%08lx\n",
            'A'+k, HU(seq_idx(song->seq[k],seq)),
            HU(cmd), HU(len), LU(stp), LU(par));
