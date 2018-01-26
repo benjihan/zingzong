@@ -164,6 +164,11 @@ ZZ_EXTERN_C
 int zz_memcmp(const void *, const void *, zz_u32_t);
 #endif
 
+#ifndef zz_memxla
+ZZ_EXTERN_C
+void * zz_memxla(void *, const void *, const uint8_t *, zz_u32_t);
+#endif
+
 /**
  * @}
  */

@@ -10,7 +10,7 @@
         .arch   68000
 
         .section .text
-        .global m68k_memcmp,m68k_memset,m68k_memcpy
+        .global m68k_memcmp,m68k_memset,m68k_memcpy,m68k_memxla
 
 /// --------------------------------------------------------
 ///                   a0      a1     d1/d0
@@ -27,8 +27,6 @@ m68k_memcmp:
 
         subq.w  #1,d0
         swap    d0
-        addq.w  #1,d0
-
 4:      swap    d0
 1:      cmpm.b  (a1)+,(a0)+
         dbne    d0,1b
@@ -41,8 +39,7 @@ m68k_memcmp:
 
 3:      || continue
         swap    d0
-        subq.w  #1,d0
-        bne.s   4b
+        dbf     d0,4b
 
 0:      || a == b
         moveq   #0,d0
@@ -70,9 +67,9 @@ m68k_memset:
         btst    #0,d1
         beq.s   1f
 
+        || Aligning
         move.w  a1,d1
         move.b  d1,(a0)+
-
         subq.l  #1,d0
         beq.s   0f
 
@@ -91,7 +88,6 @@ m68k_memset:
 
         subq    #1,d0
         swap    d0
-        addq    #1,d0
 2:      swap    d0
 1:      move.l  d1,(a0)+
         move.l  d1,(a0)+
@@ -99,8 +95,7 @@ m68k_memset:
         move.l  d1,(a0)+
         dbf     d0,1b
         swap    d0
-        subq.w  #1,d0
-        bne.s   2b
+        dbf     d0,2b
 
 5:      move.w  a1,d0
         btst    #3,d0
@@ -130,6 +125,7 @@ m68k_memcpy:
         move.l  12(a7),d0       | d0.l: cnt
         beq     0f
 
+m68k_copy:
         movem.l 4(a7),a0-a1
         move.l  a1,d1
         sub.l   a0,d1
@@ -197,15 +193,13 @@ fast_bcpy:
         movem.l d2-d7/a2-a3,-(a7)
         subq.w  #1,d0
         swap    d0
-        addq.w  #1,d0
 2:      swap    d0
 1:      lea     -32(a1),a1
         movem.l (a1),d2-d7/a2-a3
         movem.l d2-d7/a2-a3,-(a0)
         dbf     d0,1b
         swap    d0
-        subq.w  #1,d0
-        bne.s   2b
+        dbf     d0,2b
         movem.l (a7)+,d2-d7/a2-a3
         bra.s   cont_bcpy
         || ----------------------------------------
@@ -213,13 +207,11 @@ fast_bcpy:
 slow_bcpy:
         subq.w  #1,d0
         swap    d0
-        addq.w  #1,d0
 2:      swap    d0
 1:      move.b  -(a1),-(a0)
         dbf     d0,1b
         swap    d0
-        subq.w  #1,d0
-        bne.s   2b
+        dbf     d0,2b
         move.l  a0,d0
         rts
 
@@ -283,28 +275,83 @@ fast_fcpy:
         movem.l d2-d7/a2-a3,-(a7)
         subq.w  #1,d0
         swap    d0
-        addq.w  #1,d0
 2:      swap    d0
 1:      movem.l (a1)+,d2-d7/a2-a3
         movem.l d2-d7/a2-a3,(a0)
         lea     32(a0),a0
         dbf     d0,1b
         swap    d0
-        subq.w  #1,d0
-        bne.s   2b
+        dbf     d0,2b
         movem.l (a7)+,d2-d7/a2-a3
         bra.s   cont_fcpy
         || ----------------------------------------
 
 slow_fcpy:
-        subq    #1,d0
+        subq.w  #1,d0
         swap    d0
-        addq.w  #1,d0
 2:      swap    d0
 1:      move.b  (a1)+,(a0)+
         dbf     d0,1b
         swap    d0
+        dbf     d0,2b
+0:      move.l  4(a7),d0
+        rts
+
+/// --------------------------------------------------------
+///                   a0      a1     d1/d0
+/// int m68k_memxla(astr.l, bstr.l, tbl.l, cnt.l)
+///                 4(a7)   8(a7)   12(a7) 16(a7)
+
+m68k_memxla:
+        move.l  16(a7),d0
+        beq.s   0f
+
+        move.l  12(a7),d1
+        beq     m68k_copy       || using a common copy
+
+        movem.l 4(a7),a0-a1
+
+        pea     (a2)
+        move.l  d1,a2
+        moveq   #0,d1
+
+        cmp.l   a0,a1
+        bhi.s   m68k_fxla
+
+        || ----------------------------------------
+        || Backward translation
+        || ----------------------------------------
+m68k_bxla:
+        adda.l  d0,a0
+        adda.l  d0,a1
+
         subq.w  #1,d0
-        bne.s   2b
+        swap    d0
+2:      swap    d0
+1:      move.b  -(a1),d1
+        move.b  0(a2,d1.w),-(a0)
+        dbf     d0,1b
+        swap    d0
+        dbf     d0,2b
+
+        move.l  (a7)+,a2
+        move.l  a0,d0
+        rts
+
+
+        || ----------------------------------------
+        || Forward translation
+        || ----------------------------------------
+m68k_fxla:
+        subq.w  #1,d0
+        swap    d0
+2:      swap    d0
+1:      move.b  (a1)+,d1
+        move.b  0(a2,d1.w),(a0)+
+        dbf     d0,1b
+        swap    d0
+        dbf     d0,2b
+
+        move.l  (a7)+,a2
 0:      move.l  4(a7),d0
         rts

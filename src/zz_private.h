@@ -391,6 +391,11 @@ ZZ_EXTERN_C
 void * m68k_memcpy(void * restrict, const void *, zz_u32_t);
 #define zz_memcpy(A,B,C) m68k_memcpy((A),(B),(C))
 
+ZZ_EXTERN_C
+void * m68k_memxla(void * restrict, const void *,
+                   const uint8_t *, zz_u32_t);
+#define zz_memxla(A,B,C,D) m68k_memxla((A),(B),(C),(D))
+
 #else /* __m68k__ */
 
 static inline u32_t always_inline c_mulu(u16_t a, u16_t b)
