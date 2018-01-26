@@ -87,10 +87,12 @@ zz_err_t zz_memchk_calls(void)
   return E_OK;
 }
 
+
 static inline memchk_t * memchk_of(const void * const ptr)
 {
   return  (memchk_t *) ( (intptr_t) ptr - XTRA );
 }
+
 
 zz_err_t zz_memchk_block(const void * p)
 {
@@ -148,6 +150,7 @@ static void * zz_libc_new(u32_t n)
   return memchk->buf;
 }
 
+
 static void zz_libc_del(void * p)
 {
   zz_assert (p);
@@ -174,7 +177,6 @@ static zz_del_t delf = zz_libc_del;
 #endif /* NO_LIBC */
 
 
-
 /* **********************************************************************
    Generic mem allocation functions
 */
@@ -192,6 +194,7 @@ static void * mem_alloc(u32_t size)
     mem = newf(size);
   return mem;
 }
+
 
 static void mem_free(void * mem)
 {
@@ -242,6 +245,7 @@ void zz_memdel(void * restrict pmem)
   }
 }
 
+
 /* Install memory handlers. */
 void zz_mem(zz_new_t user_newf, zz_del_t user_delf)
 {
@@ -251,13 +255,48 @@ void zz_mem(zz_new_t user_newf, zz_del_t user_delf)
   delf = user_delf;
 }
 
+
+/* GB: /!\ ORDER IS IMPORTANT HERE /!\
+ *
+ *     We don't want to un-define a function before when we are going
+ *     to use it.
+ */
+
+#undef zz_memxla
+void * zz_memxla(void * restrict _d, const void * _s,
+                 const uint8_t *xla, zz_u32_t n)
+{
+#ifdef __m68k__
+  asm volatile ("illegal \n\t"); /* should be calling m68k_memxla() */
+  return _d;
+#elif defined NO_LIBC
+  if (n) {
+    if (!xla)
+      return zz_memcpy(_d,_s,n);
+    else {
+      uint8_t * d = _d; const uint8_t * s = _s;
+      if (d <= s)
+        do { *d++ = xla[ *s++ ]; } while (--n);
+      else {
+        d += n, s += n;
+        do { *--d = xla[ *--s ]; } while (--n);
+      }
+    }
+  }
+  return _d;
+#else
+  wmsg("calling %s() instead of %s()\n", __func__, __func__+3);
+  return memmove(_d,_s,n);
+#endif
+}
+
 #undef zz_memcpy
 void * zz_memcpy(void * restrict _d, const void * _s, zz_u32_t n)
 {
-#ifdef NO_LIBC
 #ifdef __m68k__
-//  asm volatile ("trap #4 \n\t"); /* should be calling m68k_memcpy() */
-#endif
+  asm volatile ("illegal \n\t"); /* should be calling m68k_memcpy() */
+  return _d;
+#elif defined NO_LIBC
   if (n) {
     uint8_t * d = _d; const uint8_t * s = _s;
     if (d < s)
@@ -274,9 +313,7 @@ void * zz_memcpy(void * restrict _d, const void * _s, zz_u32_t n)
 #endif
 }
 
-/* GB: Order is important here. We don't want to un-define zz_memset
- *     when we are going to use it.
- */
+
 #undef zz_memclr
 void * zz_memclr(void * restrict _d, zz_u32_t n)
 {
@@ -291,10 +328,10 @@ void * zz_memclr(void * restrict _d, zz_u32_t n)
 #undef zz_memset
 void * zz_memset(void * restrict _d, int v, zz_u32_t n)
 {
-#ifdef NO_LIBC
 #ifdef __m68k__
-//  asm volatile ("trap #2 \n\t"); /* should be calling m68k_memset() */
-#endif
+  asm volatile ("illegal \n\t"); /* should be calling m68k_memset() */
+  return _d;
+#elif defined NO_LIBC
   uint8_t * restrict d = _d;
   while (n--) *d++ = v;
   return _d;
@@ -308,10 +345,10 @@ void * zz_memset(void * restrict _d, int v, zz_u32_t n)
 #undef zz_memcmp
 int zz_memcmp(const void *_a, const void *_b, zz_u32_t n)
 {
-#ifdef NO_LIBC
 #ifdef __m68k__
-//  asm volatile ("trap #3 \n\t"); /* should be calling m68k_memcmp() */
-#endif
+  asm volatile ("illegal \n\t"); /* should be calling m68k_memcmp() */
+  return 0;
+#elif defined NO_LIBC
   int8_t c = 0;
   const uint8_t *a = _a, *b = _b;
   if (n) do {
@@ -323,3 +360,4 @@ int zz_memcmp(const void *_a, const void *_b, zz_u32_t n)
   return memcmp(_a,_b,n);
 #endif
 }
+

@@ -450,37 +450,33 @@ sort_inst(const inst_t inst[], uint8_t idx[], u32_t iuse)
   return nbi;
 }
 
-static void
-pcmcpy(uint8_t * dst, uint8_t * src, u16_t len, const uint8_t *tohw)
-{
-  zz_assert( dst >= src );
-  zz_assert( len );
-  if (!tohw) {
-    zz_memcpy(dst,src,len);
-  } else {
-    dst += len; src += len;
-    do {
-      *--dst = tohw[ *--src ];
-    } while (--len);
-  }
-}
+#define pcmcpy(D,S,L,T) zz_memxla((D),(S),(T),(L))
 
 static void
-unroll_loop(uint8_t * dst, uint8_t * end, i32_t lpl, const uint8_t nul)
+unroll_loop(uint8_t * dst, uint8_t * const end, i32_t lpl, const uint8_t nul)
 {
   zz_assert( dst < end );
   if (lpl)
+#ifdef __m68k__
+    asm (
+      "    subq.w  #1,%[cnt]            \n"
+      "    swap    %[cnt]               \n"
+      "    addq.w  #1,%[cnt]            \n"
+      "2:  swap    %[cnt]               \n"
+      "1:  move.b  (%[src])+,(%[dst])+  \n"
+      "    dbf     %[cnt],1b            \n"
+      "    swap    %[cnt]               \n"
+      "    subq.w  #1,%[cnt]            \n"
+      "    bne.s   2b                   \n\t"
+      :: [dst] "a" (dst), [src] "a" (dst-lpl), [cnt] "d" (end-dst));
+#else
     do {
       *dst = dst[-lpl];
     } while (++dst < end);
-  else {
-    do {
-      *dst = nul;
-    } while (++dst < end);
-  }
-  zz_assert( dst == end );
+#endif
+  else
+    zz_memset(dst,nul,end-dst);
 }
-
 
 zz_err_t
 vset_unroll(zz_vset_t const vset, const uint8_t *tohw)
