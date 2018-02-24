@@ -201,7 +201,7 @@ override LDFLAGS  += $(gb_LDFLAGS)
 zz_play.o: override CPPFLAGS += $(PACKAGE_CPPFLAGS)
 
 zz_dll_src = $(zz_vfs_src)
-zz_exe_src = $(zz_out_src) $(zz_vfs_src)
+zz_exe_src = $(zz_out_src) $(zz_vfs_src) zingzong.c
 zz_lib_src = $(zz_mix_src) $(zz_pla_src) $(zz_zzz_src)
 
 zz_dll_obj = $(zz_dll_src:.c=.o)
@@ -249,6 +249,7 @@ make.clean make.depend make.dist
 dist_rsc_lst = zingzong.rc resource.h zingzong.ico
 dist_amp_lst = README.md Makefile dialogs.c in_zingzong.c	\
 in_zingzong.h in_zingzong.nsi
+
 dist_68k_lst = README.md Makefile m68k_mem.S m68k_mix.S m68k_muldiv.h	\
 mix_aga.c mix_ata.c mix_ata.h mix_fal.c mix_ste.c mix_stf.c player.c	\
 player_start.S sc68.x sc68_debug.h sc68_start.S song.S test_sc68.s	\
