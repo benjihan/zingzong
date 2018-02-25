@@ -841,8 +841,8 @@ int main(int argc, char *argv[])
          : timestr( max_ms == ZZ_EOF ? info.len.ms: max_ms),
          HU(info.len.rate),
          out->uri, LU(out->hz),
-         basename(info.set.uri), HU(info.set.khz),
-         basename(info.sng.uri), HU(info.sng.khz )
+         basename((char*)info.set.uri), HU(info.set.khz),
+         basename((char*)info.sng.uri), HU(info.sng.khz )
       );
 
     if (*info.tag.artist)
