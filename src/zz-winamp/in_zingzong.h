@@ -8,7 +8,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2017 Benjamin Gerard AKA Ben/OVR.
+ * Copyright (c) 2017-2018 Benjamin Gerard AKA Ben/OVR.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
