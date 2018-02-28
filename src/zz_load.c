@@ -317,38 +317,19 @@ vset_guess(zz_play_t P, const char * songuri)
     case -2: {
       /* Last resort filenames. */
       static const char * vnames[] = { "voice.set", "SMP.set" };
-      suf_ext = 0;
-
-      if ( e_type & e_type_4v )
-        suf_ext = vnames[0];            /* ".4v" => "voice.set"  */
-      else if ( e_type & e_type_qt )
-        suf_ext = vnames[1];            /* ".qt?" => "SMP.set" */
-      else
-        suf_ext = vnames[idx & 1];      /* .* => Alternate */
-
-      if (!case_sensitive) {
-        if ( ! (e_type & (e_type_4v|e_type_qt) ) && idx == 0 )
-          method = -2;                   /* *-1* on next loop */
-      }
-      else {
-        if (idx & 2) tr ^= lc_to_uc;
-        if ( ((e_type & (e_type_4v|e_type_qt)) && idx == 0) || idx < 3 )
-          method = -2;                    /* *-1* on next loop */
-      }
-
-      if (suf_ext) {
-        zz_memcpy(s,songuri,inud);
-        for (i=0; (c = suf_ext[i]); ++i)
-          s[inud+i] = c - (islower(c) ? tr : 0);
-        s[inud+i] = 0;
-      }
+      if (idx >= 4) { next_method=0; break; }
+      suf_ext = vnames[(idx>>1)&1];
+      zz_memcpy(s,songuri,inud);
+      for (i=0; (c = suf_ext[i]); ++i)
+        s[inud+i] = c - (islower(c) ? tr : 0);
+      s[inud+i] = 0;
     } break;
 
     }
 
     if (*s) {
-      dmsg("method: #%hu:%hu, next: #%hu:%hu tr:%02hx\n",
-           HU(method), HU(idx), HU(next_method), HU(next_idx), HU(tr));
+      dmsg("method: #%hi:%hu, next: #%hi:%hu tr:%02hx\n",
+           HI(method), HU(idx), HI(next_method), HU(next_idx), HU(tr));
       if (E_OK == try_vset_load(&P->vset, s))
         return E_OK;
     }
