@@ -265,7 +265,7 @@ sspV:   dc.b    "0000",10,10
 
         ;; Music player
         even
-music:  incbin  "test.bin"
+music:	incbin  "test.bin"
 
         ;; Memory commando check
         even

@@ -117,6 +117,7 @@ song_init(song_t * song)
   u16_t off, size;
   u8_t k, cur=0, ssp=0/* , max_ssp=0 */;
 
+  sequ_t * lvs;                         /* last valid sequence */
   loop_stack_t loops;
 
   /* sequence to use in case of empty sequence to avoid endless loop
@@ -141,7 +142,7 @@ song_init(song_t * song)
        k<4 && off<size;
        off += 12)
   {
-    sequ_t * const seq = (sequ_t *)(song->bin->ptr+off-11);
+    sequ_t *       seq = (sequ_t *)(song->bin->ptr+off-11);
     u16_t    const cmd = U16(seq->cmd);
     u16_t    const len = U16(seq->len);
     u32_t    const stp = U32(seq->stp);
@@ -155,6 +156,7 @@ song_init(song_t * song)
       ssp = 0;                      /* loop stack pointer         */
       loops[0].len = 0;             /*  */
       loops[0].has = 0;             /* #0:note #1:wait            */
+      lvs = 0;                      /* last valid sequence        */
     }
 
     switch (cmd) {
@@ -234,6 +236,12 @@ song_init(song_t * song)
       break;
 
     default:
+      dmsg("%c[%hu] invalid sequence -- %04hx-%04hx-%08lx-%08lx\n",
+           'A'+k, HU(seq_idx(song->seq[k],seq)),
+           HU(cmd), HU(len), LU(stp), LU(par));
+      seq = 0;                          /* mark invalid */
+      break;
+
 #ifndef NDEBUG
       collapse_all(loops, ssp);
       dmsg("%c (truncated) duration: %lu ticks\n",'A'+k, LU(loops[0].len));
@@ -243,6 +251,11 @@ song_init(song_t * song)
            HU(cmd), HU(len), LU(stp), LU(par));
       goto error;
     }
+
+    if (seq)
+      lvs = seq;
+    else
+      ;
   }
 
   /* dmsg("loop-depth: %hu\n",HU(max_ssp)); */
