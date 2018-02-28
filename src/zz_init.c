@@ -117,7 +117,7 @@ song_init(song_t * song)
   u16_t off, size;
   u8_t k, cur=0, ssp=0/* , max_ssp=0 */;
 
-  sequ_t * lvs;                         /* last valid sequence */
+  sequ_t * out;
   loop_stack_t loops;
 
   /* sequence to use in case of empty sequence to avoid endless loop
@@ -156,7 +156,7 @@ song_init(song_t * song)
       ssp = 0;                      /* loop stack pointer         */
       loops[0].len = 0;             /*  */
       loops[0].has = 0;             /* #0:note #1:wait            */
-      lvs = 0;                      /* last valid sequence        */
+      out = seq;                    /* on the fly patch */
     }
 
     switch (cmd) {
@@ -252,10 +252,10 @@ song_init(song_t * song)
       goto error;
     }
 
-    if (seq)
-      lvs = seq;
-    else
-      ;
+    if (seq == out)
+      ++out;
+    else if (seq)
+      *out++ = *seq;
   }
 
   /* dmsg("loop-depth: %hu\n",HU(max_ssp)); */
