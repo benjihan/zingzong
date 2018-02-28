@@ -178,7 +178,7 @@ dri_%.elf: START_ADDR = 00000000
 dri_%.elf: LDFLAGS = $(DRIFLAGS)
 
 # ----------------------------------------------------------------------
-#  Player
+#  Binary player
 # ----------------------------------------------------------------------
 
 zingzong player: zingzong.bin
@@ -189,11 +189,11 @@ MAPFLAGS = $(call maybe-wl,-Map=$*.map)
 #MAPFLAGS = $(error MAPFLAGS ?)
 
 .PRECIOUS: zingzong.elf
-zingzong.elf: START_SYMB = player_start
+zingzong.elf: START_SYMB = zingzong
 zingzong.elf: START_ADDR = C0000000
 zingzong.elf: LDFLAGS    = -T $(srcdir)/zingzong.x $(ELFFLAGS)
-zingzong.elf: $(addsuffix .o,player_start m68k_mix $(com) $(zzz)) $(drivers)
-player_start.o: $(srcdir)/zingzong.x # GB: force rebuild when script change
+zingzong.elf: $(addsuffix .o,stub m68k_mix $(com) $(zzz)) $(drivers)
+stub.o: $(srcdir)/zingzong.x # GB: force rebuild when script change
 
 # ----------------------------------------------------------------------
 #  sc68 test file
@@ -202,14 +202,14 @@ player_start.o: $(srcdir)/zingzong.x # GB: force rebuild when script change
 CLEAN_TARGETS += clean-test
 
 CLEAN_TEST = *.o *.dri *.elf test_*.tos *.map song.dat vset.dat	\
-test.sc68 song.dep
+test.sc68 test.sndh song.dep
 
 .PHONY: clean-test
 clean-test:
 	@rm -f -- $(CLEAN_TEST) && echo "$@ done"
 
 .PHONY: test
-test: test.sc68
+test: test.sc68 test.sndh
 
 test_o = $(addsuffix .o,sc68_start $(com) $(zzz))
 .PRECIOUS: test.elf
@@ -251,6 +251,10 @@ VASMBIN = $(VASMMOT) -Fbin -o
 VASMTOS = $(VASMMOT) -Ftos -o
 
 %.sc68: %_sc68.s test.bin
+	echo "[ASM] $@";\
+	$(VASMBIN) $@ $<
+
+%.sndh: %_sndh.s zingzong.bin
 	echo "[ASM] $@";\
 	$(VASMBIN) $@ $<
 

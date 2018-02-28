@@ -9,7 +9,7 @@ SECTIONS
 {
   .text 0x10000 :
   {
-    player_start.o(.text)
+    stub.o(.text)
     player.o(.text)
     zz_*.o(.text)
     dri_*.elf(.text)

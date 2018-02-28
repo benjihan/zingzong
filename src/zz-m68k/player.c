@@ -4,9 +4,11 @@
  * @date    2017-09
  * @brief   zingzong m68k player entry points.
  *
- * void player_init(bin_t * song, bin_t * vset);
+ * long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr);
  * void player_kill(void);
  * void player_play(void);
+ * void *player_internal(void);
+ * long player_status(void);
  */
 
 #include "../zz_private.h"
@@ -19,7 +21,7 @@ int vset_init(zz_vset_t const vset);
 
 static play_t play;
 static bin_t songbin, vsetbin;
-static volatile zz_err_t ready, ecode;
+static volatile zz_err_t ready;
 static void * pcm = (void *)1;
 
 static bin_t * set_bin(bin_t * bin, bin_t *src, int16_t off)
@@ -58,7 +60,17 @@ logfunc(zz_u8_t chan, void * user, const char *fmt, va_list list)
 # define LOGFUNC 0
 #endif
 
-void player_init(bin_t * song, bin_t * vset, uint32_t d0)
+void * player_internal(void)
+{
+  return &play;
+}
+
+long player_status(void)
+{
+  return ready;
+}
+
+long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
 {
   zz_log_fun(LOGFUNC,0);
   zz_mem(newf,delf);
@@ -77,9 +89,8 @@ void player_init(bin_t * song, bin_t * vset, uint32_t d0)
   if (!vset->ptr) vset->ptr = vset->_buf;
   play.vset.bin = set_bin(&vsetbin, vset, 222);
 
-
-  d0 = (uint8_t)(d0-1);       /* 0->DEF 1->AGA 2->STF 3->STE 4->FAL */
-  ready =
+  return
+    ready =
     1
     && ! song_init_header(&play.song, song->ptr)
     && ! song_init(&play.song)
@@ -87,8 +98,8 @@ void player_init(bin_t * song, bin_t * vset, uint32_t d0)
     && ! vset_init_header(&play.vset, vset->ptr)
     && ! vset_init(&play.vset)
     /* && ( zz_mute(&play,0,0xF-8) || 1 ) */
-    && ! zz_init(&play,0,0)             /* rate,duration */
-    && ! zz_setup(&play,d0,0)           /* mixer,spr */
+    && ! zz_init(&play,0,0)               /* rate,duration */
+    && ! zz_setup(&play,(uint8_t)(dri-1),spr) /* mixer,spr */
     ;
 }
 
@@ -106,7 +117,7 @@ void player_play(void)
       n = zz_play(&play,pcm,n);
     if ( n < 0 ) {
       ready = 0;
-      ecode = -n;
+      /* ecode = -n; */
       BREAKP;
     }
   }

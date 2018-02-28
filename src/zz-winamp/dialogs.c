@@ -69,7 +69,7 @@ static char about_text[] =
 #endif
   "Version " PACKAGE_VERSION "\n"
   "\n"
-  "\xa9" "2017 Benjamin Gerard AKA Ben/OVR\n";
+  "\xa9" "2017-2018 Benjamin Gerard AKA Ben/OVR\n";
 
 void AboutDialog(HINSTANCE hinst, HWND parent)
 {

@@ -50,7 +50,7 @@ not very robust and lake a clear identifier.
 
 ## License and copyright
 
-  * Copyright (c) 2017 Benjamin Gerard AKA Ben/OVR
+  * Copyright (c) 2017-2018 Benjamin Gerard AKA Ben/OVR
   * Licensed under MIT license
 
 

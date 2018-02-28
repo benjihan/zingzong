@@ -17,7 +17,9 @@ sc68_start:
 	bra.w	player_play
 
 0:
-	move.l	d0,-(a7)	// mixer-id.l
+	clr.l	-(a7)		// Sampling/Quality (0:default)
+
+	move.l	d0,-(a7)	// Auto:0, AGA:1 STf:2 STe:3 Falcon:4
 
 	lea	to_set(pc),a0
 	adda.l	(a0),a0
@@ -28,7 +30,7 @@ sc68_start:
 	pea	(a0)		// sng.l
 
 	bsr	player_init
-	lea	12(a7),a7
+	lea	16(a7),a7
 
 	rts
 

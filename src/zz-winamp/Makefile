@@ -220,7 +220,7 @@ rc_zingzong.o: $(topdir)/rsc/resource.h
 # ----------------------------------------------------------------------
 
 installer_exe = zingzong-$(VERSION)-for-winamp.exe
-installer_dll = zingzing-$(VERSION).dll
+installer_dll = zingzong-$(VERSION).dll
 
 installer: $(installer_exe)
 .PHONY: installer
