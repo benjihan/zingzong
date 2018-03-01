@@ -25,6 +25,18 @@ vpath %.S $(srcdir)
 vpath %.s $(srcdir)
 
 # ----------------------------------------------------------------------
+
+.DELETE_ON_ERROR:
+.ONESHELL:
+.POSIX:
+ifneq ($(V),1)
+.SILENT:
+MSG = echo
+else
+MSG =
+endif
+
+# ----------------------------------------------------------------------
 #  Tools
 # ----------------------------------------------------------------------
 
@@ -33,6 +45,12 @@ AS      = $(CC:gcc=as)
 LD      = $(CC:gcc=ld)
 OBJCOPY = $(CC:gcc=objcopy)
 ELF2BIN = $(OBJCOPY) -S -Obinary --set-section-flags .bss=contents,data,load
+
+# For test files only
+VASMMOT = vasmm68k_mot -quiet $(VASMFLAGS)
+VASMBIN = $(VASMMOT) -Fbin -o
+VASMTOS = $(VASMMOT) -Ftos -o
+
 
 # ----------------------------------------------------------------------
 #
@@ -206,7 +224,8 @@ test.sc68 test.sndh song.dep
 
 .PHONY: clean-test
 clean-test:
-	@rm -f -- $(CLEAN_TEST) && echo "$@ done"
+	@$(MSG) "[CLN] $@"
+	rm -f -- $(CLEAN_TEST)
 
 .PHONY: test
 test: test.sc68 test.sndh
@@ -221,41 +240,42 @@ sc68_start.o: $(srcdir)/sc68.x	# GB: force rebuild when script change
 
 SONGFILE ?= test.4v
 ifndef VSETFILE
-VSETFILE = $(SONGFILE:%.4v=%.set)
+VSETFILE = $(patsubst %$(suffix $(SONGFILE)),%.set,$(SONGFILE))
 endif
 
-# Dependencies on .4v .set files 
-song_deps := $(shell test -r song.dep && cat song.dep)
-ifneq ($(song_deps),$(SONGFILE) $(VSETFILE))
-$(file >song.dep,$(SONGFILE) $(VSETFILE))
-$(info Generating [song.dep])
+# Dependencies on music files (.4v and .set)
+dat_songdep = $(realpath $(SONGFILE) $(VSETFILE))
+gen_songdep = echo "$(dat_songdep)"
+cur_songdep = $(shell test -r song.dep && cat song.dep)
+ifneq ($(cur_songdep),$(dat_songdep))
+$(file >song.dep,$(dat_songdep))
+$(info [DEP] song.dep)
 endif
 
 vset.elf song.elf: %.elf: %.o %.dat
-	echo "[OBJ] $*";\
+	@$(MSG) "[OBJ] $*"
 	$(OBJCOPY) --add-section .$*.dat=$*.dat $< $@
 
 song.dat: $(SONGFILE)
 vset.dat: $(VSETFILE)
 song.dat vset.dat: %.dat:
-	test -n "$<" && echo "[DAT] $* [$(notdir $<)]" && cat "$<" >$@
+	test -n "$<"
+	@$(MSG) "[DAT] $* [$(notdir $(realpath $<))]"
+	cat "$<" >$@
 
 song.dat vset.dat: song.dep
+.INTERMEDIATE: song.dat vset.dat
 
-song.dep:
-	@echo "[GEN] $@";\
-	echo "$(SONGFILE) $(VSETFILE)">$@
-
-VASMMOT = vasmm68k_mot -quiet $(VASMFLAGS)
-VASMBIN = $(VASMMOT) -Fbin -o
-VASMTOS = $(VASMMOT) -Ftos -o
+song.dep: $(SONGFILE) $(VSETFILE)
+	@$(MSG) "[UPD] $@"
+	$(gen_songdep) >$@
 
 %.sc68: %_sc68.s test.bin
-	echo "[ASM] $@";\
+	@$(MSG) "[ASM] $@"
 	$(VASMBIN) $@ $<
 
 %.sndh: %_sndh.s zingzong.bin
-	echo "[ASM] $@";\
+	@$(MSG) "[ASM] $@"
 	$(VASMBIN) $@ $<
 
 # ----------------------------------------------------------------------
@@ -269,32 +289,28 @@ test_def.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=0
 test_stf.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=2
 test_ste.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=3
 test_fal.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=4
-test_%.tos: test_tos.s test.bin
-	echo "[TOS] $@";\
+test_%.tos: test_tos.s zingzong.bin song.dat vset.dat
+	$(MSG) "[TOS] $@";\
 	$(VASMTOS) $@ $<
-
-.INTERMEDIATE: test.bin
 
 # ----------------------------------------------------------------------
 #  Implicite rules
 # ----------------------------------------------------------------------
 
-.SILENT:
-
 %.o : %.c
-	echo "[GCC] $* <$(call filter-m,$(CFLAGS))>";\
+	$(call $(MSG),GCC,$* <$(call filter-m,$(CFLAGS))>)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c  "$<" -o "$@"
 
 %.o : %.S
-	echo "[GAS] $* <$(call filter-m,$(CFLAGS))>";\
+	$(call $(MSG),GAS,$* <$(call filter-m,$(CFLAGS))>)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(ASFLAGS) -c "$<" -o "$@"
 
 %.elf dri_%.elf:
-	echo "[ELF] $* [$(START_SYMB)=$(START_ADDR)]";\
+	$(call $(MSG)ELF,$* [$(START_SYMB)=$(START_ADDR)])
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 %.bin : %.elf
-	echo "[BIN] $*";\
+	$(call $(MSG),BIN,$*)
 	$(ELF2BIN) $< $@
 
 # ----------------------------------------------------------------------

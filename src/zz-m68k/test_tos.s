@@ -5,7 +5,7 @@
 ;;;
 
         ifnd    MIXERID
-MIXERID set     0               ; use default mixer
+MIXERID set     0               ; (0:Auto 1:Amiga 2:YM 3:DMA8 4:DMA16
         endc
 
 llea:   macro
@@ -54,8 +54,7 @@ fill:   movem.l d4-d7,-(a6)
         and.b   #~3,$484.w      ; Remove click and repeat
 
         ;; Init player
-        moveq   #MIXERID,d0
-        bsr     music
+	bsr	zz_init
 
         ;; Wait for key message
         pea     msgB(pc)        ; >> Press ...
@@ -92,7 +91,7 @@ nokey:
 
         ;; Run music player
         move.w  #$F55,$ffff8240.w
-        bsr     music+8
+        bsr     zz_play
         move.w  #$FFF,$ffff8240.w
 
         bra.s   mainloop
@@ -104,7 +103,7 @@ exitloop:
         addq.w  #6,a7
 
         ;; Stop timers and musics
-        bsr     music+4
+        bsr     zz_kill
 
         ;; Save vectors and MFP setup
         lea     vars(pc),a6
@@ -220,6 +219,44 @@ exit:
         trap    #1
         illegal                 ; Safety net
 
+
+zz_init:	
+	movem.l	d0-d1/a0-a1,-(a7)
+
+	;; Sampling/Quality (0:default)
+	clr.l	-(a7)
+	
+	;; Driver (0:Auto 1:AGA 2:STf 3:STe 4:Falcon)
+	pea	MIXERID.w
+
+	;; vset bin_t address
+	lea	tovset(pc),a0
+	adda.l	(a0),a0
+	pea	(a0)
+	
+	;; song bin_t address
+	lea	tosong(pc),a0
+	adda.l	(a0),a0
+	pea	(a0)
+
+	bsr	zingzong
+	lea	16(a7),a7
+	
+	movem.l	(a7)+,d0-d1/a0-a1
+	rts
+	
+zz_kill:
+	movem.l	d0-d1/a0-a1,-(a7)
+	bsr	zingzong+4
+	movem.l	(a7)+,d0-d1/a0-a1
+	rts
+
+zz_play:
+	movem.l	d0-d1/a0-a1,-(a7)
+	bsr	zingzong+8
+	movem.l	(a7)+,d0-d1/a0-a1
+	rts
+	
         ;; Variable definitions
         rsreset
 hz200:  rs.l    1
@@ -230,7 +267,6 @@ varsz:  rs.b    0
 
         ;; Variable allocations
 vars:   ds.b    varsz
-
 
         ;; Text messages
 msgA:   dc.b    27,"E"
@@ -262,11 +298,46 @@ uspV:   dc.b    "0000 / SSP=$"
 sspV:   dc.b    "0000",10,10
         dc.b    0
 
+;;; ----------------------------------------
+;;; Player and Music Files
+	
+	even
 
-        ;; Music player
-        even
-music:	incbin  "test.bin"
+tosong:	dc.l	song-*
+tovset:	dc.l	vset-*
+	
+zingzong:
+	incbin	"zingzong.bin"
+	even
 
+	;; Song (.4v)
+	
+song:	dc.l	0
+	dc.l	song_max
+	dc.l	song_len
+song_bin:
+	incbin	"song.dat"	; .4v file
+song_len: equ *-song_bin
+	even
+	ds.l	4		; for closing incomplete files
+song_max: equ *-song_bin
+
+
+	;; Voice set (.set)
+	
+vset:	dc.l	0
+	dc.l	vset_max
+	dc.l	vset_len
+vset_bin:
+	incbin	"vset.dat"	; .set file
+vset_len: equ *-vset_bin
+	even
+	ds.b	2048
+vset_max: equ *-vset_bin
+
+;;; ----------------------------------------
+;;; Stack and memory protection
+	
         ;; Memory commando check
         even
 prot1:  dc.b    "Ben/OVR!"

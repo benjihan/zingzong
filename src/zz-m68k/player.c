@@ -4,7 +4,7 @@
  * @date    2017-09
  * @brief   zingzong m68k player entry points.
  *
- * long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr);
+ * long player_init(bin_t * song, bin_t * vset, long dri, long spr);
  * void player_kill(void);
  * void player_play(void);
  * void *player_internal(void);
@@ -60,15 +60,25 @@ logfunc(zz_u8_t chan, void * user, const char *fmt, va_list list)
 # define LOGFUNC 0
 #endif
 
-void * player_internal(void)
-{
-  return &play;
-}
+/* long player_internal(void) */
+/* { */
+/*   return (intptr_t) &play; */
+/* } */
 
-long player_status(void)
-{
-  return ready;
-}
+/* long player_status(void) */
+/* { */
+/*   return ready; */
+/* } */
+
+/* long player_driver(void) */
+/* { */
+/*   return (intptr_t) play.mixer; */
+/* } */
+
+/* long player_sampling(void) */
+/* { */
+/*   return play.spr; */
+/* } */
 
 long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
 {
