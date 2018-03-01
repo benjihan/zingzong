@@ -25,7 +25,7 @@ m68k_memcmp:
         cmpa.l  a0,a1
         beq.s   0f
 
-        subq.w  #1,d0
+        subq.l  #1,d0
         swap    d0
 4:      swap    d0
 1:      cmpm.b  (a1)+,(a0)+
@@ -50,17 +50,17 @@ m68k_memcmp:
         rts
 
 /// --------------------------------------------------------
-///                   a0     d1     d0
-/// void * m68k_memset(dst.l, val.b, cnt.l)
-///                  4(a7)  9(a7)  10(a7)
+///                     a0     d1     d0
+/// void * m68k_memset(dst.l, val.l, cnt.l)
+///                    4(a7)  8(a7)  12(a7)
 
 m68k_memset:
-        move.l  10(a7),d0       | d0.l: cnt
+        move.l  12(a7),d0       | d0.l: cnt
         beq.s   0f
 
         move.l  4(a7),a0
         moveq   #0,d1
-        move.b  9(a7),d1
+        move.b  11(a7),d1
         move.l  d1,a1
 
         move.l  a0,d1
@@ -191,7 +191,7 @@ cont_bcpy:
 
 fast_bcpy:
         movem.l d2-d7/a2-a3,-(a7)
-        subq.w  #1,d0
+        subq.l  #1,d0
         swap    d0
 2:      swap    d0
 1:      lea     -32(a1),a1
@@ -205,7 +205,7 @@ fast_bcpy:
         || ----------------------------------------
 
 slow_bcpy:
-        subq.w  #1,d0
+        subq.l  #1,d0
         swap    d0
 2:      swap    d0
 1:      move.b  -(a1),-(a0)
@@ -273,7 +273,7 @@ cont_fcpy:
 
 fast_fcpy:
         movem.l d2-d7/a2-a3,-(a7)
-        subq.w  #1,d0
+        subq.l  #1,d0
         swap    d0
 2:      swap    d0
 1:      movem.l (a1)+,d2-d7/a2-a3
@@ -287,7 +287,7 @@ fast_fcpy:
         || ----------------------------------------
 
 slow_fcpy:
-        subq.w  #1,d0
+        subq.l  #1,d0
         swap    d0
 2:      swap    d0
 1:      move.b  (a1)+,(a0)+
@@ -325,7 +325,7 @@ m68k_bxla:
         adda.l  d0,a0
         adda.l  d0,a1
 
-        subq.w  #1,d0
+        subq.l  #1,d0
         swap    d0
 2:      swap    d0
 1:      move.b  -(a1),d1
@@ -343,7 +343,7 @@ m68k_bxla:
         || Forward translation
         || ----------------------------------------
 m68k_fxla:
-        subq.w  #1,d0
+        subq.l  #1,d0
         swap    d0
 2:      swap    d0
 1:      move.b  (a1)+,d1

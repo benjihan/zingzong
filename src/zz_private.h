@@ -380,20 +380,20 @@ struct songhd {
 # endif
 
 ZZ_EXTERN_C
-int m68k_memcmp(const void *, const void *, zz_u32_t);
+int m68k_memcmp(const void *, const void *, uint32_t);
 #define zz_memcmp(A,B,C) m68k_memcmp((A),(B),(C))
 
 ZZ_EXTERN_C
-void * m68k_memset(void * restrict, uint8_t, zz_u32_t);
+void * m68k_memset(void * restrict, uint32_t, uint32_t);
 #define zz_memset(A,B,C) m68k_memset((A),(B),(C))
 
 ZZ_EXTERN_C
-void * m68k_memcpy(void * restrict, const void *, zz_u32_t);
+void * m68k_memcpy(void * restrict, const void *, uint32_t);
 #define zz_memcpy(A,B,C) m68k_memcpy((A),(B),(C))
 
 ZZ_EXTERN_C
 void * m68k_memxla(void * restrict, const void *,
-                   const uint8_t *, zz_u32_t);
+                   const uint8_t *, uint32_t);
 #define zz_memxla(A,B,C,D) m68k_memxla((A),(B),(C),(D))
 
 #else /* __m68k__ */

@@ -22,10 +22,10 @@ sndh_init:
 	;; Sampling/Quality (0:default)
 	clr.l	-(a7)
 	
-	;; Driver (0:Auto 1:AGA 2:STf 3:STe 4:Falcon
+	;; Driver (0:Auto 1:AGA 2:STf 3:STe 4:Falcon)
 
-	clr.l	-(a7)
-	;; pea	3.w
+	;; clr.l	-(a7)
+	pea	2.w
 
 	;; vset bin_t address
 	lea	tovset(pc),a0

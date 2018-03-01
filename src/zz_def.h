@@ -125,8 +125,7 @@ zz_log_dbg(const char * fmt,...);
 
 #define FCC_LSL(X,N) (((uint32_t)(X))<<(N))
 #define FCC(A,B,C,D) (FCC_LSL(A,24)|FCC_LSL(B,16)|FCC_LSL(C,8)|(D))
-#define FCC_EQ(A,B) (!((0[A]-0[B])|(1[A]-1[B])|(2[A]-2[B])|(3[A]-3[B])))
-/* #define FCC_EQ(A,B) (0[A]==0[B]&&1[A]==1[B]&&2[A]==2[B]&&3[A]==3[B]) */
+#define FCC_EQ(A,B) !((0[A]-0[B])|(1[A]-1[B])|(2[A]-2[B])|(3[A]-3[B]))
 
 /**
  * memory functions (zz_mem.c).

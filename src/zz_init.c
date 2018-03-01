@@ -115,9 +115,9 @@ song_init(song_t * song)
 {
   zz_err_t ecode=E_SNG;
   u16_t off, size;
-  u8_t k, cur=0, ssp=0/* , max_ssp=0 */;
+  u8_t k, cur=0, ssp=0;
 
-  sequ_t * out;
+  /* sequ_t * out=0; */
   loop_stack_t loops;
 
   /* sequence to use in case of empty sequence to avoid endless loop
@@ -156,7 +156,7 @@ song_init(song_t * song)
       ssp = 0;                      /* loop stack pointer         */
       loops[0].len = 0;             /*  */
       loops[0].has = 0;             /* #0:note #1:wait            */
-      out = seq;                    /* on the fly patch */
+      /*out = seq;*/                    /* on the fly patch */
     }
 
     switch (cmd) {
@@ -215,7 +215,6 @@ song_init(song_t * song)
         goto error;
       }
       ++ssp;
-      /* if (ssp > max_ssp) max_ssp = ssp; */
       loops[ssp].len = 0;
       loops[ssp].has = 0;
       break;
@@ -236,11 +235,11 @@ song_init(song_t * song)
       break;
 
     default:
-      dmsg("%c[%hu] invalid sequence -- %04hx-%04hx-%08lx-%08lx\n",
-           'A'+k, HU(seq_idx(song->seq[k],seq)),
-           HU(cmd), HU(len), LU(stp), LU(par));
-      seq = 0;                          /* mark invalid */
-      break;
+      /* dmsg("%c[%hu] invalid sequence -- %04hx-%04hx-%08lx-%08lx\n", */
+      /*      'A'+k, HU(seq_idx(song->seq[k],seq)), */
+      /*      HU(cmd), HU(len), LU(stp), LU(par)); */
+      /* seq = 0;                          /\* mark invalid *\/ */
+      /* break; */
 
 #ifndef NDEBUG
       collapse_all(loops, ssp);
@@ -252,13 +251,16 @@ song_init(song_t * song)
       goto error;
     }
 
-    if (seq == out)
-      ++out;
-    else if (seq)
-      *out++ = *seq;
+    /* if (seq == out) */
+    /*   ++out; */
+    /* else if (seq) { */
+    /*   int i; */
+    /*   for (i=0; i<12; ++i) { */
+    /*     ((uint8_t*)out)[i] = ((uint8_t*)seq)[i]; */
+    /*   } */
+    /*   ++out; */
+    /* } */
   }
-
-  /* dmsg("loop-depth: %hu\n",HU(max_ssp)); */
 
   if ( (off -= 11) != song->bin->len) {
     dmsg("garbage data after voice sequences -- %lu bytes\n",
@@ -470,17 +472,15 @@ unroll_loop(uint8_t * dst, uint8_t * const end, i32_t lpl, const uint8_t nul)
 {
   zz_assert( dst < end );
   if (lpl)
-#ifdef __m68k__
+#if 0 && defined __m68k__
     asm (
-      "    subq.w  #1,%[cnt]            \n"
+      "    subq.l  #1,%[cnt]            \n"
       "    swap    %[cnt]               \n"
-      "    addq.w  #1,%[cnt]            \n"
       "2:  swap    %[cnt]               \n"
       "1:  move.b  (%[src])+,(%[dst])+  \n"
       "    dbf     %[cnt],1b            \n"
       "    swap    %[cnt]               \n"
-      "    subq.w  #1,%[cnt]            \n"
-      "    bne.s   2b                   \n\t"
+      "    dbf     %[cnt],2b            \n\t"
       :: [dst] "a" (dst), [src] "a" (dst-lpl), [cnt] "d" (end-dst));
 #else
     do {
