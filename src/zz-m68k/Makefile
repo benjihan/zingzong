@@ -31,9 +31,9 @@ vpath %.s $(srcdir)
 .POSIX:
 ifneq ($(V),1)
 .SILENT:
-MSG = echo
+MSG := echo
 else
-MSG =
+MSG := true
 endif
 
 # ----------------------------------------------------------------------
@@ -50,7 +50,6 @@ ELF2BIN = $(OBJCOPY) -S -Obinary --set-section-flags .bss=contents,data,load
 VASMMOT = vasmm68k_mot -quiet $(VASMFLAGS)
 VASMBIN = $(VASMMOT) -Fbin -o
 VASMTOS = $(VASMMOT) -Ftos -o
-
 
 # ----------------------------------------------------------------------
 #
@@ -172,7 +171,7 @@ NOLIBS      = -nodefaultlibs -nostdlib
 #      interface. All drivers could work as overlay but it's not
 #      convenient for our usage. However as only one driver is used at
 #      a time they can share a common BSS section. This is achieved by
-#      the finale linker scripts.
+#      the final linker scripts.
 #      ----------------------------------------------------------------------
 
 drivers := $(patsubst %,dri_%.elf,aga stf ste fal) mix_ata.o $(m68:%.S=%.o)
@@ -204,7 +203,6 @@ zingzong player: zingzong.bin
 
 ELFFLAGS = -static $(ELFLIBS) $(NOUNDEF) $(MAPFLAGS)
 MAPFLAGS = $(call maybe-wl,-Map=$*.map)
-#MAPFLAGS = $(error MAPFLAGS ?)
 
 .PRECIOUS: zingzong.elf
 zingzong.elf: START_SYMB = zingzong
@@ -259,8 +257,7 @@ vset.elf song.elf: %.elf: %.o %.dat
 song.dat: $(SONGFILE)
 vset.dat: $(VSETFILE)
 song.dat vset.dat: %.dat:
-	test -n "$<"
-	@$(MSG) "[DAT] $* [$(notdir $(realpath $<))]"
+	@test -n "$<" && $(MSG) "[DAT] $* [$(notdir $(realpath $<))]"
 	cat "$<" >$@
 
 song.dat vset.dat: song.dep
@@ -290,27 +287,27 @@ test_stf.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=2
 test_ste.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=3
 test_fal.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=4
 test_%.tos: test_tos.s zingzong.bin song.dat vset.dat
-	$(MSG) "[TOS] $@";\
+	@$(MSG) "[TOS] $@"
 	$(VASMTOS) $@ $<
 
 # ----------------------------------------------------------------------
 #  Implicite rules
 # ----------------------------------------------------------------------
 
-%.o : %.c
-	$(call $(MSG),GCC,$* <$(call filter-m,$(CFLAGS))>)
+%.o: %.c
+	@$(MSG) "[GCC] $* <$(call filter-m,$(CFLAGS))>"
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c  "$<" -o "$@"
 
-%.o : %.S
-	$(call $(MSG),GAS,$* <$(call filter-m,$(CFLAGS))>)
+%.o: %.S
+	@$(MSG) "[GAS] $* <$(call filter-m,$(CFLAGS))>"
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(ASFLAGS) -c "$<" -o "$@"
 
 %.elf dri_%.elf:
-	$(call $(MSG)ELF,$* [$(START_SYMB)=$(START_ADDR)])
+	@$(MSG) "[ELF] $* [$(START_SYMB)=$(START_ADDR)]"
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
-%.bin : %.elf
-	$(call $(MSG),BIN,$*)
+%.bin: %.elf
+	@$(MSG) "[BIN] $*"
 	$(ELF2BIN) $< $@
 
 # ----------------------------------------------------------------------
