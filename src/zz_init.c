@@ -267,6 +267,12 @@ song_init(song_t * song)
          LU(song->bin->len) - off);
   }
 
+#ifdef ZZ_MINIMAL
+  if (k != 4) {
+    emsg("song: channel %c is truncated\n",'A'+k);
+    goto error;
+  }
+#else
   for ( ;k<4; ++k) {
     ssp = 0;
     if (loops[0].has) {
@@ -280,13 +286,13 @@ song_init(song_t * song)
       dmsg("%c duration: %lu ticks\n",'A'+k, LU(loops[0].len));
       if ( loops[0].len > song->ticks)
         song->ticks = loops[0].len;
-      dmsg("channel %c is truncated\n", 'A'+k);
+      wmsg("channel %c is truncated\n", 'A'+k);
     } else {
-      dmsg("channel %c is MIA\n", 'A'+k);
+      wmsg("channel %c is MIA\n", 'A'+k);
       song->seq[k] = (sequ_t *) nullseq;
     }
   }
-
+#endif
   dmsg("song steps: %08lx .. %08lx\n", LU(song->stepmin), LU(song->stepmax));
   dmsg("song instruments: used: %05lx referenced:%05lx difference:%05lx\n",
        LU(song->iuse), LU(song->iref), LU(song->iref^song->iuse));
