@@ -24,8 +24,8 @@ sndh_init:
 	
 	;; Driver (0:Auto 1:AGA 2:STf 3:STe 4:Falcon)
 
-	;; clr.l	-(a7)
-	pea	2.w
+	clr.l	-(a7)
+	;; pea	2.w
 
 	;; vset bin_t address
 	lea	tovset(pc),a0
