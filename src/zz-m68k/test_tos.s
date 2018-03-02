@@ -319,7 +319,7 @@ song_bin:
 	incbin	"song.dat"	; .4v file
 song_len: equ *-song_bin
 	even
-	ds.l	4		; for closing incomplete files
+	ds.l	3		; for closing incomplete files
 song_max: equ *-song_bin
 
 
@@ -332,7 +332,7 @@ vset_bin:
 	incbin	"vset.dat"	; .set file
 vset_len: equ *-vset_bin
 	even
-	ds.b	2048
+	ds.b	2048		; loop unroll extra space
 vset_max: equ *-vset_bin
 
 ;;; ----------------------------------------
