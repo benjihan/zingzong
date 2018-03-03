@@ -680,6 +680,8 @@ falCD_off:
 ///
 /// GB: timings are wrong for the Falcon 68030
 
+	.if 0
+
 ilac2_all:
         | No special init at block start
 ilac2_beg:
@@ -727,7 +729,7 @@ ilac2_off:
         .short  2               | jump to next rts
 0:      rts
 
-
+	.endif
 
 || #define BIS_FIX 3
 || #define BIS_LEN (1<<BIS_FIX)
