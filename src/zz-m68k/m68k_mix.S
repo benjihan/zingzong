@@ -45,7 +45,7 @@ A_siz:  .struct .               | 32 20
 #endif
 	
         .section .text
-        .global fast_stf,fast_ste,fast_fal,fast_4x8
+        .global fast_stf,fast_ste,fast_fal // ,fast_4x8
 
 /// --------------------------------------------------------
 ///                a2      a3      a4       a5        d7
@@ -176,6 +176,7 @@ fast_fal:
 ///                4(a7)   8(a7)    12(a7)
 ///      +9*4=36  40(a7)  44(a7)    48(a7)
 
+	.if 0
 fast_4x8:
         move.l  12(a7),d0       | d0: count
         beq.s   0f
@@ -210,6 +211,8 @@ fast_4x8:
         movem.l (a7)+,d2-d7/a4-a6
 0:      rts
 
+	.endif
+	
 /// --------------------------------------------------------
 /// a2.l: mixer specific (usually convert table)
 /// a3.l: mixer specific (usually destination)
