@@ -1,0 +1,23 @@
+#! /usr/bin/awk -E
+#
+# by Ben G. AKA Ben/OVR
+#
+# Converts nm output to GenST compatible assembler listing.
+#
+
+BEGIN {
+  zzorg = ARGC > 1 ? strtonum(ARGV[1]) : 0x10000
+  zzsym = ARGC > 2 ? ARGV[2] : "zzstart"
+  printf "%s: equ *\n", zzsym
+  ARGC = 1
+}
+
+{
+  adr = strtonum("0x"$1);
+
+  if (tolower($2) == "a")
+    printf "_%s: equ $%x\n",$3,adr
+  else
+    printf "_%s: equ %s+$%x\n",$3,zzsym,adr-zzorg
+
+}
