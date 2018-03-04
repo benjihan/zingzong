@@ -212,6 +212,26 @@ zingzong.elf: $(addsuffix .o,stub m68k_mix $(com) $(zzz)) $(drivers)
 stub.o: $(srcdir)/zingzong.x # GB: force rebuild when script change
 
 # ----------------------------------------------------------------------
+#  Binary distrib
+# ----------------------------------------------------------------------
+
+VW := $(subst ., ,$(VERSION))
+ifeq (4,$(words $(VW)))
+BINVERSION := $(subst ${space},,$(wordlist 1,3,$(VW)))_$(lastword $(VW))
+else
+BINVERSION := $(subst .,,$(VERSION))
+endif
+
+bindist := zingzong-m68k-$(BINVERSION)
+
+bindist: $(bindist).zip
+.PHONY: bin-dist
+
+$(bindist).zip: zingzong
+	$(call M,ZIP,$(bindist))
+	7z -bb0 -bd a $@ zingzong.{bin,sym} ${srcdir}/README.md >/dev/null
+
+# ----------------------------------------------------------------------
 #  sc68 test file
 # ----------------------------------------------------------------------
 
@@ -264,6 +284,9 @@ song.dat vset.dat: %.dat:
 song.dat vset.dat: song.dep
 .INTERMEDIATE: song.dat vset.dat
 
+song_dat: song.dat vset.dat
+.PHONY: song_dat
+
 song.dep: $(SONGFILE) $(VSETFILE)
 	$(call M,UPD,$@)
 	$(gen_songdep) >$@
@@ -272,7 +295,7 @@ song.dep: $(SONGFILE) $(VSETFILE)
 	$(call M,ASM,$@)
 	$(VASMBIN) $@ $<
 
-%.sndh: %_sndh.s zingzong.bin
+%.sndh: %_sndh.s zingzong.bin zingzong.sym song_dat
 	$(call M,ASM,$@)
 	$(VASMBIN) $@ $<
 
@@ -288,7 +311,7 @@ test_def.tos: MIXERID=0
 test_stf.tos: MIXERID=2
 test_ste.tos: MIXERID=3
 test_fal.tos: MIXERID=4
-test_%.tos: test_tos.s zingzong.bin zingzong.sym song.dat vset.dat
+test_%.tos: test_tos.s zingzong.bin zingzong.sym song_dat
 	$(call M,TOS,$@)
 	$(VASMTOS) $@  $< -DMIXERID=$(MIXERID) -DZZSYMB=1
 
@@ -312,7 +335,7 @@ test_%.tos: test_tos.s zingzong.bin zingzong.sym song.dat vset.dat
 	$(call M,BIN,$*)
 	$(ELF2BIN) $< $@
 
-%.sym: %.elf
+%.sym: %.elf $(srcdir)/mksymb
 	$(call M,SYM,$*)
 	$(NM) -ng $< | $(srcdir)/mksymb >$@
 

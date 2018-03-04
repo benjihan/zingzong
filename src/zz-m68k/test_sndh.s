@@ -5,6 +5,10 @@
 ;;;
 
 	opt	p+
+
+        ifnd    MIXERID
+MIXERID set     0               ; 0:Auto 1:Amiga 2:YM 3:DMA8 4:DMA16
+        endc
 	
 	bra.w	sndh_init
 	bra.w	sndh_kill
@@ -23,9 +27,7 @@ sndh_init:
 	clr.l	-(a7)
 	
 	;; Driver (0:Auto 1:AGA 2:STf 3:STe 4:Falcon)
-
-	clr.l	-(a7)
-	;; pea	2.w
+	pea	MIXERID.w
 
 	;; vset bin_t address
 	lea	tovset(pc),a0
@@ -60,6 +62,9 @@ tovset:	dc.l	vset-*
 	
 	;; zingzong replay (m68k "C" ABI)
 zingzong:
+	ifd	ZZSYMB
+	include	"zingzong.sym"
+	endc
 	incbin	"zingzong.bin"
 	even
 
