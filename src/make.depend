@@ -15,7 +15,7 @@ depends   = $(c_depends) $(s_depends)
 cc_conf := cc_conf.h
 
 # Avoid creating dependencies for targets matching these patterns
-ignore_dep = clean% dist% uninstall%
+ignore_dep += clean% dist% uninstall%
 
 ifeq ($(words $(MAKECMDGOALS)),0)
 filtered = ST forever
@@ -42,12 +42,12 @@ CC_CONF_N   = /* $(VERSION): $(dep_CFLAGS) */
 CC_CONF_O  := $(shell test -r "$(cc_conf)" && cat $(cc_conf))
 
 ifneq ($(CC_CONF_O),$(CC_CONF_N))
+$(info Generating $(cc_conf))
 $(file >$(cc_conf),$(CC_CONF_N))
-$(info [GEN] $(cc_conf))
 endif
 
 $(cc_conf): $(srcdir)/Makefile $(wildcard $(topdir)/src/make.*)
-	@echo "[UPD] $@"
+	$(call M,UPD,$@)
 	$(file >$@,$(CC_CONF_N))
 
 CCDEP = $(CC)
@@ -66,7 +66,9 @@ depend: $(depends)
 # ----------------------------------------------------------------------
 
 %.d: %.c
-	@echo "[DEP] $*"; $(CCDEP) $(dep_CFLAGS) $(DEP_FLAGS) -c $<
+	$(call M,DEP,$*)
+	$(CCDEP) $(dep_CFLAGS) $(DEP_FLAGS) -c $<
 
 %.d: %.S
-	@echo "[DEP] $*"; $(CCDEP) $(dep_CFLAGS) $(DEP_FLAGS) -c $<
+	$(call M,DEP,$*)
+	$(CCDEP) $(dep_CFLAGS) $(DEP_FLAGS) -c $<

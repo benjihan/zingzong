@@ -8,6 +8,7 @@
 	+$00 bra.w player_init
 	+$04 bra.w player_kill
 	+$08 bra.w player_play
+	+$0c bra.w player_version
 
 
 ### Prototypes
@@ -15,6 +16,7 @@
 	long player_init(bin_t * song, bin_t * vset, long dri, long spr);
 	void player_kill(void);
 	void player_play(void);
+	char*player_version(void);
 
 	typedef struct {
 		void * ptr;   /* pointer to file data (if 0 use bin_t::dat[]) */

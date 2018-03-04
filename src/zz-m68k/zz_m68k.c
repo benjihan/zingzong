@@ -137,12 +137,6 @@ static mixer_t * mixer_of(zz_u8_t n)
   case MIXER_STF: M = mixer_stf(&mixer); break;
   case MIXER_STE: M = mixer_ste(&mixer); break;
   case MIXER_FAL: M = mixer_fal(&mixer); break;
-
-    /* $$$ XXX TEMP */
-/* #pragma message "Compiling " __FILE__ "*** FIX ME TEMP HACK ***" */
-/*   case MIXER_FAL: M = mixer_ste(&mixer); break; */
-    /* $$$ XXX TEMP */
-
   default: M = 0;
   }
   return M;

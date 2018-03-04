@@ -7,8 +7,7 @@
 
 BEGIN {
   zzorg = ARGC > 1 ? strtonum(ARGV[1]) : 0x10000
-  zzsym = ARGC > 2 ? ARGV[2] : "zzstart"
-  printf "%s: equ *\n", zzsym
+  zzsym = ARGC > 2 ? ARGV[2] : "*"
   ARGC = 1
 }
 

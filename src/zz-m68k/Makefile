@@ -28,12 +28,11 @@ vpath %.s $(srcdir)
 
 .DELETE_ON_ERROR:
 .ONESHELL:
-.POSIX:
 ifneq ($(V),1)
 .SILENT:
-MSG := echo
+M = @printf "[%3s] %s\n" "$(1)" "$(2)"
 else
-MSG := true
+M =
 endif
 
 # ----------------------------------------------------------------------
@@ -43,6 +42,7 @@ endif
 CC      = m68k-sc68-elf-gcc	# GB: any m68k-elf gcc should do
 AS      = $(CC:gcc=as)
 LD      = $(CC:gcc=ld)
+NM      = $(CC:gcc=nm)
 OBJCOPY = $(CC:gcc=objcopy)
 ELF2BIN = $(OBJCOPY) -S -Obinary --set-section-flags .bss=contents,data,load
 
@@ -198,7 +198,7 @@ dri_%.elf: LDFLAGS = $(DRIFLAGS)
 #  Binary player
 # ----------------------------------------------------------------------
 
-zingzong player: zingzong.bin
+zingzong player: zingzong.bin zingzong.sym
 .PHONY: player zingzong
 
 ELFFLAGS = -static $(ELFLIBS) $(NOUNDEF) $(MAPFLAGS)
@@ -218,12 +218,12 @@ stub.o: $(srcdir)/zingzong.x # GB: force rebuild when script change
 CLEAN_TARGETS += clean-test
 
 CLEAN_TEST = *.o *.dri *.elf test_*.tos *.map song.dat vset.dat	\
-test.sc68 test.sndh song.dep
+test.sc68 test.sndh song.dep zingzong.sym
 
 .PHONY: clean-test
 clean-test:
-	@$(MSG) "[CLN] $@"
-	rm -f -- $(CLEAN_TEST)
+	$(call M,CLN,$@)
+	$(RM) -- $(CLEAN_TEST)
 
 .PHONY: test
 test: test.sc68 test.sndh
@@ -246,33 +246,34 @@ dat_songdep = $(realpath $(SONGFILE) $(VSETFILE))
 gen_songdep = echo "$(dat_songdep)"
 cur_songdep = $(shell test -r song.dep && cat song.dep)
 ifneq ($(cur_songdep),$(dat_songdep))
+$(info Generating song.dep)
 $(file >song.dep,$(dat_songdep))
-$(info [DEP] song.dep)
 endif
 
 vset.elf song.elf: %.elf: %.o %.dat
-	@$(MSG) "[OBJ] $*"
+	$(call M,OBJ,$*)
 	$(OBJCOPY) --add-section .$*.dat=$*.dat $< $@
 
 song.dat: $(SONGFILE)
 vset.dat: $(VSETFILE)
 song.dat vset.dat: %.dat:
-	@test -n "$<" && $(MSG) "[DAT] $* [$(notdir $(realpath $<))]"
+	test -n "$<"
+	$(call M,DAT,$* [$(notdir $(realpath $<))])
 	cat "$<" >$@
 
 song.dat vset.dat: song.dep
 .INTERMEDIATE: song.dat vset.dat
 
 song.dep: $(SONGFILE) $(VSETFILE)
-	@$(MSG) "[UPD] $@"
+	$(call M,UPD,$@)
 	$(gen_songdep) >$@
 
 %.sc68: %_sc68.s test.bin
-	@$(MSG) "[ASM] $@"
+	$(call M,ASM,$@)
 	$(VASMBIN) $@ $<
 
 %.sndh: %_sndh.s zingzong.bin
-	@$(MSG) "[ASM] $@"
+	$(call M,ASM,$@)
 	$(VASMBIN) $@ $<
 
 # ----------------------------------------------------------------------
@@ -282,33 +283,38 @@ song.dep: $(SONGFILE) $(VSETFILE)
 test_tos: test_def.tos test_stf.tos test_ste.tos test_fal.tos
 PHONY: test_tos
 
-test_def.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=0
-test_stf.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=2
-test_ste.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=3
-test_fal.tos: override VASMFLAGS:=$(VASMFLAGS) -DMIXERID=4
-test_%.tos: test_tos.s zingzong.bin song.dat vset.dat
-	@$(MSG) "[TOS] $@"
-	$(VASMTOS) $@ $<
+MIXERID = $(error MIXERID must be defined)
+test_def.tos: MIXERID=0
+test_stf.tos: MIXERID=2
+test_ste.tos: MIXERID=3
+test_fal.tos: MIXERID=4
+test_%.tos: test_tos.s zingzong.bin zingzong.sym song.dat vset.dat
+	$(call M,TOS,$@)
+	$(VASMTOS) $@  $< -DMIXERID=$(MIXERID) -DZZSYMB=1
 
 # ----------------------------------------------------------------------
 #  Implicite rules
 # ----------------------------------------------------------------------
 
 %.o: %.c
-	@$(MSG) "[GCC] $* <$(call filter-m,$(CFLAGS))>"
+	$(call M,GCC,$* <$(call filter-m,$(CFLAGS))>)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c  "$<" -o "$@"
 
 %.o: %.S
-	@$(MSG) "[GAS] $* <$(call filter-m,$(CFLAGS))>"
+	$(call M,GAS,$* <$(call filter-m,$(CFLAGS))>)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(ASFLAGS) -c "$<" -o "$@"
 
 %.elf dri_%.elf:
-	@$(MSG) "[ELF] $* [$(START_SYMB)=$(START_ADDR)]"
+	$(call M,ELF,$* [$(START_SYMB)=$(START_ADDR)])
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 %.bin: %.elf
-	@$(MSG) "[BIN] $*"
+	$(call M,BIN,$*)
 	$(ELF2BIN) $< $@
+
+%.sym: %.elf
+	$(call M,SYM,$*)
+	$(NM) -ng $< | $(srcdir)/mksymb >$@
 
 # ----------------------------------------------------------------------
 #  Includes

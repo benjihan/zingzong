@@ -11,19 +11,23 @@
 RM ?= rm -f
 
 clean-cfg:
-	@$(RM) -- $(cc_conf)
+	$(call M,"CLN","$@")
+	-$(RM) -- $(cc_conf)
 
 clean-dep: clean-cfg
-	@$(RM) -- $(depends) 
+	$(call M,"CLN","$@")
+	-$(RM) -- $(depends) 
 
 clean-obj:
-	@$(RM) -- $(objects)
-
+	$(call M,"CLN","$@")
+	-$(RM) -- $(objects)
 
 clean-tgt: CLEAN_FILES ?= $(sort $(targets) $(clean_files))
 clean-tgt: $(CLEAN_TARGETS)
-	@-$(RM) -- $(CLEAN_FILES); echo "[DEL] $(CLEAN_FILES)"
+	$(call M,"CLN","$@")
+	-$(RM) -- $(CLEAN_FILES)
 
 clean: clean-dep clean-obj clean-tgt
+	$(call M,"CLN","$@")
 
 .PHONY: clean clean-tgt clean-obj clean-dep clean-cfg

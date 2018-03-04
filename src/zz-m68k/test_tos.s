@@ -5,7 +5,7 @@
 ;;;
 
         ifnd    MIXERID
-MIXERID set     0               ; (0:Auto 1:Amiga 2:YM 3:DMA8 4:DMA16
+MIXERID set     0               ; 0:Auto 1:Amiga 2:YM 3:DMA8 4:DMA16
         endc
 
 llea:   macro
@@ -16,10 +16,19 @@ llea:   macro
         opt     a+,o+,p+
 
         ;; Welcome and initializing message
+        pea     cls(pc)		; >> VT52 CLS
+        move.w  #9,-(a7)	; Cconws(msg.l)
+        trap    #1
+
+	bsr	zingzong+$0c	; d0: version string
+	move.l	d0,-(a7)	; >> version string
+        move.w  #9,-(a7)        ; Cconws(msg.l)
+        trap    #1
+	
         pea     msgA(pc)        ; >> Zingzong ...
         move.w  #9,-(a7)        ; Cconws(msg.l)
         trap    #1
-        addq    #6,a7
+        lea	6*3(a7),a7
 
         ;; Fill stacks with a value to detect stack usage
         llea    mytop,a6
@@ -269,9 +278,10 @@ varsz:  rs.b    0
 vars:   ds.b    varsz
 
         ;; Text messages
-msgA:   dc.b    27,"E"
-        dc.b    "Zingzong quartet music player",13,10,10
-        dc.b    "By Ben/OVR 2017",13,10,10
+cls:	dc.b    27,"E",0
+msgA:	
+        dc.b    " quartet music player",13,10,10
+        dc.b    "By Ben/OVR 2017-2018",13,10,10
         dc.b    ">> Please wait initializing <<"
         dc.b    0
 
@@ -307,6 +317,9 @@ tosong:	dc.l	song-*
 tovset:	dc.l	vset-*
 	
 zingzong:
+	ifd	ZZSYMB
+	include	"zingzong.sym"
+	endc
 	incbin	"zingzong.bin"
 	even
 

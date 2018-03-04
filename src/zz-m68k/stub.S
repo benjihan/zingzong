@@ -10,13 +10,14 @@
  * +$00 long init(bin_t * song, bin_t * vset, long driver, long sampling)
  * +$04 void kill(void)
  * +$08 void play(void)
+ * +$0C long version(void)
  * ------------------------------
  * GB: Disabled for now (program has reach critical mass)
  * ------------------------------	
- * +$0C	long player_status(void)
- * +$10 long player_sampling(void)
- * +$14	long player_driver()
- * +$18 long player_internal(void)
+ * +$10	long player_status(void)
+ * +$14 long player_sampling(void)
+ * +$18	long player_driver()
+ * +$1C long player_internal(void)
  *
  */
 	.section .text
@@ -25,6 +26,7 @@ zingzong:
         bra.w   player_init	// -> d0.l: 0:error 1:ready
         bra.w   player_kill	// -> void
         bra.w   player_play	// -> void
+	bra.w	zz_version	// -> d0.l: version string
 
 	//bra.w	player_status	// -> d0.l: 0:not ready 1:ready
 	//bra.w	player_sampling // -> d0.l: sampling rate in hz

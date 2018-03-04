@@ -24,6 +24,17 @@ vpath %.rc $(srcdir)/../../rsc
 
 # ----------------------------------------------------------------------
 
+.DELETE_ON_ERROR:
+.ONESHELL:
+ifneq ($(V),1)
+.SILENT:
+M = @printf "[%3s] %s\n" "$(1)" "$(2)"
+else
+M =
+endif
+
+# ----------------------------------------------------------------------
+
 targets    = in_zingzong.dll
 
 # ----------------------------------------------------------------------
@@ -201,15 +212,15 @@ override LDLIBS   += $(gb_LDLIBS) -lgdi32
 
 in_zingzong.o zz_play.o dialogs.o: CPPFLAGS += $(PACKAGE_CPPFLAGS)
 in_zingzong.dll: $(objects)
-	@echo "[DLL] $@";\
+	$(call M,DLL,$@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 %.o: %.c
-	@echo "[GCC] $* [$(patsubst -m%,%,$(filter -m%,$(CFLAGS)))]";\
+	$(call M,GCC,$* [$(patsubst -m%,%,$(filter -m%,$(CFLAGS)))])
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 rc_%.o: %.rc
-	@echo "[RES] $*";\
+	$(call M,RES,$*)
 	$(WINDRES) $(CPPFLAGS) $< $@
 
 rc_zingzong.o: $(topdir)/rsc/resource.h
@@ -251,12 +262,12 @@ NSISDEF = \
  -DVERSION='$(VERSION)'
 
 $(installer_exe): $(srcdir)/in_zingzong.nsi $(installer_dll)
-	@echo "[NSI] $@"
-	@'$(MAKENSIS)' /V2 /NOCD $(NSISDEF) "$(call winpath,$<)"
+	$(call M,NSI,$@)
+	'$(MAKENSIS)' /V2 /NOCD $(NSISDEF) "$(call winpath,$<)"
 
 $(installer_dll): $(targets)
-	@echo "[NUD] $@"
-	@$(STRIP) --strip-unneeded -o $@ $<
+	$(call M,NUD,$@)
+	$(STRIP) --strip-unneeded -o $@ $<
 
 # ----------------------------------------------------------------------
 #  Install / Uninstall
@@ -276,11 +287,11 @@ UNINSTALL_PLUG = \
 install-strip: INSTALL_OPT = --strip-program=$(STRIP) -s
 install-strip: install
 install: $(targets)
-	@$(call INSTALL_PLUG,$^)
+	$(call INSTALL_PLUG,$^)
 	@echo $^ installed in "$(DESTDIR)$(WADLL)"
 
 uninstall:
-	@$(call UNINSTALL_PLUG,$(targets))
+	$(call UNINSTALL_PLUG,$(targets))
 	@echo zingzong removed from "$(DESTDIR)$(WADLL)"
 
 .PHONY: install-strip install uninstall

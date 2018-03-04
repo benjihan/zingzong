@@ -23,6 +23,18 @@ vpath %.c $(srcdir)
 
 # ----------------------------------------------------------------------
 
+.DELETE_ON_ERROR:
+.ONESHELL:
+ifneq ($(V),1)
+#.SILENT:
+M = printf "[%3s] %s\n" "$(1)" "$(2)"
+else
+MSG = true
+M =
+endif
+
+# ----------------------------------------------------------------------
+
 exename = $1
 libname = $1.a
 dllname = $1.dll
@@ -71,16 +83,6 @@ ifeq (0,$(words $(filter -I.,-I%,\
 override CPPFLAGS += -I.
 endif
 endif # ifndef CPPFLAGS
-
-# $$$ TEMP: keep thos unti lwe are sure we remove all instance of those VARs
-org_CPPFLAGS = $(error org_CPPFLAGS)
-org_CFLAGS   = $(error org_CFLAGS)
-org_LDLIBS   = $(error org_LDLIBS)
-org_LDFLAGS  = $(error org_LDFLAGS)
-zz_CPPFLAGS  = $(error zz_CPPFLAGS)
-zz_CFLAGS    = $(error zz_CFLAGS)
-zz_LDLIBS    = $(error zz_LDLIBS)
-zz_LDFLAGS   = $(error zz_LDFLAGS)
 
 l_patterns := -l% -Wl,-l%
 L_patterns := -L%
@@ -249,11 +251,11 @@ make.clean make.depend make.dist
 dist_rsc_lst = zingzong.rc resource.h zingzong.ico
 dist_amp_lst = README.md Makefile dialogs.c in_zingzong.c	\
 in_zingzong.h in_zingzong.nsi
-dist_68k_lst = README.md Makefile m68k_mem.S m68k_mix.S m68k_muldiv.h	\
-mix_aga.c mix_ata.c mix_ata.h mix_fal.c mix_ste.c mix_stf.c player.c	\
-stub.S sc68.x sc68_debug.h sc68_start.S song.S test_sc68.s		\
-test_sndh.s test_tos.s vset.S ym10_pack.h zingzong.x zz_m68k.c		\
-zz_m68k.h
+dist_68k_lst = README.md Makefile mksymb m68k_mem.S m68k_mix.S		\
+m68k_muldiv.h mix_aga.c mix_ata.c mix_ata.h mix_fal.c mix_ste.c		\
+mix_stf.c player.c stub.S sc68.x sc68_debug.h sc68_start.S song.S	\
+test_sc68.s test_sndh.s test_tos.s vset.S ym10_pack.h zingzong.x	\
+zz_m68k.c zz_m68k.h
 
 dist_lst = $(sort \
  $(addprefix ./,$(dist_top_lst)) \
