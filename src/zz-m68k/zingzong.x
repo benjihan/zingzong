@@ -14,24 +14,24 @@ SECTIONS
     zz_*.o(.text)
     dri_*.elf(.text)
   }
+  text_section_end = .;
   text_section_adr = ADDR(.text);
   text_section_len = SIZEOF(.text);
-  text_section_end = text_section_adr + text_section_len;
 
-  .data ALIGN(16):
+  .data ALIGN(4):
   {
     *(.data*) *(.rodata*);
   }
+  data_section_end = .;
   data_section_adr = ADDR(.data);
   data_section_len = SIZEOF(.data);
-  data_section_end = data_section_adr + data_section_len;
 
   /* GB: Create an overlay for drivers BSS. We don't need them all
    *     at the same time so basically we only allocate the largest
    *     driver BSS.
    */
 
-  OVERLAY ALIGN(16) :
+  OVERLAY ALIGN(4):
   {
     .dri.any { }
     .dri.aga { dri_aga.elf(.bss); }
@@ -39,13 +39,15 @@ SECTIONS
     .dri.ste { dri_ste.elf(.bss); }
     .dri.fal { dri_fal.elf(.bss); }
   }
-  dribss_section_adr = ADDR(.dri.any);
-  dribss_section_end = ABSOLUTE(ALIGN(16));
-  dribss_section_len = dribss_section_end - dribss_section_adr;
+  dribss_section_len = ABSOLUTE(ALIGN(4) - ADDR(.dri.any));
 
-  .bss dribss_section_adr : AT(dribss_section_adr)
+  .bss ADDR(.dri.any) : AT(ADDR(.dri.any))
   {
     . += dribss_section_len;
     *(.bss) *(COMMON);
   }
+  bss_section_end = .;
+  bss_section_adr = ADDR(.bss);
+  bss_section_len = SIZEOF(.bss);
+
 }

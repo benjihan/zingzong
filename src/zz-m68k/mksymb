@@ -12,11 +12,12 @@ BEGIN {
 }
 
 {
+  gsub(/\./,"_",$3)
   adr = strtonum("0x"$1);
+  lbl = $3
 
   if (tolower($2) == "a")
-    printf "_%s: equ $%x\n",$3,adr
+    printf "_%s: equ $%x\n",lbl,adr
   else
-    printf "_%s: equ %s+$%x\n",$3,zzsym,adr-zzorg
-
+    printf "_%s: equ %s+$%x\n",lbl,zzsym,adr-zzorg
 }
