@@ -19,10 +19,10 @@
 	char*player_version(void);
 
 	typedef struct {
-		void * ptr;   /* pointer to file data (if 0 use bin_t::dat[]) */
+		byte * ptr;   /* pointer to file data (if 0 use bin_t::dat[]) */
 		long   max;   /* maximum size available in the buffer */
 		long   len;   /* actual file size */
-		char   dat[]; /* optional data buffer */
+		byte   dat[]; /* optional data buffer */
 	} bin_t;
 
  * The player is compiled using gcc m68k C ABI in PC relative mode:
