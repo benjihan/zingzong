@@ -223,13 +223,14 @@ BINVERSION := $(subst .,,$(VERSION))
 endif
 
 bindist := zingzong-m68k-$(BINVERSION)
+binfile := zingzong.{bin,sym} ${srcdir}/test_tos.s ${srcdir}/README.md
 
 bindist: $(bindist).zip
-.PHONY: bin-dist
+.PHONY: bindist
 
 $(bindist).zip: zingzong
 	$(call M,ZIP,$(bindist))
-	7z -bb0 -bd a $@ zingzong.{bin,sym} ${srcdir}/README.md >/dev/null
+	7z -bb0 -bd a $@ $(binfile) >/dev/null
 
 # ----------------------------------------------------------------------
 #  sc68 test file
