@@ -97,9 +97,9 @@ static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
 }
 
 static i16_t
-push_cb(play_t * const P, void * restrict pcm, i16_t N)
+push_cb(core_t * const P, void * restrict pcm, i16_t N)
 {
-  mix_fp_t * const M = (mix_fp_t *)P->mixer_data;
+  mix_fp_t * const M = (mix_fp_t *)P->data;
   int k;
 
   zz_assert( P );
@@ -156,29 +156,14 @@ static void * local_calloc(u32_t size, zz_err_t * err)
   *err =  zz_memnew(&ptr,size,1);
   return ptr;
 }
-    /* for (i=0; i<vset->nbi; ++i) { */
-    /*   const i32_t len = vset->inst[i].len; */
 
-    /*   if (len && vset->inst[i].end ) { */
-    /*     /\* qerp needs 2 more PCMs *\/ */
-    /*     vset->inst[i].end = len+2; */
-    /*   if (!lpl) { */
-    /*     pcm[len+0] = (pcm[len-1]+128) >> 1; */
-    /*     pcm[len+1] = 128; */
-    /*   } else { */
-    /*     pcm[len+0] = pcm[len-lpl]; */
-    /*     pcm[len+1] = pcm[len-lpl+1]; */
-    /*   } */
-    /* } */
-
-
-static zz_err_t init_cb(play_t * const P, u32_t spr)
+static zz_err_t init_cb(core_t * const P, u32_t spr)
 {
   zz_err_t ecode = E_OK;
   mix_fp_t * M = local_calloc(sizeof(mix_fp_t), &ecode);
   if (likely(M)) {
-    zz_assert( !P->mixer_data );
-    P->mixer_data = M;
+    zz_assert( !P->data );
+    P->data = M;
     switch (spr) {
     case 0:
     case ZZ_LQ: spr = mulu(P->song.khz,1000u); break;
@@ -196,9 +181,9 @@ static zz_err_t init_cb(play_t * const P, u32_t spr)
   return ecode;
 }
 
-static void free_cb(play_t * const P)
+static void free_cb(core_t * const P)
 {
-  zz_memdel(&P->mixer_data);
+  zz_memdel(&P->data);
 }
 
 mixer_t SYMB =

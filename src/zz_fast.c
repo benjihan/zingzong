@@ -68,7 +68,7 @@ int zz_fast_init(play_t * const P, chan_t * const C)
       break;
     case 'V':
       fast->cmd = ZZ_FAST_VOICE;
-      fast->voice.ins = &P->vset.inst[par>>2];
+      fast->voice.ins = &P->core.vset.inst[par>>2];
       break;
     case 'L':
       fast->cmd = ZZ_FAST_LOOP;
@@ -102,7 +102,7 @@ int zz_fast_chan(play_t * const P, chan_t * const C)
 {
   sequ_t * seq = C->cur;
 
-  if ( 0x0F & P->muted_voices & C->msk )
+  if ( 0x0F & P->core.mute & C->msk )
     return E_OK;
 
   C->trig = TRIG_NOP;
@@ -133,7 +133,7 @@ int zz_fast_chan(play_t * const P, chan_t * const C)
 
     case ZZ_FAST_END:                   /* End-Voice */
       seq = C->seq;
-      P->has_loop |= C->msk;
+      P->core.loop |= C->msk;
       C->loop_sp = C->loops;
       break;
 
@@ -196,7 +196,7 @@ int zz_fast_chan(play_t * const P, chan_t * const C)
   } /* while !wait */
   C->cur = seq;
 
-  if ( 0x0F0 & P->muted_voices & C->msk )
+  if ( 0x0F0 & P->core.mute & C->msk )
     C->trig = TRIG_STOP;
 
   return E_OK;

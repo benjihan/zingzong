@@ -100,7 +100,7 @@ zz_u8_t zz_mixer_set(play_t * P, zz_u8_t n)
   if (n != ZZ_MIXER_ERR) {
     /* mixer can be null if n is ZZ_MIXER_XTN. */
     if (mixer)
-      *( P ? &P->mixer : &default_mixer ) = mixer;
+      *( P ? &P->core.mixer : &default_mixer ) = mixer;
     if (P)
       P->mixer_id = n;
   }

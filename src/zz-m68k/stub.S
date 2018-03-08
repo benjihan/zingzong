@@ -7,28 +7,28 @@
  * This interface is still in progress however the 3 major functions
  * should not change.
  *
- * +$00 long init(bin_t * song, bin_t * vset, long driver, long sampling)
- * +$04 void kill(void)
- * +$08 void play(void)
- * +$0C long version(void)
- * ------------------------------
- * GB: Disabled for now (program has reach critical mass)
- * ------------------------------	
- * +$10	long player_status(void)
- * +$14 long player_sampling(void)
- * +$18	long player_driver()
- * +$1C long player_internal(void)
- *
  */
-	.section .text
-	.global zingzong
-zingzong:
-        bra.w   player_init	// -> d0.l: 0:error 1:ready
-        bra.w   player_kill	// -> void
-        bra.w   player_play	// -> void
-	bra.w	zz_version	// -> d0.l: version string
 
-	//bra.w	player_status	// -> d0.l: 0:not ready 1:ready
-	//bra.w	player_sampling // -> d0.l: sampling rate in hz
-	//bra.w	player_driver	// -> d0.l: driver
-	//bra.w	player_internal	// -> d0.l: internal zz_play_t
+	.section .text
+
+zingzong:
+zingzong_init:	bra.w   player_init	// -> d0.l: 0:error 1:ready
+zingzong_kill:	bra.w   player_kill	// -> void
+zingzong_play:	bra.w   player_play	// -> void
+zingzong_mute:	bra.w	player_mute	// -> d0.b: old value
+zingzong_vers:	bra.w	zz_core_version	// -> d0.l: version string
+zingzong_stat:	bra.w	player_status	// -> d0.l: error-code (0=OK)
+zingzong_samp:	bra.w	player_sampling // -> d0.l: sampling rate (in hz)
+zingzong_driv:	bra.w	player_driver	// -> d0.l: driver (mixer_t *)
+zingzong_core:	bra.w	player_core	// -> d0.l: internal zz_core_t
+
+	.global zingzong
+	.global zingzong_init
+	.global zingzong_kill
+	.global zingzong_play
+	.global zingzong_mute
+	.global zingzong_vers
+	.global zingzong_stat
+	.global zingzong_samp
+	.global zingzong_driv
+	.global zingzong_core

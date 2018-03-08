@@ -118,66 +118,52 @@ uint8_t guess_hardware(void)
   return id;
 }
 
-/* GB: /!\ WARNING UGLY HACK /!\
- *
- * It's using a unique static mixer meaning that enumerating the
- * mixers actually change the mixer.
- */
-
 ZZ_EXTERN_C mixer_t * mixer_aga(mixer_t * const M);
 ZZ_EXTERN_C mixer_t * mixer_stf(mixer_t * const M);
 ZZ_EXTERN_C mixer_t * mixer_ste(mixer_t * const M);
 ZZ_EXTERN_C mixer_t * mixer_fal(mixer_t * const M);
 
-static mixer_t * mixer_of(zz_u8_t n)
+static mixer_t * mixer_of(zz_u8_t n, mixer_t * M)
 {
-  mixer_t * M;
+  if (!M) M = &mixer;
   switch (n) {
-  case MIXER_AGA: M = mixer_aga(&mixer); break;
-  case MIXER_STF: M = mixer_stf(&mixer); break;
-  case MIXER_STE: M = mixer_ste(&mixer); break;
-  case MIXER_FAL: M = mixer_fal(&mixer); break;
+  case MIXER_AGA: M = mixer_aga(M); break;
+  case MIXER_STF: M = mixer_stf(M); break;
+  case MIXER_STE: M = mixer_ste(M); break;
+  case MIXER_FAL: M = mixer_fal(M); break;
   default: M = 0;
   }
   return M;
 }
 
-zz_u8_t zz_mixer_set(play_t * P, zz_u8_t n)
+mixer_t * zz_mixer_get(zz_u8_t * const pn)
 {
-  mixer_t * mixer;
-
-  if (n >= MIXER_LAST)
-    n = guess_hardware();
-
-  mixer = mixer_of(n);
-  if (mixer)
-    P->mixer = mixer;
-  else
-    n = ZZ_MIXER_DEF;
-  return P->mixer_id = n;
-}
-
-static mixer_t * get_mixer(zz_u8_t * const pn)
-{
-  u8_t n = *pn;
+  zz_u8_t n = (uint8_t) *pn;
   if (n == ZZ_MIXER_DEF)
     n = guess_hardware();
   if (n >= MIXER_LAST)
     n = ZZ_MIXER_DEF;
   *pn = n;
-  return mixer_of(n);
+  return mixer_of(n,0);
 }
 
 zz_u8_t zz_mixer_enum(zz_u8_t n, const char ** pname, const char ** pdesc)
 {
   const mixer_t * M;
 
-  if (M = get_mixer(&n), M) {
+  if (M = zz_mixer_get(&n), M) {
     *pname = M->name;
     *pdesc = M->desc;
   }
   return n;
 }
+
+#ifndef zz_memclr
+void * zz_memclr(void * restrict _d, zz_u32_t n)
+{
+  return zz_memset(_d,0,n);
+}
+#endif
 
 #ifndef NO_LIBC
 

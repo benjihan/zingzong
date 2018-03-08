@@ -58,7 +58,7 @@ fi >/dev/null 2>/dev/null
 # set SOXR to the prefix where soxr has installed for this
 # architecture.
 
-if [ "${benovr}" ] && [ s${SOXR+et} != set ]; then
+if [ "${benovr-}" ] && [ s${SOXR+et} != set ]; then
 
     set +f; shopt -s nullglob
     for dir in "${benovr}/${arch}"/soxr* "${benovr}/${arch}"/.; do

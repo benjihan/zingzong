@@ -167,13 +167,23 @@ typedef struct vset_s  vset_t;    /**< voice set (.set file).     */
 typedef struct inst_s  inst_t;    /**< instrument.                */
 typedef struct song_s  song_t;    /**< song (.4v file).           */
 typedef struct sequ_s  sequ_t;    /**< sequence definition.       */
-typedef struct play_s  play_t;    /**< player.                    */
+typedef struct core_s  core_t;    /**< core player.               */
+typedef struct play_s  play_t;    /**< high level player.         */
 typedef struct chan_s  chan_t;    /**< one channel.               */
 typedef struct note_s  note_t;    /**< channel step (pitch) info. */
 typedef struct mixer_s mixer_t;   /**< channel mixer.             */
+typedef struct songhd songhd_t;   /**< .4v file header.           */
 
 typedef struct vfs_s * vfs_t;
 typedef struct zz_vfs_dri_s vfs_dri_t;
+
+struct songhd {
+  uint8_t rate[2], measure[2], tempo[2], timesig[2], reserved[8];
+};
+
+struct sequ_s {
+  uint8_t cmd[2],len[2],stp[4],par[4];
+};
 
 struct str_s {
   /**
@@ -198,21 +208,6 @@ struct bin_s {
   uint8_t _buf[1];                   /**< buffer (always last).     */
 };
 
-/** Channels re-sampler and mixer interface. */
-struct mixer_s {
-  const char * name;                 /**< friendly name and method. */
-  const char * desc;                 /**< mixer brief description.  */
-
-  /** init mixer function. */
-  zz_err_t (*init)(play_t * const, u32_t);
-
-  /** release mixer function. */
-  void (*free)(play_t * const);
-
-  /** push PCM function. */
-  i16_t (*push)(play_t * const, void *, i16_t);
-};
-
 /** Prepared instrument (sample). */
 struct inst_s {
   u16_t     len;             /**< size in bytes.                    */
@@ -228,11 +223,6 @@ struct vset_s {
   u8_t   nbi;                /**< number of instrument [1..20].     */
   u32_t  iref;               /**< mask of instrument referenced.    */
   inst_t inst[20];           /**< instrument definitions.           */
-};
-
-/** File/Memory sequence. */
-struct sequ_s {
-  uint8_t cmd[2],len[2],stp[4],par[4];
 };
 
 struct memb_s {
@@ -274,7 +264,23 @@ struct note_s {
   inst_t *ins;               /**< Current instrument.               */
 };
 
-/** Played channel. */
+
+/** .4q file. */
+struct q4_s {
+  song_t * song;
+  vset_t * vset;
+  info_t * info;
+
+  u32_t songsz;
+  u32_t vsetsz;
+  u32_t infosz;
+};
+
+#include "zz_def.h"
+
+/**
+ * Played channel.
+ */
 struct chan_s {
   sequ_t  *seq;                       /**< sequence address.        */
   sequ_t  *cur;                       /**< next sequence.           */
@@ -296,69 +302,57 @@ struct chan_s {
 
 };
 
-/** .4q file. */
-struct q4_s {
-  song_t * song;
-  vset_t * vset;
-  info_t * info;
+typedef void play_f(core_t * const, chan_t * const);
 
-  u32_t songsz;
-  u32_t vsetsz;
-  u32_t infosz;
+/**
+ *  Player core information.
+ */
+struct core_s {
+  song_t   song;                /**< Music song (.4v). */
+  vset_t   vset;                /**< Music instrument (.set). */
+  void    *user;                /**< User data. */
+  mixer_t *mixer;               /**< Mixer to use. */
+  void    *data;                /**< Mixer private data. */
+  u32_t    tick;                /**< current tick (0:init 1:first). */
+  u32_t    spr;                 /**< Sampling rate (hz). */
+  uint8_t  mute;                /**< #0-3: ignored #4-7: muted. */
+  uint8_t  loop;                /**< #0-3:loop #4-7:tick loop. */
+  uint8_t  code;                /**< Error code. */
+  chan_t   chan[4];             /**< 4 channels info. */
 };
-
-#include "zz_def.h"
+typedef struct core_s core_t;
 
 struct play_s {
+  /* /!\  must be first /!\ */
+  core_t core;
+  /* /!\  must be first /!\ */
+
   volatile u8_t st_idx;
   struct str_s st_strings[4];
 
+  info_t   info;                        /**< Music info. */
   str_t songuri;
   str_t vseturi;
   str_t infouri;
 
-  song_t song;
-  vset_t vset;
-  info_t info;
-
-  u32_t tick;            /**< current tick (0:init 1:first).        */
-  u32_t spr;             /**< sampling rate (hz).                   */
   u32_t ms_pos;          /**< current frame start position (in ms). */
   u32_t ms_end;          /**< current frame end position (in ms).   */
   u32_t ms_max;          /**< maximum ms to play.                   */
   u32_t ms_len;          /**< measured ms length.                   */
 
-  mixer_t * mixer;           /**< Mixer to use (almost never null). */
-  void    * mixer_data;      /**< Mixer private data (never null).  */
-
+  u16_t    rate;                /**< tick rate (in hz). */
   u16_t pcm_cnt;                 /**< pcm remaining on this tick.   */
   u16_t pcm_err;                 /**< pcm error accumulator.        */
   u16_t pcm_per_tick;            /**< pcm per tick (integer).       */
   u16_t pcm_err_tick;            /**< pcm per tick (correction).    */
 
-  u16_t rate;                        /**< tick rate (in hz).        */
   u16_t ms_err;                      /**< ms error accumulator.     */
   u16_t ms_per_tick;                 /**< ms per tick (integer).    */
   u16_t ms_err_tick;                 /**< ms per tick (correction). */
 
-  uint8_t muted_voices;    /**< channels mask.       */
-  uint8_t has_loop;        /**< channels mask.       */
   uint8_t done;            /**< non zero when done.  */
-  uint8_t code;            /**< error code.          */
   uint8_t format;          /**< see ZZ_FORMAT_ enum. */
   uint8_t mixer_id;        /**< mixer identifier.    */
-  chan_t  chan[4];         /**< 4 channels info.     */
-
-  //uint8_t tohw[256];       /**< convert u8 PCM to what mixer wants. */
-};
-
-typedef struct songhd songhd_t;
-struct songhd {
-  uint8_t rate[2];
-  uint8_t measure[2];
-  uint8_t tempo[2];
-  uint8_t timesig[2];
-  uint8_t reserved[2*4];
 };
 
 /* ---------------------------------------------------------------------- */
@@ -502,7 +496,7 @@ void fltoi16(int16_t * const d, const float * const s, const int n);
 
 /**
  * Binary container.
- * @{mak
+ * @{
  */
 ZZ_EXTERN_C
 void bin_free(bin_t ** pbin);
@@ -546,7 +540,6 @@ ZZ_EXTERN_C
 zz_u32_t vfs_size(vfs_t vfs);
 ZZ_EXTERN_C
 zz_err_t vfs_seek(vfs_t vfs, zz_u32_t pos, zz_u8_t set);
-
 /**
  * @}
  */

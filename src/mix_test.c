@@ -150,7 +150,7 @@ static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
 }
 
 static i16_t
-push_cb(play_t * const P, void * restrict pcm, i16_t N)
+push_cb(core_t * const P, void * restrict pcm, i16_t N)
 {
   mix_fp_t * const M = (mix_fp_t *)P->mixer_data;
   int k;
@@ -212,7 +212,7 @@ static void * local_calloc(u32_t size, zz_err_t * err)
 }
 
 
-static zz_err_t init_cb(play_t * const P, u32_t spr)
+static zz_err_t init_cb(core_t * const P, u32_t spr)
 {
   zz_err_t ecode = E_OK;
   mix_fp_t * M = local_calloc(sizeof(mix_fp_t), &ecode);
@@ -239,7 +239,7 @@ static zz_err_t init_cb(play_t * const P, u32_t spr)
   return ecode;
 }
 
-static void free_cb(play_t * const P)
+static void free_cb(core_t * const P)
 {
   zz_memdel(&P->mixer_data);
 }

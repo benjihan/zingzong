@@ -330,16 +330,16 @@ vset_guess(zz_play_t P, const char * songuri)
     if (*s) {
       dmsg("method: #%hi:%hu, next: #%hi:%hu tr:%02hx\n",
            HI(method), HU(idx), HI(next_method), HU(next_idx), HU(tr));
-      if (E_OK == try_vset_load(&P->vset, s))
+      if (E_OK == try_vset_load(&P->core.vset, s))
         return E_OK;
     }
   }
 
   emsg("unable to find a voice set for -- \"%s\"\n", songuri);
 
-  if (P->vset.bin)
-    bin_free(&P->vset.bin);
-  zz_assert( ! P->vset.bin );
+  if (P->core.vset.bin)
+    bin_free(&P->core.vset.bin);
+  zz_assert( ! P->core.vset.bin );
 
   if (P->vseturi)
     zz_strdel(&P->vseturi);
@@ -656,8 +656,8 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
       P->infouri = zz_strdup(P->songuri);
 
       q4.info = &P->info; q4.infosz = U32(hd+16);
-      q4.song = &P->song; q4.songsz = U32(hd+8);
-      q4.vset = without_vset ? 0 : &P->vset;
+      q4.song = &P->core.song; q4.songsz = U32(hd+8);
+      q4.vset = without_vset ? 0 : &P->core.vset;
       q4.vsetsz = U32(hd+12);
 
       dmsg("QUARTET header [sng:%lu set:%lu inf:%lu]\n",
@@ -668,7 +668,7 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
     }
 
     /* Load song */
-    ecode = song_parse(&P->song, inp, hd, 0);
+    ecode = song_parse(&P->core.song, inp, hd, 0);
     if (unlikely(ecode))
       break;
     format = ZZ_FORMAT_4V;
@@ -685,7 +685,7 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
       ecode = vset_guess(P, songuri);
     else {
       if (*vseturi) {
-        ecode = vset_load(&P->vset,vseturi);
+        ecode = vset_load(&P->core.vset,vseturi);
         if (ecode)
           break;
         ecode = E_MEM;

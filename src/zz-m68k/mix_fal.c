@@ -21,9 +21,9 @@
 #define FAL_DMA_MODE  (DMA_MODE_16BIT)
 typedef int32_t spl_t;
 
-static zz_err_t init_fal(play_t * const, u32_t);
-static void     free_fal(play_t * const);
-static i16_t    push_fal(play_t * const, void *, i16_t);
+static zz_err_t init_fal(core_t * const, u32_t);
+static void     free_fal(core_t * const);
+static i16_t    push_fal(core_t * const, void *, i16_t);
 
 mixer_t * mixer_fal(mixer_t * const M)
 {
@@ -116,22 +116,23 @@ static void pb_stop(void)
   dma_stop();
 }
 
-static void never_inline init_dma(play_t * P)
+static void never_inline init_dma(core_t * P)
 {
   dma_stop();
 }
 
 /* Unroll instrument loops (samples stay in u8 format).
  */
-static void never_inline init_spl8(play_t * P)
+static void never_inline init_spl8(core_t * K)
 {
-  vset_unroll(&P->vset,0);
+  vset_unroll(&K->vset,0);
 }
 
 
-static i16_t push_fal(play_t * const P, void *pcm, i16_t n)
+static i16_t push_fal(core_t * const P, void *pcm, i16_t n)
 {
-  mix_fal_t * const M = (mix_fal_t *)P->mixer_data;
+  mix_fal_t * const M = (mix_fal_t *)P->mixer;
+
   i16_t ret = n;
   const int16_t bias = 2;     /* last thing we want is to under run */
 
@@ -151,7 +152,7 @@ static i16_t push_fal(play_t * const P, void *pcm, i16_t n)
   return ret;
 }
 
-static zz_err_t init_fal(play_t * const P, u32_t spr)
+static zz_err_t init_fal(core_t * const P, u32_t spr)
 {
   int ecode = E_OK;
   mix_fal_t * M = &g_fal;
@@ -195,19 +196,19 @@ static zz_err_t init_fal(play_t * const P, u32_t spr)
     dmsg("spr:%lu dma:%02hx scale:%lx\n",
          LU(spr), HU(M->dma), LU(scale) );
   }
-  P->mixer_data = M;
+  P->data = M;
   return ecode;
 }
 
-static void free_fal(play_t * const P)
+static void free_fal(core_t * const P)
 {
-  if (P->mixer_data) {
-    mix_fal_t * const M = (mix_fal_t *)P->mixer_data;
+  if (P->mixer) {
+    mix_fal_t * const M = (mix_fal_t *)P->mixer;
     if ( M ) {
       zz_assert( M == &g_fal );
       stop_ata(&M->ata);
       Unlocksnd();
     }
-    P->mixer_data = 0;
+    P->data = 0;
   }
 }

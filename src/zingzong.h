@@ -96,10 +96,12 @@ enum zz_quality_e {
 };
 
 typedef zz_i8_t zz_err_t;
-typedef struct vfs_s  * zz_vfs_t;
-typedef struct vset_s * zz_vset_t;
-typedef struct song_s * zz_song_t;
-typedef struct play_s * zz_play_t;
+typedef struct vfs_s   * zz_vfs_t;
+typedef struct vset_s  * zz_vset_t;
+typedef struct song_s  * zz_song_t;
+typedef struct core_s  * zz_core_t;
+typedef struct play_s  * zz_play_t;
+typedef struct mixer_s * zz_mixer_t;
 typedef const struct zz_vfs_dri_s * zz_vfs_dri_t;
 typedef zz_err_t (*zz_guess_t)(zz_play_t const, const char *);
 typedef struct zz_info_s zz_info_t;
@@ -142,6 +144,64 @@ struct zz_info_s {
   } tag;                            /**< meta tags.                 */
 
 };
+
+
+/* **********************************************************************
+ *
+ * Low level API (core)
+ *
+ * **********************************************************************/
+
+ZINGZONG_API
+/**
+ * Mute and ignore voices.
+ * - LSQ bits (0~3) are ignored channels.
+ * - MSQ bits (4~7) are muted channels.
+ *
+ * @param  play  player instance
+ * @param  clr   clear these bits
+ * @param  set   set these bits
+ * @return old bits
+ */
+uint8_t zz_core_mute(zz_core_t K, uint8_t clr, uint8_t set);
+
+ZINGZONG_API
+/**
+ * Init core player.
+ */
+zz_err_t zz_core_init(zz_core_t core, zz_mixer_t mixer, zz_u32_t spr);
+
+ZINGZONG_API
+/**
+ * Kill core player.
+ */
+void zz_core_kill(zz_core_t core);
+
+ZINGZONG_API
+/**
+ * Play one tick.
+ */
+zz_err_t zz_core_tick(zz_core_t const core);
+
+ZINGZONG_API
+/**
+ * Play one tick by calling zz_core_tick() and generate audio.
+ */
+zz_i16_t zz_core_play(zz_core_t core, void * pcm, zz_i16_t n);
+
+ZINGZONG_API
+/**
+ * Get zingzong version string.
+ *
+ * @retval "zingzong MAJOR.MINOR.PATCH.TWEAK"
+ */
+const char * zz_core_version(void);
+
+/* **********************************************************************
+ *
+ * Logging and memory allocation
+ *
+ * **********************************************************************/
 
 /**
  * Log level (first parameter of zz_log_t function).
@@ -194,14 +254,6 @@ void zz_mem(zz_new_t newf, zz_del_t delf);
 
 ZINGZONG_API
 /**
- * Get zingzong version string.
- *
- * @retval "zingzong MAJOR.MINOR.PATCH.TWEAK"
- */
-const char * zz_version(void);
-
-ZINGZONG_API
-/**
  * Create a new player instance.
  *
  * @param pplay pointer to player instance
@@ -217,6 +269,12 @@ ZINGZONG_API
  */
 void zz_del(zz_play_t * pplay);
 
+
+/* **********************************************************************
+ *
+ * High level API
+ *
+ * **********************************************************************/
 
 ZINGZONG_API
 /**
@@ -309,19 +367,6 @@ zz_i16_t zz_play(zz_play_t play, void * pcm, zz_i16_t n);
 
 ZINGZONG_API
 /**
- * Mute and ignore voices.
- * - LSQ bits (0~3) are ignored channels.
- * - MSQ bits (4~7) are muted channels.
- *
- * @param  play  player instance
- * @param  clr   clear these bits
- * @param  set   set these bits
- * @return old bits
- */
-uint8_t zz_mute(zz_play_t P, uint8_t clr, uint8_t set);
-
-ZINGZONG_API
-/**
  * Get current play position (in ms).
  * @return number of millisecond
  * @retval ZZ_EOF on error
@@ -342,6 +387,29 @@ ZINGZONG_API
  *         available mixers.
  */
 zz_u8_t zz_mixer_info(zz_u8_t id, const char **pname, const char **pdesc);
+
+/**
+ * Channels re-sampler and mixer interface.
+ */
+struct mixer_s {
+  const char * name;                 /**< friendly name and method. */
+  const char * desc;                 /**< mixer brief description.  */
+
+  /** Init mixer function. */
+  zz_err_t (*init)(zz_core_t const, zz_u32_t);
+
+  /** Release mixer function. */
+  void (*free)(zz_core_t const);
+
+  /** Push PCM function. */
+  zz_i16_t (*push)(zz_core_t const, void *, zz_i16_t);
+};
+
+/* **********************************************************************
+ *
+ * VFS
+ *
+ * **********************************************************************/
 
 enum {
   ZZ_SEEK_SET, ZZ_SEEK_CUR, ZZ_SEEK_END
@@ -373,8 +441,8 @@ struct zz_vfs_dri_s {
  * Common (inherited) part to all VFS instance.
  */
 struct vfs_s {
-  zz_vfs_dri_t dri;                     /**< pointer to the VFS driver */
-  int err;                              /**< last error number. */
+  zz_vfs_dri_t dri;                  /**< pointer to the VFS driver */
+  int err;                           /**< last error number.        */
 };
 
 ZINGZONG_API

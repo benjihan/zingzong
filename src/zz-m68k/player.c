@@ -4,11 +4,6 @@
  * @date    2017-09
  * @brief   zingzong m68k player entry points.
  *
- * long player_init(bin_t * song, bin_t * vset, long dri, long spr);
- * void player_kill(void);
- * void player_play(void);
- * void *player_internal(void);
- * long player_status(void);
  */
 
 #include "../zz_private.h"
@@ -19,10 +14,22 @@ int song_init(zz_song_t const song);
 int vset_init_header(zz_vset_t const vset, const void * hd);
 int vset_init(zz_vset_t const vset);
 
-static play_t play;
+zz_err_t zz_core_init(core_t*, mixer_t*, u32_t);
+void     zz_core_kill(core_t *);
+i16_t    zz_core_play(core_t*, void*, const i16_t);
+mixer_t *zz_mixer_get(zz_u8_t * const);
+
+typedef struct m68kplay m68k_t;
+
+struct m68kplay {
+  core_t   core;
+  uint16_t ppt;
+  zz_u8_t  dri;
+  mixer_t *mix;
+};
+
+static m68k_t play;
 static bin_t songbin, vsetbin;
-static volatile zz_err_t ready;
-static void * pcm = (void *)1;
 
 static bin_t * set_bin(bin_t * bin, bin_t *src, int16_t off)
 {
@@ -32,11 +39,7 @@ static bin_t * set_bin(bin_t * bin, bin_t *src, int16_t off)
   return bin;
 }
 
-/* /!\ Hack /!\ */
-static void * newf(zz_u32_t n) { return (void *) 0xdeadbea7; }
-static void delf(void * p) { }
-
-#if defined DEBUG && defined SC68
+#ifdef DEBUG
 static void
 logfunc(zz_u8_t chan, void * user, const char *fmt, va_list list)
 {
@@ -45,8 +48,7 @@ logfunc(zz_u8_t chan, void * user, const char *fmt, va_list list)
   vsnprintf(tmp,sizeof(tmp),fmt,list);
   tmp[sizeof(tmp)-1] = 0;
   fmt = tmp;
-#endif
-
+#endif /* NO_LIBC */
   switch (chan)
   {
   case ZZ_LOG_ERR: BRKMSG(fmt); break;
@@ -55,80 +57,92 @@ logfunc(zz_u8_t chan, void * user, const char *fmt, va_list list)
   case ZZ_LOG_DBG: DBGMSG(fmt); break;
   }
 }
-# define LOGFUNC logfunc
-#else
-# define LOGFUNC 0
-#endif
+#endif /* DEBUG */
 
-/* long player_internal(void) */
-/* { */
-/*   return (intptr_t) &play; */
-/* } */
+uint8_t player_mute(uint8_t clr, uint8_t set)
+{
+  return zz_core_mute(&play.core,clr,set);
+}
 
-/* long player_status(void) */
-/* { */
-/*   return ready; */
-/* } */
+long player_core(void)
+{
+  return (intptr_t) &play.core;
+}
 
-/* long player_driver(void) */
-/* { */
-/*   return (intptr_t) play.mixer; */
-/* } */
+long player_status(void)
+{
+  return play.core.code;
+}
 
-/* long player_sampling(void) */
-/* { */
-/*   return play.spr; */
-/* } */
+long player_driver(void)
+{
+  return (intptr_t) play.mix;
+}
+
+long player_sampling(void)
+{
+  return play.core.spr;
+}
 
 long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
 {
-  zz_log_fun(LOGFUNC,0);
-  zz_mem(newf,delf);
+#ifdef DEBUG
+  zz_log_fun(logfunc,0);
+#endif
 
   /* specific m68k checks */
   dmsg("sizeof(inst_t) == %hu\n",HU(sizeof(inst_t)));
   zz_assert( sizeof(inst_t) == 16 );
 
   BRKMSG("player_init()");
-  ready = 0;
   zz_memclr(&play,sizeof(play));
 
-  /* Skip the headers */
-  if (!song->ptr) song->ptr = song->_buf;
-  play.song.bin = set_bin(&songbin, song, 16);
-  if (!vset->ptr) vset->ptr = vset->_buf;
-  play.vset.bin = set_bin(&vsetbin, vset, 222);
+  if (dri >= 0x100) {
+    play.dri = ZZ_MIXER_XTN;
+    play.mix = (mixer_t*) dri;
+  }
+  else {
+    play.dri = (uint8_t) (dri-1);
+    play.mix = zz_mixer_get(&play.dri);
+  }
 
-  return
-    ready =
-    1
-    && ! song_init_header(&play.song, song->ptr)
-    && ! song_init(&play.song)
-    && ( play.vset.iref = play.song.iref)
-    && ! vset_init_header(&play.vset, vset->ptr)
-    && ! vset_init(&play.vset)
-    /* && ( zz_mute(&play,0,0xF-8) || 1 ) */
-    && ! zz_init(&play,0,0)               /* rate,duration */
-    && ! zz_setup(&play,(uint8_t)(dri-1),spr) /* mixer,spr */
-    ;
+  /* Skip the headers because that's how it is. */
+
+  if (!song->ptr) song->ptr = song->_buf;
+  play.core.song.bin = set_bin(&songbin, song, 16);
+  song_init_header(&play.core.song, song->ptr);
+  song_init(&play.core.song);
+
+  if (!vset->ptr) vset->ptr = vset->_buf;
+  play.core.vset.bin = set_bin(&vsetbin, vset, 222);
+  vset_init_header(&play.core.vset, vset->ptr);
+  vset_init(&play.core.vset);
+
+  zz_assert( ! play.core.code );
+  zz_core_init(&play.core, play.mix, spr);
+  zz_assert( ! play.core.code );
+  play.ppt = divu(play.core.spr+199,200);
+
+  dmsg("init: mixer#%hu:%s code=%hx ppt=%hu spr:%hu\n",
+       HU(dri),play.mix->name,
+       HU(play.core.code), HU(play.ppt), HU(play.core.spr));
+
+  zz_assert( ! play.core.code );
+  return play.core.code;
 }
 
 void player_kill(void)
 {
-  ready = 0;
-  zz_close(&play);
+  zz_core_kill(&play.core);
 }
 
 void player_play(void)
 {
-  if (ready) {
-    int16_t n = zz_play(&play,0,0);
-    if (n > 0)
-      n = zz_play(&play,pcm,n);
-    if ( n < 0 ) {
-      ready = 0;
-      /* ecode = -n; */
-      BREAKP;
-    }
-  }
+  i16_t ret =
+    zz_core_play(&play.core, (void*)-1, play.ppt);
+  (void) ret;
+  dmsg("tick#%lu / pcm:%hi / code:%hu\n",
+       LU(play.core.tick), HI(ret), HU(play.core.code));
+  zz_assert( ret == play.ppt );
+  zz_assert( !play.core.code );
 }

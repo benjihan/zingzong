@@ -19,7 +19,7 @@
     idx += stp;                                 \
   } while (0)
 
-static zz_err_t init_meth(play_t *P)
+static zz_err_t init_meth(core_t *P)
 {
   return ZZ_OK;
 }

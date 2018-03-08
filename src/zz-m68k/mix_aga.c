@@ -7,9 +7,9 @@
 
 #include "../zz_private.h"
 
-static zz_err_t init_aga(play_t * const, u32_t);
-static void     free_aga(play_t * const);
-static i16_t    push_aga(play_t * const, void *, i16_t);
+static zz_err_t init_aga(core_t * const, u32_t);
+static void     free_aga(core_t * const);
+static i16_t    push_aga(core_t * const, void *, i16_t);
 
 #define PER_MIN_PAL  123
 #define PER_MIN_NTSC 124
@@ -109,9 +109,9 @@ static uint16_t xstep(uint32_t stp, uint8_t khz, uint8_t inum)
   return per;
 }
 
-static i16_t push_aga(play_t * const P, void * pcm, i16_t npcm)
+static i16_t push_aga(core_t * const P, void * pcm, i16_t npcm)
 {
-  mix_aga_t * const M = (mix_aga_t *)P->mixer_data;
+  mix_aga_t * const M = (mix_aga_t *) P->data;
   int k;
 
   zz_assert(P);
@@ -165,13 +165,13 @@ static i16_t push_aga(play_t * const P, void * pcm, i16_t npcm)
   return npcm;
 }
 
-static zz_err_t init_aga(play_t * const P, u32_t spr)
+static zz_err_t init_aga(core_t * const P, u32_t spr)
 {
   int ecode = E_OK;
   int16_t k;
   mix_aga_t * const M = &g_aga;
 
-  P->mixer_data = M;
+  P->data = M;
   P->spr = mulu(P->song.khz,1000u);
   zz_memclr(M,sizeof(*M));
 
@@ -276,7 +276,7 @@ static zz_err_t init_aga(play_t * const P, u32_t spr)
   return ecode;
 }
 
-static void free_aga(play_t * const P)
+static void free_aga(core_t * const P)
 {
-  P->mixer_data = 0;
+  P->data = 0;
 }

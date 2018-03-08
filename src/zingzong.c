@@ -256,9 +256,9 @@ static void print_usage(int level)
 static void print_version(void)
 {
 #ifndef NDEBUG
-  printf("%s (DEBUG BUILD)\n",zz_version());
+  printf("%s (DEBUG BUILD)\n",zz_core_version());
 #else
-  printf("%s\n",zz_version());
+  printf("%s\n",zz_core_version());
 #endif
   puts(copyright);
   puts(license);
@@ -804,13 +804,13 @@ int main(int argc, char *argv[])
   if (!out)
     RETURN (ZZ_EOUT);
 
-  zz_mute(P, 0xFF, (opt_mute<<4)|opt_ignore);
   ecode = zz_init(P, opt_tickrate, max_ms);
   if (ecode)
     goto error_exit;
   ecode = zz_setup(P, opt_mixerid, out->hz);
   if (ecode)
     goto error_exit;
+  zz_core_mute((void*)P, 0xFF, (opt_mute<<4)|opt_ignore);
 
 #ifndef NO_AO
   if (wavuri)

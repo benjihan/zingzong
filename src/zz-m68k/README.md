@@ -5,18 +5,28 @@
 
 ### zingzong.bin stub
 
-	+$00 bra.w player_init
-	+$04 bra.w player_kill
-	+$08 bra.w player_play
-	+$0c bra.w player_version
+	+$00  bra.w  zingzong_init
+	+$04  bra.w  zingzong_kill
+	+$08  bra.w  zingzong_play
+	+$0c  bra.w  zingzong_mute
+	+$10  bra.w  zingzong_vers
+	+$14  bra.w  zingzong_stat
+	+$18  bra.w  zingzong_samp
+	+$1c  bra.w  zingzong_driv
+	+$20  bra.w  zingzong_core
 
 
 ### Prototypes
 
-	long player_init(bin_t * song, bin_t * vset, long dri, long spr);
-	void player_kill(void);
-	void player_play(void);
-	char*player_version(void);
+	long  zingzong_init(bin_t * song, bin_t * vset, long dri, long spr);
+	void  zingzong_kill(void);
+	void  zingzong_play(void);
+	byte  zingzong_mute(byte clr, byte set);
+	char* zingzong_vers(void);
+	byte  zingzong_stat(void);
+	long  zingzong_samp(void);
+	void* zingzong_driv(void);
+	void* zingzong_core(void);
 
 	typedef struct {
 		byte * ptr;   /* pointer to file data (if 0 use bin_t::dat[]) */
@@ -34,6 +44,11 @@
 
 
 #### Driver identifiers
+
+ If `dri.l` is greater than 255 it is interpreted as a pointer to an
+ external driver provided by the caller. Otherwise it is an identifier
+ for one of zingzong-m68k internal driver as described in the table
+ below.
 
  |  Value |           Driver         |             Remarks            |
  |--------|--------------------------|--------------------------------|

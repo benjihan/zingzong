@@ -44,7 +44,7 @@ static inline int lerp(const uint8_t * const pcm, u32_t idx)
   return r;
 }
 
-static zz_err_t init_meth(play_t * P)
+static zz_err_t init_meth(core_t * P)
 {
   const uint8_t * end = (uint8_t *)P->vset.bin->ptr+P->vset.bin->max;
   int i;

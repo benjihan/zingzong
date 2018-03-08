@@ -26,26 +26,19 @@ vpath %.c $(srcdir)
 .DELETE_ON_ERROR:
 .ONESHELL:
 ifneq ($(V),1)
-#.SILENT:
-M = printf "[%3s] %s\n" "$(1)" "$(2)"
+M = @printf "[%3s] %s\n" "$(1)" "$(2)"
 else
-MSG = true
 M =
 endif
 
 # ----------------------------------------------------------------------
 
 exename = $1
-libname = $1.a
-dllname = $1.dll
 
 # ----------------------------------------------------------------------
 
-targets = $(zz_exe) # $(zz_dll)
-
-zz_exe = $(call exename,zingzong)
-zz_lib = $(call libname,zingzong)
-zz_dll = $(call dllname,zingzong)
+targets = $(zz_exe)
+zz_exe  = $(call exename,zingzong)
 
 # ----------------------------------------------------------------------
 #  Toolchain
@@ -200,46 +193,42 @@ override CFLAGS   += $(gb_CFLAGS)
 override LDLIBS   += $(gb_LDLIBS)
 override LDFLAGS  += $(gb_LDFLAGS)
 
-zz_play.o: override CPPFLAGS += $(PACKAGE_CPPFLAGS)
+zz_core.o: override CPPFLAGS += $(PACKAGE_CPPFLAGS)
 
-zz_dll_src = $(zz_vfs_src)
 zz_exe_src = $(zz_out_src) $(zz_vfs_src) zingzong.c
-zz_lib_src = $(zz_mix_src) $(zz_pla_src) $(zz_zzz_src)
+zz_lib_src = $(zz_cor_src) $(zz_mix_src) $(zz_pla_src) $(zz_zzz_src)
 
-zz_dll_obj = $(zz_dll_src:.c=.o)
 zz_exe_obj = $(zz_exe_src:.c=.o)
 zz_lib_obj = $(zz_lib_src:.c=.o)
 
+zz_cor_src = $(addsuffix .c,$(cor))
 zz_mix_src = $(addsuffix .c,$(mix))
 zz_out_src = $(addsuffix .c,$(out))
 zz_vfs_src = $(addsuffix .c,$(vfs))
 zz_pla_src = $(addsuffix .c,$(pla))
 zz_zzz_src = $(addsuffix .c,$(zzz))
 
+zz_cor_obj = $(zz_cor_src:.c=.o)
 zz_mix_obj = $(zz_mix_src:.c=.o)
 zz_out_obj = $(zz_out_src:.c=.o)
 zz_vfs_obj = $(zz_vfs_src:.c=.o)
 zz_pla_obj = $(zz_pla_src:.c=.o)
 zz_zzz_obj = $(zz_zzz_src:.c=.o)
 
-mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float mix_test
+mix := $(addprefix mix_,none lerp qerp soxr srate float test)
 out := out_ao out_raw
 vfs := vfs_file
-pla := zz_init zz_play zz_log zz_fast
-zzz := zz_load zz_bin zz_mem zz_str zz_vfs zz_mixers
+cor := zz_init zz_core
+pla := zz_play zz_log
+zzz := $(addprefix zz_,load bin mem str vfs mixers)
 
-sources = $(sort $(zz_exe_src) $(zz_lib_src) $(zz_dll_src))
+sources = $(sort $(zz_exe_src) $(zz_lib_src))
 headers = zingzong.h zz_private.h zz_def.h mix_common.c
 objects = $(sources:.c=.o)
 
-$(zz_dll): $(zz_lib_obj) $(zz_dll_obj)
 $(zz_exe): $(zz_lib_obj) $(zz_exe_obj)
-$(zz_lib): $(zz_lib_obj:%=$(zz_lib)(%))
 
-%.dll:
-	$(CC) -mdll $(LDFLAGS) $(LDLIBS) -o $@ $^
-
-clean_files += $(zz_lib) $(zz_exe) $(zz_dll)
+clean_files += $(zz_lib) $(zz_exe)
 
 # ----------------------------------------------------------------------
 #  Distrib

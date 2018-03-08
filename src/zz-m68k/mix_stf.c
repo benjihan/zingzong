@@ -25,9 +25,9 @@
 #define VEC (*(trout_t * volatile *)0x134)
 #define BGC(X) (*(volatile uint16_t *)0xFFFF8240) = (X)
 
-static zz_err_t init_stf(play_t * const P, u32_t spr);
-static void     free_stf(play_t * const P);
-static i16_t    push_stf(play_t * const P, void *pcm, i16_t npcm);
+static zz_err_t init_stf(core_t * const P, u32_t spr);
+static void     free_stf(core_t * const P);
+static i16_t    push_stf(core_t * const P, void *pcm, i16_t npcm);
 
 mixer_t * mixer_stf(mixer_t * const M)
 {
@@ -145,7 +145,7 @@ init_timer_routines(void)
 
 /* Create 1024 x 4 bytes {A,B,C,X} entry from the packed table. */
 static void never_inline
-init_replay_table(void)
+init_recore_table(void)
 {
   if (!Tpcm[4*1023]) {
     const uint8_t * pack = ym10_pack;
@@ -207,7 +207,7 @@ static void never_inline prepare_sound(void)
 }
 
 
-static void never_inline init_spl(play_t * P)
+static void never_inline init_spl(core_t * P)
 {
   vset_unroll(&P->vset,0);
 }
@@ -220,9 +220,9 @@ static void stop_timer(void)
 }
 
 
-static uint16_t never_inline set_sampling(play_t * const P, uint16_t spr)
+static uint16_t never_inline set_sampling(core_t * const P, uint16_t spr)
 {
-  mix_stf_t * const M = (mix_stf_t *) P->mixer_data;
+  mix_stf_t * const M = (mix_stf_t *) P->data;
   M->tdr = (divu(2457600>>1, spr) + 1) >> 1;
   M->tcr = 1;
   return P->spr = (divu(2457600>>1, M->tdr) + 1) >> 1;
@@ -266,9 +266,9 @@ static void pb_stop(void)
 }
 
 
-static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
+static i16_t push_stf(core_t * const P, void * pcm, i16_t n)
 {
-  mix_stf_t * const M = (mix_stf_t *)P->mixer_data;
+  mix_stf_t * const M = (mix_stf_t *)P->data;
   i16_t ret = n;
 
   const int16_t tmax = MIXMAX;
@@ -299,7 +299,7 @@ static i16_t push_stf(play_t * const P, void * pcm, i16_t n)
 }
 
 
-static zz_err_t init_stf(play_t * const P, u32_t spr)
+static zz_err_t init_stf(core_t * const P, u32_t spr)
 {
   int ecode = E_OK;
   mix_stf_t * const M = &g_stf;
@@ -307,8 +307,8 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
   uint16_t scale;
 
   init_timer_routines();
-  init_replay_table();
-  P->mixer_data = M;
+  init_recore_table();
+  P->data = M;
   zz_memclr(M,sizeof(*M));
   refspr = mulu(P->song.khz,1000u);
 
@@ -332,17 +332,17 @@ static zz_err_t init_stf(play_t * const P, u32_t spr)
 }
 
 
-static void free_stf(play_t * const P)
+static void free_stf(core_t * const P)
 {
-  if (P->mixer_data) {
-    mix_stf_t * const M = (mix_stf_t *)P->mixer_data;
+  if (P->data) {
+    mix_stf_t * const M = (mix_stf_t *)P->data;
     if ( M ) {
       zz_assert( M == &g_stf );
       stop_ata(&M->ata);
     }
-    P->mixer_data = 0;
+    P->data = 0;
   }
   stop_timer();
   stop_sound();
-  P->mixer_data = 0;
+  P->data = 0;
 }

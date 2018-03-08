@@ -99,12 +99,14 @@ m68_pcrel    = no-pcrel
 m68_SHORT    = no-short
 zz_CFLAGS   += -g -Og
 zz_CPPFLAGS += -DNO_VFS -DDEBUG=1
-ELFLIBS      = 
+ELFLIBS      =
+zzx          = $(zzz)
 else
 m68_pcrel    = pcrel
 zz_CFLAGS   += -g -Os -fomit-frame-pointer
 zz_CPPFLAGS += -DZZ_MINIMAL -DNDEBUG=1
 ELFLIBS      = $(NOSTART) $(NOLIBS)
+zzx          = $(filter-out zz_log,$(zzz))
 endif
 
 zz_ASFLAGS  += --register-prefix-optional # no annoying %
@@ -128,7 +130,7 @@ PACKAGE_CPPFLAGS  = \
  -DPACKAGE_VERSION='"$(VERSION)"'
 
 com = player
-zzz = zz_m68k zz_play zz_init zz_str zz_mem zz_log zz_fast
+zzz = zz_m68k zz_core zz_init zz_log
 mix = mix_aga mix_stf mix_ste mix_fal mix_ata m68k_mix 
 m68 = m68k_mix.S m68k_mem.S
 
@@ -150,7 +152,7 @@ ASFLAGS  = $(call comma-list,-Wa $(zz_ASFLAGS))
 all: $(targets)
 .PHONY: all
 
-zz_play.o: override CPPFLAGS += $(PACKAGE_CPPFLAGS)
+zz_core.o: override CPPFLAGS += $(PACKAGE_CPPFLAGS)
 zz_fast.o: JUMP_TABLE = jump-tables
 zz_fast.o: override zz_CFLAGS += -Ofast
 
@@ -172,7 +174,7 @@ NOLIBS      = -nodefaultlibs -nostdlib
 #      convenient for our usage. However as only one driver is used at
 #      a time they can share a common BSS section. This is achieved by
 #      the final linker scripts.
-#      ----------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
 drivers := $(patsubst %,dri_%.elf,aga stf ste fal) mix_ata.o $(m68:%.S=%.o)
 
@@ -184,7 +186,6 @@ dri_stf.elf: mix_stf.o
 dri_ste.elf: mix_ste.o
 dri_fal.elf: mix_fal.o
 
-#mix_fal.o: m68_CPU = 68030
 mix_ata.o: JUMP_TABLE = jump-tables
 
 DRIFLAGS = -r -static $(NOSTART) $(NOLIBS)
@@ -208,7 +209,7 @@ MAPFLAGS = $(call maybe-wl,-Map=$*.map)
 zingzong.elf: START_SYMB = zingzong
 zingzong.elf: START_ADDR = C0000000
 zingzong.elf: LDFLAGS    = -T $(srcdir)/zingzong.x $(ELFFLAGS)
-zingzong.elf: $(addsuffix .o,stub m68k_mix $(com) $(zzz)) $(drivers)
+zingzong.elf: $(addsuffix .o,stub m68k_mix $(com) $(zzx)) $(drivers)
 stub.o: $(srcdir)/zingzong.x # GB: force rebuild when script change
 
 # ----------------------------------------------------------------------
@@ -222,7 +223,7 @@ else
 BINVERSION := $(subst .,,$(VERSION))
 endif
 
-bindist := zingzong-m68k-$(BINVERSION)
+bindist := $(PACKAGE)-$(BINVERSION)
 binfile := zingzong.{bin,sym} ${srcdir}/test_tos.s ${srcdir}/README.md
 
 bindist: $(bindist).zip
@@ -249,7 +250,7 @@ clean-test:
 .PHONY: test
 test: test.sc68 test.sndh
 
-test_o = $(addsuffix .o,sc68_start $(com) $(zzz))
+test_o = $(addsuffix .o,sc68_start $(com) $(zzx))
 .PRECIOUS: test.elf
 test.elf: START_SYMB = sc68_start
 test.elf: START_ADDR = 00010000

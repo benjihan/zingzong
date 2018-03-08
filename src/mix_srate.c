@@ -135,9 +135,9 @@ restart_chan(mix_chan_t * const K)
    ---------------------------------------------------------------------- */
 
 static i16_t
-push_cb(play_t * const P, void * pcm, i16_t N)
+push_cb(core_t * const P, void * pcm, i16_t N)
 {
-  mix_data_t * const M = (mix_data_t *) P->mixer_data;
+  mix_data_t * const M = (mix_data_t *) P->data;
   int k;
 
   zz_assert( P );
@@ -225,12 +225,12 @@ push_cb(play_t * const P, void * pcm, i16_t N)
 
 /* ---------------------------------------------------------------------- */
 
-static void free_cb(play_t * const P)
+static void free_cb(core_t * const P)
 {
-  mix_data_t * const M = (mix_data_t *) P->mixer_data;
+  mix_data_t * const M = (mix_data_t *) P->data;
   if (M) {
     int k;
-    zz_assert( M == P->mixer_data );
+    zz_assert( M == P->data );
     for (k=0; k<4; ++k) {
       mix_chan_t * const K = M->chan+k;
       if (K->st) {
@@ -238,18 +238,18 @@ static void free_cb(play_t * const P)
         K->st = 0;
       }
     }
-    zz_free(&P->mixer_data);
+    zz_free(&P->data);
   }
 }
 
 /* ---------------------------------------------------------------------- */
 
-static zz_err_t init_srate(play_t * const P, u32_t spr, const int quality)
+static zz_err_t init_srate(core_t * const P, u32_t spr, const int quality)
 {
   zz_err_t ecode = E_SYS;
   int k;
   u32_t N, size;
-  zz_assert( !P->mixer_data );
+  zz_assert( !P->data );
   zz_assert( sizeof(float) == 4 );
 
   switch (spr) {
@@ -264,11 +264,11 @@ static zz_err_t init_srate(play_t * const P, u32_t spr, const int quality)
   P->spr = spr;
 
   /* +1 float already allocated in mix_data_t struct */
-  N = P->spr/P->rate;
+  N = ( P->spr + RATE_MIN - 1 ) / RATE_MIN;
   size = sizeof(mix_data_t) + sizeof(float)*N;
-  ecode = zz_calloc(&P->mixer_data, size);
+  ecode = zz_calloc(&P->data, size);
   if (likely(E_OK == ecode)) {
-    mix_data_t * M = P->mixer_data;
+    mix_data_t * M = P->data;
     zz_assert( M );
     M->flt_max  = N+1;
     M->quality  = quality;
@@ -313,7 +313,7 @@ static zz_err_t init_srate(play_t * const P, u32_t spr, const int quality)
 #define STR(A) XTR(A)
 
 #define DECL_SRATE_MIXER(Q,QQ,D)                        \
-  static zz_err_t init_##Q(play_t * const P, u32_t spr) \
+  static zz_err_t init_##Q(core_t * const P, u32_t spr) \
   {                                                     \
     return init_srate(P, spr, SRC_##QQ);                \
   }                                                     \

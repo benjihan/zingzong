@@ -18,9 +18,9 @@
 #define fast_mix(R,N) fast_ste(mixtbl, R, _temp, M->ata.fast, N)
 #define MIXALIGN      1
 
-static zz_err_t init_ste(play_t * const, u32_t);
-static void     free_ste(play_t * const);
-static i16_t    push_ste(play_t * const, void *, i16_t);
+static zz_err_t init_ste(core_t * const, u32_t);
+static void     free_ste(core_t * const);
+static i16_t    push_ste(core_t * const, void *, i16_t);
 
 mixer_t * mixer_ste(mixer_t * const M)
 {
@@ -83,7 +83,7 @@ static void pb_stop(void)
   dma_stop();
 }
 
-static void never_inline init_dma(play_t * P)
+static void never_inline init_dma(core_t * P)
 {
   dma_stop();
 }
@@ -93,7 +93,7 @@ static void never_inline init_dma(play_t * P)
  * All 4 voice samples are added to form an index to this table. The
  * table maximizes the dynamic range to about a third of its size.
  */
-static void never_inline init_mix(play_t * P)
+static void never_inline init_mix(core_t * P)
 {
   if (!mixtbl[0]) {
 #if 0
@@ -122,14 +122,14 @@ static void never_inline init_mix(play_t * P)
 
 /* Unroll instrument loops (samples stay in u8 format).
  */
-static void never_inline init_spl8(play_t * P)
+static void never_inline init_spl8(core_t * P)
 {
   vset_unroll(&P->vset,0);
 }
 
-static i16_t push_ste(play_t * const P, void *pcm, i16_t n)
+static i16_t push_ste(core_t * const P, void *pcm, i16_t n)
 {
-  mix_ste_t * const M = (mix_ste_t *)P->mixer_data;
+  mix_ste_t * const M = (mix_ste_t *)P->data;
   i16_t ret = n;
   const int16_t bias = 2;     /* last thing we want is to under run */
 
@@ -149,14 +149,14 @@ static i16_t push_ste(play_t * const P, void *pcm, i16_t n)
   return ret;
 }
 
-static zz_err_t init_ste(play_t * const P, u32_t spr)
+static zz_err_t init_ste(core_t * const P, u32_t spr)
 {
   int ecode = E_OK;
   mix_ste_t * const M = &g_ste;
   uint32_t refspr;
   uint16_t scale;
 
-  P->mixer_data = M;
+  P->data = M;
   zz_memclr(M,sizeof(*M));
   refspr = mulu(P->song.khz,1000u);
 
@@ -195,14 +195,14 @@ static zz_err_t init_ste(play_t * const P, u32_t spr)
   return ecode;
 }
 
-static void free_ste(play_t * const P)
+static void free_ste(core_t * const P)
 {
-  if (P->mixer_data) {
-    mix_ste_t * const M = (mix_ste_t *)P->mixer_data;
+  if (P->data) {
+    mix_ste_t * const M = (mix_ste_t *)P->data;
     if ( M ) {
       zz_assert( M == &g_ste );
       stop_ata(&M->ata);
     }
-    P->mixer_data = 0;
+    P->data = 0;
   }
 }
