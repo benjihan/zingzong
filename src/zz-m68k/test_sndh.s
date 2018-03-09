@@ -16,7 +16,10 @@ MIXERID set     0               ; 0:Auto 1:Amiga 2:YM 3:DMA8 4:DMA16
 
 	dc.b	"SNDH"
 	dc.b	"TITL","Zingzong sndh test",0
+	dc.b	"CONV","Ben/OVR",0
 	dc.b	"TC200",0
+	dc.b	"##02",0
+	dc.b	"#!02",0
 	dc.b	"HDNS",0
 	even
 
@@ -29,15 +32,19 @@ sndh_init:
 	;; Driver (0:Auto 1:AGA 2:STf 3:STe 4:Falcon)
 	pea	MIXERID.w
 
-	;; vset bin_t address
-	lea	tovset(pc),a0
-	adda.l	(a0),a0
+	lea	nbsng(pc),a0
+	subq.b	#1,d0
+	and.l	#255,d0
+	divu	(a0)+,d0
+	swap	d0
+	lsl	#3,d0
+	adda.w	d0,a0
+
+	lea	4(a0),a1
+	add.l	(a0),a0		; vset bin_t address
 	pea	(a0)
-	
-	;; song bin_t address
-	lea	tosong(pc),a0
-	adda.l	(a0),a0
-	pea	(a0)
+	add.l	(a1),a1		; song bin_t address
+	pea	(a1)
 
 	bsr.s	zingzong
 	lea	16(a7),a7
@@ -57,8 +64,8 @@ sndh_play:
 	movem.l	(a7)+,d0-d1/a0-a1
 	rts
 
-tosong:	dc.l	song-*
-tovset:	dc.l	vset-*
+;; tosong:	dc.l	song-*
+;; tovset:	dc.l	vset-*
 	
 	;; zingzong replay (m68k "C" ABI)
 zingzong:
@@ -74,21 +81,35 @@ binptr:	rs.l	1		; points to file data (0=file follow)-
 binmax:	rs.l	1		; buffer size
 binlen:	rs.l	1		; data size
 
-	;; Song (.4v)
-	
-song:	dc.l	0
-	dc.l	song_max
-	dc.l	song_len
-song_bin:
-	incbin	"song.dat"	; .4v file
-song_len: equ *-song_bin
+	;; Sub song table
+nbsng:	dc.w	(sgnos-songs)/8
+songs:	dc.l	vset-*,sng1-*
+	dc.l	vset-*,sng2-*
+sgnos:	
+
+	;; Sng1 (.4v)
+sng1:	dc.l	0
+	dc.l	sng1_max
+	dc.l	sng1_len
+sng1_bin:
+	incbin	"sng1.dat"	; .4v file
+sng1_len: equ *-sng1_bin
 	even
 	ds.l	3		; for closing incomplete files
-song_max: equ *-song_bin
+sng1_max: equ *-sng1_bin
 
-
-	;; Voice set (.set)
+	;; Sng2 (.4v)
+sng2:	dc.l	0
+	dc.l	sng2_max
+	dc.l	sng2_len
+sng2_bin:
+	incbin	"sng2.dat"	; .4v file
+sng2_len: equ *-sng2_bin
+	even
+	ds.l	3		; for closing incomplete files
+sng2_max: equ *-sng2_bin
 	
+	;; Voice set (.set)
 vset:	dc.l	0
 	dc.l	vset_max
 	dc.l	vset_len
