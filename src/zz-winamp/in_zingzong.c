@@ -503,7 +503,7 @@ int play(const char * uri)
     goto exit;
 
   /* Init output module */
-  g_maxlatency = g_mod.outMod->Open(g_play.spr, 1, 16, 0, 0);
+  g_maxlatency = g_mod.outMod->Open(g_play.core.spr, 1, 16, 0, 0);
   if (g_maxlatency < 0)
     goto exit;
 
@@ -511,9 +511,9 @@ int play(const char * uri)
   g_mod.outMod->SetVolume(-666);
 
   /* Init info and visualization stuff */
-  g_mod.SetInfo(0, g_play.spr/1000, 1, 1);
-  g_mod.SAVSAInit(g_maxlatency, g_play.spr);
-  g_mod.VSASetInfo(g_play.spr, 1);
+  g_mod.SetInfo(0, g_play.core.spr/1000, 1, 1);
+  g_mod.SAVSAInit(g_maxlatency, g_play.core.spr);
+  g_mod.VSASetInfo(g_play.core.spr, 1);
 
   /* Init play thread */
   g_thdl = (HANDLE)
@@ -657,7 +657,7 @@ DWORD WINAPI playloop(LPVOID cookie)
         g_mod.SAAddPCMData (g_pcm, 1, 16, vispos);
         g_mod.VSAAddPCMData(g_pcm, 1, 16, vispos);
         if (g_mod.dsp_isactive())
-          npcm = g_mod.dsp_dosamples(g_pcm, n=npcm, 16, 1, g_play.spr);
+          npcm = g_mod.dsp_dosamples(g_pcm, n=npcm, 16, 1, g_play.core.spr);
         filling = 0;
         pcm = g_pcm;
       }

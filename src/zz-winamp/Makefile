@@ -197,8 +197,8 @@ zz_LDFLAGS  = $(error zz_LDFLAGS)
 all: $(targets)
 .PHONY: all
 
-mix := mix_none mix_lerp mix_qerp mix_soxr mix_srate mix_float
-zz  := zz_load zz_init zz_play zz_bin zz_str zz_vfs zz_mixers zz_log zz_mem
+mix := $(addprefix mix_,none lerp qerp soxr srate float)
+zz  := $(addprefix zz_,load init core play bin str vfs mixers log mem)
 src := in_zingzong dialogs vfs_file
 
 sources := $(addsuffix .c,$(src) $(zz) $(mix))
@@ -210,7 +210,7 @@ override CFLAGS   += $(gb_CFLAGS)
 override LDFLAGS  += $(gb_LDFLAGS)
 override LDLIBS   += $(gb_LDLIBS) -lgdi32
 
-in_zingzong.o zz_play.o dialogs.o: CPPFLAGS += $(PACKAGE_CPPFLAGS)
+in_zingzong.o zz_core.o dialogs.o: CPPFLAGS += $(PACKAGE_CPPFLAGS)
 in_zingzong.dll: $(objects)
 	$(call M,DLL,$@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@

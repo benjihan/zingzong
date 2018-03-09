@@ -583,7 +583,7 @@ int ConfigSave(config_t * cfg)
        HU(cfg->mid), LU(cfg->spr), LU(cfg->dms), res);
 
   if (res == ERROR_SUCCESS) {
-    const char * version = zz_version();
+    const char * version = zz_core_version();
     RegSetValue(hk,0,REG_SZ,(char*)version, strlen(version)+1);
     RegSetKeyValueA(hk,0,"mid",REG_SZ,name,strlen(name)+1);
     dw = cfg->spr;
