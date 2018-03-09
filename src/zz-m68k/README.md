@@ -2,39 +2,6 @@
 
 ## zingzong binary player
 
-
-### zingzong.bin stub
-
-	+$00  bra.w  zingzong_init
-	+$04  bra.w  zingzong_kill
-	+$08  bra.w  zingzong_play
-	+$0c  bra.w  zingzong_mute
-	+$10  bra.w  zingzong_vers
-	+$14  bra.w  zingzong_stat
-	+$18  bra.w  zingzong_samp
-	+$1c  bra.w  zingzong_driv
-	+$20  bra.w  zingzong_core
-
-
-### Prototypes
-
-	long  zingzong_init(bin_t * song, bin_t * vset, long dri, long spr);
-	void  zingzong_kill(void);
-	void  zingzong_play(void);
-	byte  zingzong_mute(byte clr, byte set);
-	char* zingzong_vers(void);
-	byte  zingzong_stat(void);
-	long  zingzong_samp(void);
-	void* zingzong_driv(void);
-	void* zingzong_core(void);
-
-	typedef struct {
-		byte * ptr;   /* pointer to file data (if 0 use bin_t::dat[]) */
-		long   max;   /* maximum size available in the buffer */
-		long   len;   /* actual file size */
-		byte   dat[]; /* optional data buffer */
-	} bin_t;
-
  * The player is compiled using gcc m68k C ABI in PC relative mode:
    * The parameters have to be pushed in the stack in backward order.
    * Return value is stored in register d0.
@@ -43,7 +10,47 @@
  * The stack usage is about 400 bytes.
 
 
-#### Driver identifiers
+### zingzong.bin stub
+
+    +$00|  bra.w  zingzong_init  ;; Initialize player and song
+    +$04|  bra.w  zingzong_kill  ;; Stop player
+    +$08|  bra.w  zingzong_play  ;; Run at tick rate (usually 200hz)
+    +$0c|  bra.w  zingzong_mute  ;; Get/Set muted/ignored channels
+    +$10|  bra.w  zingzong_vers  ;; Get version string
+    +$14|  bra.w  zingzong_stat  ;; Get current status (0=OK)
+    +$18|  bra.w  zingzong_samp  ;; Get effective samplign rate
+    +$1c|  bra.w  zingzong_driv  ;; Get internal dri_t struct
+    +$20|  bra.w  zingzong_core  ;; Get internal core_t struct
+
+
+### Prototypes
+
+    typedef struct {
+        byte * ptr;   /* pointer to file data (if 0 use bin_t::dat[]) */
+        long   max;   /* maximum size available in the buffer */
+        long   len;   /* actual file size */
+        byte   dat[]; /* optional data buffer */
+    } bin_t;
+
+    long  zingzong_init(bin_t * song, bin_t * vset, long dri, long spr);
+    void  zingzong_kill(void);
+    void  zingzong_play(void);
+    byte  zingzong_mute(byte clr, byte set);
+    char* zingzong_vers(void);
+    byte  zingzong_stat(void);
+    long  zingzong_samp(void);
+    void* zingzong_driv(void);
+    void* zingzong_core(void);
+
+### Detailed information
+
+    long  zingzong_init(bin_t * song, bin_t * vset, long dri, long spr);
+
+#### Return value
+
+`zingzong_init()` returns an error code (`0` on success).
+
+#### Driver identifiers (long dri)
 
  If `dri.l` is greater than 255 it is interpreted as a pointer to an
  external driver provided by the caller. Otherwise it is an identifier
@@ -55,11 +62,11 @@
  |    0   |  Auto detect             | Amiga first then "_SND" cookie |
  |    1   |  Amiga/Paula             | Must be loaded in chipmem      |
  |    2   |  STf (PSG+Timer-A)       |                                |
- |    3   |  Ste (mono-8bit DMA)     |                                |
- |    4   |  Falcon (mono/16bit-DMA) | Could be much better           |
+ |    3   |  STe (mono-8bit DMA)     |                                |
+ |    4   |  Falcon (16bit-DMA)      | Do not use the Falcon DSP.     |
 
 
-#### Sampling rate
+#### Sampling rate (long spr)
 
  | Symbol  | Value |       Description           |
  |---------|-------|-----------------------------|
@@ -78,18 +85,50 @@
 
  * STe / DMA-8bit driver
 
- | Symbol  | Sampling | Direct sampling range      |
- |---------|----------|----------------------------|
- | `ZZ_FQ` |  12khz   | 7000-13999                 |
- | `ZZ_LQ` |  6.2khz  | < 7000                     |
- | `ZZ_MQ` |  25khz   | 14000-27999                |
- | `ZZ_HQ` |  50khz   | >=28000                    |
+ | Symbol  | Sampling | Direct sampling range |
+ |---------|----------|-----------------------|
+ | `ZZ_FQ` | 12517 hz | 7000-13999            |
+ | `ZZ_LQ` |  6258 hz | < 7000                |
+ | `ZZ_MQ` | 25033 hz | 14000-27999           |
+ | `ZZ_HQ` | 50066 hz | >=28000               |
 
  * Falcon / DMA-16bit driver
 
  The current driver does not use the extra sampling rate available to
  the Falcon. Plus the falcon does not have a 6.2Khz mode. The ZZ_LQ
- mode fallback to 12khz.
+ mode fallback to 12.5khz.
+
+--------------------------------------------------------------------------
+
+    byte  zingzong_mute(byte clr, byte set);
+	
+  * bits `#4-7` represent muted channels A to D respectively.
+  * bits `#0-3` represent ignored channels A to D respectively.
+
+ If a bit is set the corresponding channel is muted or ignored.
+ 
+ Muted channels are not sent to the mixer. More exactly they are
+ forced into stopped state. Muted channels still have the command
+ sequence parsed normally and may for instance generate an error. In
+ the contrary ignored channels that are completely bypassed.
+
+#### Parameters
+
+* `clr` are the bits to clear in the mute/ignore control byte (NAND).
+* `set` are the bits to set  in the mute/ignore control byte (OR).
+
+#### Return value
+
+`zingzong_mute()` returns the previous value of the mute/ignore
+control byte.
+
+#### Examples
+
+	 zingzong_mute(0,0);      /* Read the current status */
+	 zingzong_mute(15,0);     /* Ignore all */
+	 zingzong_mute(0,255);    /* Play all */
+	 zingzong_mute(255,val);  /* Set the status to `val` */
+
 
 ### Examples
 
