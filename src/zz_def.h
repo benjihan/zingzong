@@ -221,7 +221,7 @@ zz_out_t * out_raw_open(zz_u32_t hz, const char * uri);
 /* ---------------------------------------------------------------------- */
 
 ZZ_EXTERN_C
-zz_mixer_t zz_mixer_get(zz_u8_t id);
+zz_mixer_t zz_mixer_get(zz_u8_t * const ptr_id);
 ZZ_EXTERN_C
 void zz_wipe(zz_play_t play);
 

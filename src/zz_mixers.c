@@ -89,28 +89,7 @@ zz_u8_t zz_mixer_info(zz_u8_t n, const char ** pname, const char ** pdesc)
   return n;
 }
 
-zz_mixer_t zz_mixer_get(zz_u8_t n)
+zz_mixer_t zz_mixer_get(zz_u8_t * const pn)
 {
-  return get_mixer(&n);
+  return get_mixer(pn);
 }
-
-#if 0
-zz_u8_t zz_mixer_set(play_t * P, zz_u8_t n)
-{
-  mixer_t * mixer;
-
-  dmsg("set %s#%hu\n", P?"":"default ",HU(n));
-  mixer = get_mixer(&n);
-  dmsg("found: #%hu <%s>\n", HU(n), mixer?mixer->name:"");
-
-  if (n != ZZ_MIXER_ERR) {
-    /* mixer can be null if n is ZZ_MIXER_XTN. */
-    if (mixer)
-      *( P ? &P->core.mixer : &default_mixer ) = mixer;
-    if (P)
-      P->mixer_id = n;
-  }
-  return n;
-}
-#endif
-

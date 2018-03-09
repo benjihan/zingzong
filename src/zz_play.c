@@ -165,7 +165,7 @@ zz_setup(play_t * P, u8_t mid, u32_t spr)
   if (!P->core.vset.iref)
     goto error;
 
-  ecode = zz_core_init(&P->core, zz_mixer_get(mid), spr);
+  ecode = zz_core_init(&P->core, zz_mixer_get(&mid), spr);
   if (ecode)
     goto error;
   zz_assert( P->core.spr );
