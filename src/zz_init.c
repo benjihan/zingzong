@@ -311,7 +311,7 @@ error:
  */
 
 zz_err_t
-vset_init_header(zz_vset_t vset, const void * _hd)
+vset_init_header(vset_t *vset, const void * _hd)
 {
   const uint8_t *hd = _hd;
   int ecode = E_SET;
@@ -353,7 +353,7 @@ vset_init_header(zz_vset_t vset, const void * _hd)
 }
 
 zz_err_t
-vset_init(zz_vset_t const vset)
+vset_init(vset_t * const vset)
 {
   bin_t * const bin = vset->bin;
   u32_t imsk;
@@ -478,7 +478,7 @@ unroll_loop(uint8_t * dst, uint8_t * const end, i32_t lpl, const uint8_t nul)
 {
   zz_assert( dst < end );
   if (lpl)
-#if 0 && defined __m68k__
+#if defined __m68k__
     asm (
       "    subq.l  #1,%[cnt]            \n"
       "    swap    %[cnt]               \n"
@@ -498,7 +498,7 @@ unroll_loop(uint8_t * dst, uint8_t * const end, i32_t lpl, const uint8_t nul)
 }
 
 zz_err_t
-vset_unroll(zz_vset_t const vset, const uint8_t *tohw)
+vset_unroll(vset_t * const vset, const uint8_t *tohw)
 {
   bin_t   * const bin = vset->bin;
   uint8_t * const beg = bin->ptr;

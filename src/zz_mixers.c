@@ -89,6 +89,12 @@ zz_u8_t zz_mixer_info(zz_u8_t n, const char ** pname, const char ** pdesc)
   return n;
 }
 
+zz_mixer_t zz_mixer_get(zz_u8_t n)
+{
+  return get_mixer(&n);
+}
+
+#if 0
 zz_u8_t zz_mixer_set(play_t * P, zz_u8_t n)
 {
   mixer_t * mixer;
@@ -106,3 +112,5 @@ zz_u8_t zz_mixer_set(play_t * P, zz_u8_t n)
   }
   return n;
 }
+#endif
+

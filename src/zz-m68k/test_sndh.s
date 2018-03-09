@@ -64,9 +64,12 @@ sndh_play:
 	movem.l	(a7)+,d0-d1/a0-a1
 	rts
 
-;; tosong:	dc.l	song-*
-;; tovset:	dc.l	vset-*
-	
+	;; Sub song table
+nbsng:	dc.w	(sgnos-songs)/8
+songs:	dc.l	vset-*,sng1-*
+	dc.l	vset-*,sng2-*
+sgnos:
+
 	;; zingzong replay (m68k "C" ABI)
 zingzong:
 	ifd	ZZSYMB
@@ -81,40 +84,37 @@ binptr:	rs.l	1		; points to file data (0=file follow)-
 binmax:	rs.l	1		; buffer size
 binlen:	rs.l	1		; data size
 
-	;; Sub song table
-nbsng:	dc.w	(sgnos-songs)/8
-songs:	dc.l	vset-*,sng1-*
-	dc.l	vset-*,sng2-*
-sgnos:	
-
+	;; ---------------------
 	;; Sng1 (.4v)
 sng1:	dc.l	0
 	dc.l	sng1_max
 	dc.l	sng1_len
 sng1_bin:
-	incbin	"sng1.dat"	; .4v file
+	incbin	"sng1.4v"	; .4v file
 sng1_len: equ *-sng1_bin
 	even
 	ds.l	3		; for closing incomplete files
 sng1_max: equ *-sng1_bin
 
+	;; ---------------------
 	;; Sng2 (.4v)
 sng2:	dc.l	0
 	dc.l	sng2_max
 	dc.l	sng2_len
 sng2_bin:
-	incbin	"sng2.dat"	; .4v file
+	incbin	"sng2.4v"	; .4v file
 sng2_len: equ *-sng2_bin
 	even
 	ds.l	3		; for closing incomplete files
 sng2_max: equ *-sng2_bin
-	
+
+	;; ---------------------
 	;; Voice set (.set)
 vset:	dc.l	0
 	dc.l	vset_max
 	dc.l	vset_len
 vset_bin:
-	incbin	"vset.dat"	; .set file
+	incbin	"sndh.set"	; .set file
 vset_len: equ *-vset_bin
 	even
 	ds.b	2048		; loop unroll extra space

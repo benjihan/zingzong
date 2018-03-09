@@ -42,6 +42,7 @@
     void* zingzong_driv(void);
     void* zingzong_core(void);
 
+
 ### Detailed information
 
     long  zingzong_init(bin_t * song, bin_t * vset, long dri, long spr);

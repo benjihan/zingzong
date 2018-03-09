@@ -210,10 +210,14 @@ struct bin_s {
 
 /** Prepared instrument (sample). */
 struct inst_s {
-  u16_t     len;             /**< size in bytes.                    */
-  u16_t     lpl;             /**< loop length in bytes.             */
-  u32_t     end;             /**< unrolled end.                     */
-  uint8_t * pcm;             /**< sample address.                   */
+  u16_t    len;              /**< size in bytes.                    */
+  u16_t    lpl;              /**< loop length in bytes.             */
+  u32_t    end;              /**< unrolled end.                     */
+  uint8_t *pcm;              /**< sample address.                   */
+};
+
+struct memb_s {
+  bin_t  *bin;               /**< data container.                   */
 };
 
 /** Prepared instrument set. */
@@ -223,10 +227,6 @@ struct vset_s {
   u8_t   nbi;                /**< number of instrument [1..20].     */
   u32_t  iref;               /**< mask of instrument referenced.    */
   inst_t inst[20];           /**< instrument definitions.           */
-};
-
-struct memb_s {
-  bin_t  *bin;               /**< data container.                   */
 };
 
 /** Prepared song. */
@@ -299,10 +299,7 @@ struct chan_s {
   }
   *loop_sp,                             /**< loop stack pointer.    */
   loops[MAX_LOOP];                      /**< loop stack.   */
-
 };
-
-typedef void play_f(core_t * const, chan_t * const);
 
 /**
  *  Player core information.
@@ -320,7 +317,6 @@ struct core_s {
   uint8_t  code;                /**< Error code. */
   chan_t   chan[4];             /**< 4 channels info. */
 };
-typedef struct core_s core_t;
 
 struct play_s {
   /* /!\  must be first /!\ */

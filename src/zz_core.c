@@ -294,10 +294,14 @@ zz_core_play(core_t * restrict K, void * restrict pcm, i16_t n)
 void
 zz_core_kill(core_t * K)
 {
-  if (K && K->mixer) {
-    K->mixer->free(K);
-    K->mixer = 0;
-    K->data  = 0;
+  if (K) {
+    if (K->mixer) {
+      K->mixer->free(K);
+      K->mixer = 0;
+      K->data  = 0;
+    }
+    K->code = 0;
+    K->spr  = 0;
   }
 }
 
@@ -354,9 +358,10 @@ zz_core_init(core_t * K, mixer_t * M, u32_t spr)
 
   if (!K)
     return E_ARG;
-
   if (K->code)
     return K->code;
+  if (K->mixer)
+    return K->code = E_MIX;
 
   zz_memclr(K->chan,sizeof(K->chan));
   for (k=0; k<4; ++k) {
@@ -375,7 +380,9 @@ zz_core_init(core_t * K, mixer_t * M, u32_t spr)
     ecode = E_MIX;
   else {
     K->spr = 0;
-    ecode = (K->mixer = M)->init(K, spr);
+    ecode = M->init(K, spr);
+    if (!ecode)
+      K->mixer = M;
   }
 
   return K->code = ecode;

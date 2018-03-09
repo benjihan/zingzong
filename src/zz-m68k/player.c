@@ -26,6 +26,8 @@ struct m68kplay {
   uint16_t ppt;
   zz_u8_t  dri;
   mixer_t *mix;
+  void    *set;
+  volatile int8_t ready;
 };
 
 static m68k_t play;
@@ -84,8 +86,15 @@ long player_sampling(void)
   return play.core.spr;
 }
 
+void player_kill(void)
+{
+  play.ready = 0;
+  zz_core_kill(&play.core);
+}
+
 long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
 {
+  zz_err_t err = 0;
 #ifdef DEBUG
   zz_log_fun(logfunc,0);
 #endif
@@ -95,7 +104,9 @@ long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
   zz_assert( sizeof(inst_t) == 16 );
 
   BRKMSG("player_init()");
-  zz_memclr(&play,sizeof(play));
+
+  if (play.ready)
+    player_kill();
 
   if (dri >= 0x100) {
     play.dri = ZZ_MIXER_XTN;
@@ -109,17 +120,34 @@ long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
   /* Skip the headers because that's how it is. */
 
   if (!song->ptr) song->ptr = song->_buf;
-  play.core.song.bin = set_bin(&songbin, song, 16);
-  song_init_header(&play.core.song, song->ptr);
-  song_init(&play.core.song);
-
   if (!vset->ptr) vset->ptr = vset->_buf;
-  play.core.vset.bin = set_bin(&vsetbin, vset, 222);
-  vset_init_header(&play.core.vset, vset->ptr);
-  vset_init(&play.core.vset);
 
+  if (play.set != vset->ptr
+      ||
+      U32(vset->ptr) != FCC('V','S','E','T'))
+  {
+    play.core.vset.bin = set_bin(&vsetbin, vset, 222);
+    err = err
+      || vset_init_header(&play.core.vset, vset->ptr)
+      || vset_init(&play.core.vset)
+      ;
+    if (!err) {
+      *(uint32_t *)vset->ptr = FCC('V','S','E','T');
+      play.set = vset->ptr;
+    }
+  }
+
+  play.core.song.bin = set_bin(&songbin, song, 16);
+  err = err
+    || song_init_header(&play.core.song, song->ptr)
+    || song_init(&play.core.song)
+    ;
   zz_assert( ! play.core.code );
-  zz_core_init(&play.core, play.mix, spr);
+
+  err = err
+    || zz_core_init(&play.core, play.mix, spr)
+    ;
+
   zz_assert( ! play.core.code );
   play.ppt = divu(play.core.spr+199,200);
 
@@ -128,21 +156,20 @@ long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
        HU(play.core.code), HU(play.ppt), HU(play.core.spr));
 
   zz_assert( ! play.core.code );
-  return play.core.code;
-}
+  zz_assert( ! err );
 
-void player_kill(void)
-{
-  zz_core_kill(&play.core);
+  play.ready = play.core.code == ZZ_OK;
+  return play.core.code;
 }
 
 void player_play(void)
 {
-  i16_t ret =
-    zz_core_play(&play.core, (void*)-1, play.ppt);
-  (void) ret;
-  dmsg("tick#%lu / pcm:%hi / code:%hu\n",
-       LU(play.core.tick), HI(ret), HU(play.core.code));
-  zz_assert( ret == play.ppt );
-  zz_assert( !play.core.code );
+  if (play.ready) {
+    i16_t ret = zz_core_play(&play.core, (void*)-1, play.ppt);
+    play.ready = ret > 0;
+    dmsg("tick#%lu / pcm:%hi / code:%hu\n",
+         LU(play.core.tick), HI(ret), HU(play.core.code));
+    zz_assert( ret == play.ppt );
+    zz_assert( !play.core.code );
+  }
 }
