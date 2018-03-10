@@ -41,7 +41,7 @@ typedef struct mix_fast_s mix_fast_t;
 typedef struct mix_fal_s mix_fal_t;
 
 struct mix_fal_s {
-  ata_t   ata;                          /* generic atari mixer  */
+  ata_t    ata;                         /* generic atari mixer  */
   uint16_t dma;                         /* Track/sound DMA mode   */
 };
 
@@ -50,9 +50,6 @@ static spl_t _fifo[FIFOMAX];            /* FIFO buffer */
 
 ZZ_EXTERN_C
 void fast_fal(spl_t * dest, mix_fast_t * voices, int32_t n);
-
-ZZ_EXTERN_C
-void fast_4x8(spl_t * dest, mix_fast_t * voices, int32_t n);
 
 static inline
 /* @retval     1 success
@@ -131,13 +128,13 @@ static void never_inline init_spl8(core_t * K)
 
 static i16_t push_fal(core_t * const P, void *pcm, i16_t n)
 {
-  mix_fal_t * const M = (mix_fal_t *)P->mixer;
+  mix_fal_t * const M = (mix_fal_t *)P->data;
 
   i16_t ret = n;
   const int16_t bias = 2;     /* last thing we want is to under run */
 
   zz_assert( P );
-  zz_assert( M );
+  zz_assert( M == &g_fal );
   zz_assert( IS_ALIGN(FIFOMAX) );
   zz_assert( IS_ALIGN(TEMPMAX) );
 
@@ -202,8 +199,8 @@ static zz_err_t init_fal(core_t * const P, u32_t spr)
 
 static void free_fal(core_t * const P)
 {
-  if (P->mixer) {
-    mix_fal_t * const M = (mix_fal_t *)P->mixer;
+  if (P->data) {
+    mix_fal_t * const M = (mix_fal_t *)P->data;
     if ( M ) {
       zz_assert( M == &g_fal );
       stop_ata(&M->ata);

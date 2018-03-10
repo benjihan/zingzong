@@ -275,7 +275,7 @@ static i16_t push_stf(core_t * const P, void * pcm, i16_t n)
   const int16_t bias = 2;     /* last thing we want is to under run */
 
   zz_assert( P );
-  zz_assert( M );
+  zz_assert( M == &g_stf );
   zz_assert( mix_align(tmax) == tmax );
 
   n += bias;
@@ -341,8 +341,7 @@ static void free_stf(core_t * const P)
       stop_ata(&M->ata);
     }
     P->data = 0;
+    stop_timer();
+    stop_sound();
   }
-  stop_timer();
-  stop_sound();
-  P->data = 0;
 }

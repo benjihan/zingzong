@@ -115,7 +115,7 @@ static i16_t push_aga(core_t * const P, void * pcm, i16_t npcm)
   int k;
 
   zz_assert(P);
-  zz_assert(M);
+  zz_assert( M == &g_aga );
 
   /* Setup channels */
   for (k=0; k<4; ++k) {

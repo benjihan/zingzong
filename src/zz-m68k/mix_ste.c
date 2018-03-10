@@ -134,7 +134,7 @@ static i16_t push_ste(core_t * const P, void *pcm, i16_t n)
   const int16_t bias = 2;     /* last thing we want is to under run */
 
   zz_assert( P );
-  zz_assert( M );
+  zz_assert( M == &g_ste );
   zz_assert( IS_ALIGN(FIFOMAX) );
   zz_assert( IS_ALIGN(TEMPMAX) );
 
