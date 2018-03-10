@@ -6,8 +6,8 @@
  *
  */
 
-        .cpu    68000
-        .arch   68000
+        .cpu    68020
+        .arch   68020
 
 #define BLKLEN  12      // Mix this many PCMs without loop check
 #define IRQSIZ  32      // Size of the STf replay chained timer routine
@@ -605,30 +605,40 @@ steCD_off:
 /// GB: timings are wrong for the Falcon 68030
 
 falCD_all:
-        clr.w   d6              | clear MSB
+        || clr.w   d6              | clear MSB
         swap    d7              | store count in msw
 falCD_beg:
         .rept   BLKLEN
         |                         27  27 nops, 28 bytes
         | ----------------------+---+---
-        move.w  (a3)+,d7        | 2 | 9 nops, 12 bytes
+	moveq   #0,d6		|   |
+        move.w  (a3)+,d6        |   | d6= 0000 | a+b
+	movea.w	d6,a2		|   | a2= 0000 | a+b
+	lea	0(a2,a2.l*2),a2	|   | a2= 0000 | 3a+3b
+	swap	d6		|   | d6= a+b  | 0000
+	| ----------------------+---+---
+        move.l  d4,a6           |   |
+        add.w   a0,d2           |   |
+        addx.l  d0,d4           |   |
+	clr.w	d7		|   | d7= cnt | 0000
+        move.b  (a6),d7         |   | d7= cnt | c
         | ----------------------+---+---
-        move.l  d4,a6           | 1 |
-        add.w   a0,d2           | 1 |
-        addx.l  d0,d4           | 2 |
-        move.b  (a6),d6         | 2 |
-        add.w   d6,d7           | 1 |
+        move.l  d5,a6           |   |
+        add.w   a1,d3           |   |
+        addx.l  d1,d5           |   |
+        move.b  (a6),d6         |   | d6= a+b | d
         | ----------------------+---+---
-        move.l  d5,a6           | 1 | 7 nops, 10 bytes
-        add.w   a1,d3           | 1 |
-        addx.l  d1,d5           | 2 |
-        move.b  (a6),d6         | 2 |
-        add.w   d6,d7           | 1 |
+        add.w   d7,d6           |   | d6= a+b | c+d
+	move.w	d6,d7		|   | d7= cnt | c+d
+	add.w	a2,d6		|   | d6= a+b | 3a+3b+c+d
+	movea.w	d7,a2		|   | a2= 0000 | c+d
+	lea	0(a2,a2.l*2),a2	|   | a2= 0000 | 3c+3d
+	swap	d6		|   | d6= 3a+3b+c+d | a+b
+	add.w	a2,d6		|   | d6= 3a+3b+c+d | a+b+3c+3d
         | ----------------------+---+---
-        lsl.w   #6,d7           | 5 |
-        sub.w   a2,d7		| 1 |
-        move.w  d7,(a4)+        | 5 |
-        move.w  d7,(a4)+        | 5 |
+	lsl.l	#5,d6		|   | 
+	eor.l	#0x80008000,d6	|   |
+        move.l  d6,(a4)+        |   |
         |
         .endr
 falCD_end:
