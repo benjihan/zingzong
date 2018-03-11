@@ -8,6 +8,8 @@
 #include "../zz_private.h"
 #include "mix_ata.h"
 
+
+
 #define TICKMAX       256
 #define FIFOMAX       ((TICKMAX*3)>>1)
 #define TEMPMAX       TICKMAX
@@ -15,7 +17,24 @@
 #define ULIGN(X)      ALIGN((X)+MIXALIGN-1)
 #define IS_ALIGN(X)   ((X) == ALIGN(X))
 #define init_spl(P)   init_spl8(P)
+
+#define STEREO 0
+
+#if ! STEREO
 #define fast_mix(R,N) fast_ste(mixtbl, R, _temp, M->ata.fast, N)
+#define NAME "stdma8"
+#define DESC "Atari ST via mono 8-bit DMA"
+#define STE_DMA_MODE DMA_MODE_MONO
+typedef int8_t pcm_t;
+
+#else
+#define fast_mix(R,N) fast_s7s(R, M->ata.fast, N)
+#define NAME "stdma8"
+#define DESC "Atari ST via stereo 8-bit DMA"
+#define STE_DMA_MODE 0
+typedef int16_t pcm_t;
+#endif
+
 #define MIXALIGN      1
 
 static zz_err_t init_ste(core_t * const, u32_t);
@@ -24,8 +43,8 @@ static i16_t    push_ste(core_t * const, void *, i16_t);
 
 mixer_t * mixer_ste(mixer_t * const M)
 {
-  M->name = "stdma8";
-  M->desc = "Atari ST via 8-bit DMA";
+  M->name = NAME;
+  M->desc = DESC;
   M->init = init_ste;
   M->free = free_ste;
   M->push = push_ste;
@@ -43,11 +62,13 @@ struct mix_ste_s {
 };
 
 static mix_ste_t g_ste;                 /* STE mixer instance */
+#if ! STEREO
 static int8_t    mixtbl[1024];          /* mix 4 voices together */
-
-/* $$$ TEMP REDUCE BUFFER */
-static int16_t  _temp[TEMPMAX];         /* intermediat mix buffer */
-static int8_t   _fifo[FIFOMAX];         /* FIFO buffer */
+static int16_t  _temp[TEMPMAX];         /* intermediate mix buffer */
+#else
+static uint8_t   luttbl[256];           /* convert u8 to s7 */
+#endif
+static pcm_t    _fifo[FIFOMAX];         /* FIFO buffer */
 
 ZZ_EXTERN_C
 void fast_ste(int8_t  * Tmix, int8_t     * dest,
@@ -55,11 +76,9 @@ void fast_ste(int8_t  * Tmix, int8_t     * dest,
               int32_t n);
 
 ZZ_EXTERN_C
-void fast_ste_6bit(int8_t * dest, mix_fast_t * voices,
-                   int32_t n);
+void fast_s7s(int16_t * dest, mix_fast_t * voices, int32_t n);
 
 /* ---------------------------------------------------------------------- */
-
 
 static int16_t pb_play(void)
 {
@@ -71,7 +90,7 @@ static int16_t pb_play(void)
          HU(DMA[DMA_CNTL]), HU(DMA[DMA_MODE]), HU(g_ste.dma), dma_position());
     return 0;
   } else {
-    int8_t * const pos = dma_position();
+    pcm_t * const pos = dma_position();
     zz_assert( pos >= _fifo );
     zz_assert( pos <  _fifo+g_ste.ata.fifo.sz );
     return ALIGN( pos - _fifo );
@@ -95,6 +114,7 @@ static void never_inline init_dma(core_t * P)
  */
 static void never_inline init_mix(core_t * P)
 {
+#if ! STEREO
   if (!mixtbl[0]) {
 #if 0
     int i;
@@ -118,13 +138,23 @@ static void never_inline init_mix(core_t * P)
     zz_assert(x == 127);
 #endif
   }
+#endif
 }
 
-/* Unroll instrument loops (samples stay in u8 format).
+/* Unroll instrument loops.
  */
 static void never_inline init_spl8(core_t * P)
 {
+#if ! STEREO
+  /* mono: samples stay in u8 format */
   vset_unroll(&P->vset,0);
+#else
+  /* stereo: samples stay in s7 format */
+  int16_t i;
+  for ( i=0; i<256; ++i )
+    luttbl[i] = i-128 >> 1;
+  vset_unroll(&P->vset,luttbl);
+#endif
 }
 
 static i16_t push_ste(core_t * const P, void *pcm, i16_t n)
@@ -175,10 +205,10 @@ static zz_err_t init_ste(core_t * const P, u32_t spr)
   }
 
   switch (spr) {
-  case ZZ_LQ: spr =  6258; M->dma = 0|DMA_MODE_MONO; break;
-  case ZZ_FQ: spr = 12517; M->dma = 1|DMA_MODE_MONO; break;
-  case ZZ_HQ: spr = 50066; M->dma = 3|DMA_MODE_MONO; break;
-  default:    spr = 25033; M->dma = 2|DMA_MODE_MONO; break;
+  case ZZ_LQ: spr =  6258; M->dma = 0|STE_DMA_MODE; break;
+  case ZZ_FQ: spr = 12517; M->dma = 1|STE_DMA_MODE; break;
+  case ZZ_HQ: spr = 50066; M->dma = 3|STE_DMA_MODE; break;
+  default:    spr = 25033; M->dma = 2|STE_DMA_MODE; break;
   }
 
   P->spr = spr;

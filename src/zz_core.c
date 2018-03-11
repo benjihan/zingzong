@@ -36,7 +36,6 @@ zz_core_mute(core_t * K, uint8_t clr, uint8_t set)
   return old;
 }
 
-
 /* ---------------------------------------------------------------------- */
 
 /* Offset between 2 sequences (should be multiple of 12). */
