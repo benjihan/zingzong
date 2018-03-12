@@ -13,10 +13,11 @@
  */
 
 enum {
-  MIXER_AGA,                        /**< Amiga mixer identifier.    */
-  MIXER_STF,                        /**< PSG mixer identifier.      */
-  MIXER_STE,                        /**< 8bit DMA mixer identifier. */
-  MIXER_FAL,                        /**< 16bit DMA ixer identifier. */
+  MIXER_AGA,                /**< Amiga mixer identifier.             */
+  MIXER_STF,                /**< PSG mixer identifier.               */
+  MIXER_S7S,                /**< stereo 8-bit DMA mixer identifier.  */
+  MIXER_FAL,                /**< stereo 16-bit DMA mixer identifier. */
+  MIXER_STE,                /**< mono 8-bit DMA mixer identifier.    */
 
   /**/
   MIXER_LAST                        /**< Number of valid mixer.     */

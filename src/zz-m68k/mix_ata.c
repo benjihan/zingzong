@@ -9,13 +9,13 @@
 #include "../zz_private.h"
 #include "mix_ata.h"
 
-static void ata_trig(chan_t * restrict C, fast_t * restrict K, uint16_t scl)
+static void ata_trig(fast_t * restrict K, uint16_t scl)
 {
-  chan_t * const E = C+4;
+  fast_t * const E = K+4;
 
-  for (; C<E; ++C, ++K) {
+  for (; K<E; ++K) {
+    chan_t * restrict const C = K->chn;
     const u8_t trig = C->trig;
-
     C->trig = TRIG_NOP;
     switch (trig) {
     case TRIG_NOTE:
@@ -24,7 +24,6 @@ static void ata_trig(chan_t * restrict C, fast_t * restrict K, uint16_t scl)
       K->end = K->cur + C->note.ins->len;
       K->dec = 0;
       K->lpl = C->note.ins->lpl;
-
     case TRIG_SLIDE:
       K->xtp = mulu(scl, C->note.cur>>4) >> 8;
       break;
@@ -97,9 +96,9 @@ static void fifo_play(fifo_t * const F, int16_t n)
   zz_assert( F->i2 == 0 || F->n2 == 0);
 }
 
-void play_ata(ata_t * restrict ata, chan_t * restrict C, int16_t n)
+void play_ata(ata_t * restrict ata, int16_t n)
 {
-  ata_trig(C, ata->fast, ata->step);
+  ata_trig(ata->fast, ata->step);
   fifo_play(&ata->fifo, n);
 }
 

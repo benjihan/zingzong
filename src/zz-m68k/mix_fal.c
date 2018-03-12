@@ -8,6 +8,8 @@
 #include "../zz_private.h"
 #include "mix_ata.h"
 
+#define WITH_LOCKSND 0
+
 #define TICKMAX 256
 #define FIFOMAX (TICKMAX*3)
 #define TEMPMAX TICKMAX
@@ -27,8 +29,8 @@ static i16_t    push_fal(core_t * const, void *, i16_t);
 
 mixer_t * mixer_fal(mixer_t * const M)
 {
-  M->name = "stdma16";
-  M->desc = "Atari ST via 16-bit DMA";
+  M->name = "stdma16:stereo";
+  M->desc = "Atari ST via stereo 16-bit DMA";
   M->init = init_fal;
   M->free = free_fal;
   M->push = push_fal;
@@ -50,6 +52,8 @@ static spl_t _fifo[FIFOMAX];            /* FIFO buffer */
 
 ZZ_EXTERN_C
 void fast_fal(spl_t * dest, mix_fast_t * voices, int32_t n);
+
+#if WITH_LOCKSND
 
 static inline
 /* @retval     1 success
@@ -80,6 +84,13 @@ int32_t Unlocksnd(void)
     : [ret] "=d" (ret));
   return ret;
 }
+
+#else /* WITH_LOCKSND */
+
+#define Locksnd() 1
+#define Unlocksnd()
+
+#endif /* WITH_LOCKSND */
 
 #if 0
 /* Falcon prescalers (unused ATM) */
@@ -128,7 +139,7 @@ static void never_inline init_spl8(core_t * K)
 
 static i16_t push_fal(core_t * const P, void *pcm, i16_t n)
 {
-  mix_fal_t * const M = (mix_fal_t *)P->data;
+  mix_fal_t * const M = (mix_fal_t *) P->data;
 
   i16_t ret = n;
   const int16_t bias = 2;     /* last thing we want is to under run */
@@ -141,7 +152,7 @@ static i16_t push_fal(core_t * const P, void *pcm, i16_t n)
   n = ULIGN(n+bias);
   if (n > TEMPMAX)
     n = TEMPMAX;
-  play_ata(&M->ata, P->chan, n);
+  play_ata(&M->ata, n);
 
   fast_mix(&_fifo[M->ata.fifo.i1], M->ata.fifo.n1);
   fast_mix(&_fifo[M->ata.fifo.i2], M->ata.fifo.n2);
@@ -189,7 +200,7 @@ static zz_err_t init_fal(core_t * const P, u32_t spr)
   } else {
     init_dma(P);
     init_spl(P);
-    init_ata(FIFOMAX,scale);
+    init_ata(FIFOMAX,scale,0);
     dmsg("spr:%lu dma:%02hx scale:%lx\n",
          LU(spr), HU(M->dma), LU(scale) );
   }
@@ -200,7 +211,7 @@ static zz_err_t init_fal(core_t * const P, u32_t spr)
 static void free_fal(core_t * const P)
 {
   if (P->data) {
-    mix_fal_t * const M = (mix_fal_t *)P->data;
+    mix_fal_t * const M = (mix_fal_t *) P->data;
     if ( M ) {
       zz_assert( M == &g_fal );
       stop_ata(&M->ata);

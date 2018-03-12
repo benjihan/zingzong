@@ -95,6 +95,7 @@ okay:
 
 	bsr	zingzong_driv	; d0= pointer to mixer_t
 	move.l	d0,a0		; Get mixer name
+	move.l	4(a0),-(a7)	; Push description for later
 	move.l	(a0),-(a7)
 	move.w	#9,-(a7)
 	trap    #1
@@ -105,15 +106,24 @@ okay:
 	bsr	deci
 	move.b	#"h",(a0)+
 	move.b	#"z",(a0)+
-	move.b	#10,(a0)+
-	move.b	#10,(a0)+
-	clr.b	(a0)
-
-	pea	msgI(pc)
+	bsr	add_crlf
+	
+	pea	msgI(pc)	; >> @HZ
 	move.w	#9,-(a7)
 	trap    #1
 	addq    #6,a7
 
+	move.w	#9,-(a7)	; >> Description
+	trap    #1
+	addq    #6,a7
+
+	lea	msgI+1(pc),a0
+	pea	(a0)		; >> <CR><LF><LF>
+	bsr	add_crlf
+	move.w	#9,-(a7)
+	trap    #1
+	addq    #6,a7
+	
 	;; Wait for key message
 	pea     msgB(pc)        ; >> Press ...
 	move.w  #9,-(a7)        ; Cconws(msg.l)
@@ -328,12 +338,19 @@ zz_init:
 	pea	(a0)
 
 	bsr	zingzong_init
-	tst.b	d0		; clr Z on error
+	tst.b	d0		; clear Z on error
 	lea	16(a7),a7
 
 	movem.l	(a7)+,d1/a0-a1
 	rts
 
+add_crlf:	
+	move.b	#10,(a0)+
+	move.b	#10,(a0)+
+	move.b	#13,(a0)+
+	clr.b	(a0)
+	rts
+	
 zz_kill:
 	movem.l	d0-d1/a0-a1,-(a7)
 	bsr	zingzong_kill
@@ -396,7 +413,7 @@ estr:	dc.b	"0000",10,10
 msgH:	dc.b	13,27,"K"
 	dc.b	"Driver: ",0
 msgI:	dc.b	"@"
-	ds.b	14
+	ds.b	64
 
 ;;; ----------------------------------------
 ;;; Player and Music Files

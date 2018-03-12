@@ -16,14 +16,17 @@ static mixer_t mixer;
 #define COOKIEJAR (* (uint32_t **) 0x5A0)
 
 /* _SND cookie bits */
-#define SND_YM2149    1
-#define SND_8BIT_DMA  2
-#define SND_16BIT_DMA 4
-#define SND_DSP_56K   8
+enum {
+  SND_YM2149    = 1,
+  SND_8BIT_DMA  = 2,
+  SND_16BIT_DMA = 4,
+  SND_DSP_56K   = 8
+};
 
 /* Amiga DMACON register */
 #define DMACON (*(volatile uint16_t *)0xDFF096)
 
+static uint8_t id_ste = MIXER_S7S;  /* STe auto-detect mixer to use */
 
 static void __attribute__((interrupt)) bus_error(void)
 {
@@ -110,7 +113,7 @@ uint8_t guess_hardware(void)
     if ( snd & SND_16BIT_DMA )
       id = MIXER_FAL;
     else if ( snd & SND_8BIT_DMA )
-      id = MIXER_STE;
+      id = id_ste;
     else if ( snd & SND_YM2149 )
       id = MIXER_STF;
   }
@@ -121,6 +124,7 @@ uint8_t guess_hardware(void)
 ZZ_EXTERN_C mixer_t * mixer_aga(mixer_t * const M);
 ZZ_EXTERN_C mixer_t * mixer_stf(mixer_t * const M);
 ZZ_EXTERN_C mixer_t * mixer_ste(mixer_t * const M);
+ZZ_EXTERN_C mixer_t * mixer_s7s(mixer_t * const M);
 ZZ_EXTERN_C mixer_t * mixer_fal(mixer_t * const M);
 
 static mixer_t * mixer_of(zz_u8_t n, mixer_t * M)
@@ -130,6 +134,7 @@ static mixer_t * mixer_of(zz_u8_t n, mixer_t * M)
   case MIXER_AGA: M = mixer_aga(M); break;
   case MIXER_STF: M = mixer_stf(M); break;
   case MIXER_STE: M = mixer_ste(M); break;
+  case MIXER_S7S: M = mixer_s7s(M); break;
   case MIXER_FAL: M = mixer_fal(M); break;
   default: M = 0;
   }

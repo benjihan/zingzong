@@ -8,6 +8,8 @@
 #include "../zz_private.h"
 #include "mix_ata.h"
 
+#define HALF_TONE 1                   /* Use lowpass filter trick */
+
 #define mix_align(N) (N)
 
 #undef SPR_MIN
@@ -32,7 +34,7 @@ static i16_t    push_stf(core_t * const P, void *pcm, i16_t npcm);
 mixer_t * mixer_stf(mixer_t * const M)
 {
   M->name = "ym2149";
-  M->desc = "Atari ST via YM-2149";
+  M->desc = "Atari ST via YM-2149 and timer-A";
   M->init = init_stf;
   M->free = free_stf;
   M->push = push_stf;
@@ -185,24 +187,24 @@ static void never_inline stop_sound(void)
                 "move.w #0x2700,%%sr   \n\t" : [savesr] "=m" (savesr) );
   YMB[0] = 7;
   YMB[2] = YMB[0] | 0077;
-  clear_ym_regs();
   asm volatile ("move.w %[savesr],%%sr \n\t" :: [savesr] "m" (savesr) );
+  clear_ym_regs();
 }
 
 
 /* GB: current Hatari does not handle lowpass trick. */
 static void never_inline prepare_sound(void)
 {
-#if 0
-  stop_sound();
-#else
+#if HALF_TONE
   int16_t savesr;
   asm volatile ("move.w %%sr,%[savesr] \n\t"
                 "move.w #0x2700,%%sr   \n\t" : [savesr] "=m" (savesr) );
   YMB[0] = 7;
   YMB[2] = (YMB[0] & 0300) | 0070;
-  clear_ym_regs();
   asm volatile ("move.w %[savesr],%%sr \n\t" :: [savesr] "m" (savesr) );
+  clear_ym_regs();
+#else
+  stop_sound();
 #endif
 }
 
@@ -286,7 +288,7 @@ static i16_t push_stf(core_t * const P, void * pcm, i16_t n)
   zz_assert( n > 0 );
   zz_assert( n < MIXMAX );
 
-  play_ata(&M->ata, P->chan, n);
+  play_ata(&M->ata, n);
 
 #define fast_mix(N) \
   fast_stf(Tpcm, rout+M->ata.fifo.i##N, temp, M->ata.fast, M->ata.fifo.n##N)
@@ -326,7 +328,7 @@ static zz_err_t init_stf(core_t * const P, u32_t spr)
   scale  = ( divu( refspr<<13, spr) + 1 ) >> 1;
 
   init_spl(P);
-  init_ata(MIXMAX*2,scale);
+  init_ata(MIXMAX*2,scale,0);
 
   return ecode;
 }

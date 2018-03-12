@@ -18,7 +18,7 @@
     +$0c|  bra.w  zingzong_mute  ;; Get/Set muted/ignored channels
     +$10|  bra.w  zingzong_vers  ;; Get version string
     +$14|  bra.w  zingzong_stat  ;; Get current status (0=OK)
-    +$18|  bra.w  zingzong_samp  ;; Get effective samplign rate
+    +$18|  bra.w  zingzong_samp  ;; Get effective sampling rate
     +$1c|  bra.w  zingzong_driv  ;; Get internal dri_t struct
     +$20|  bra.w  zingzong_core  ;; Get internal core_t struct
 
@@ -60,11 +60,12 @@
 
  |  Value |           Driver         |             Remarks            |
  |--------|--------------------------|--------------------------------|
- |    0   |  Auto detect             | Amiga first then "_SND" cookie |
- |    1   |  Amiga/Paula             | Must be loaded in chipmem      |
- |    2   |  STf (PSG+Timer-A)       |                                |
- |    3   |  STe (mono-8bit DMA)     |                                |
- |    4   |  Falcon (16bit-DMA)      | Do not use the Falcon DSP.     |
+ |    0   |  Auto detect             | Amiga 1st then "_SND" cookie.  |
+ |    1   |  Amiga/Paula             | Must be loaded in chipmem.     |
+ |    2   |  STf (PSG+Timer-A)       | System friendly (hopefully).   |
+ |    3   |  STe (2x8bit DMA)        | 7-bit PCM resolution.          |
+ |    4   |  Falcon (2x16bit-DMA)    | CPU only. Blended stereo.      |
+ |    5   |  STe (1x8bit DMA)        | Improved dynamic range.        |
 
 
 #### Sampling rate (long spr)

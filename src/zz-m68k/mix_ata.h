@@ -16,7 +16,8 @@ struct mix_fast_s {
   uint32_t xtp;                         /*  8 */
   uint16_t dec;                         /* 12 */
   uint16_t lpl;                         /* 14 */
-  uint8_t  usr[16];                     /* 16 */
+  chan_t  *chn;                         /* 16 */
+  uint8_t  usr[12];                     /* 20 */
 };                                      /* 32 bytes */
 
 typedef struct mix_fifo_s fifo_t;
@@ -37,21 +38,24 @@ struct mix_fifo_s {
 typedef struct mix_ata_s ata_t;
 struct mix_ata_s {
   fifo_t   fifo;                        /* Generic FIFO */
-  uint16_t step;                        /* step scale (pitch) */
-  fast_t   fast[4];                     /* Fast channel info  */
+  uint16_t step;                        /* Step scale (pitch) */
+  fast_t   fast[4];                     /* Fast channel info */
 };
 
-void play_ata(ata_t * ata, chan_t * C, int16_t n);
+void play_ata(ata_t * ata, int16_t n);
 void stop_ata(ata_t * ata);
 
-#define init_ata(SIZE, STEP)                                \
+#define init_ata(SIZE, STEP, MI)                            \
   do {                                                      \
+    int16_t i;                                              \
     M->ata.fifo.sz = SIZE;                                  \
     M->ata.fifo.wp = -1;                                    \
     M->ata.fifo.pb_play = pb_play;                          \
     M->ata.fifo.pb_stop = pb_stop;                          \
     M->ata.fifo.pb_user = M;                                \
     M->ata.step = STEP;                                     \
+    for(i=0; i<4; ++i)                                      \
+      M->ata.fast[i].chn = &P->chan[3&(i+MI)];              \
   } while (0)
 
 #undef FP
