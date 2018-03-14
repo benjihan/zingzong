@@ -93,9 +93,9 @@ enum {
 
 /* Options */
 
-static int opt_splrate = SPR_DEF, opt_tickrate = 0;
+static int opt_splrate = SPR_DEF, opt_tickrate, opt_blend = BLEND_DEF;
 static int opt_mixerid = ZZ_MIXER_DEF;
-static int8_t opt_ignore, opt_mute, opt_help, opt_outtype;
+static int8_t opt_ignore, opt_mute, opt_help, opt_outtype, opt_cmap;
 static char * opt_length, * opt_output;
 
 /* ----------------------------------------------------------------------
@@ -195,6 +195,7 @@ static void print_usage(int level)
 
   puts(
     " -l --length=TIME   Set play time.\n"
+    " -b --blend=[X,]Y   Set channel mapping and blending (see below).\n"
     " -m --mute=CHANS    Mute selected channels (bit-field or string).\n"
     " -i --ignore=CHANS  Ignore selected channels (bit-field or string).\n"
     " -o --output=URI    Set output file name (-w or -c).\n"
@@ -207,7 +208,7 @@ static void print_usage(int level)
 
   puts(
     !level ?
-    "Try `-hh' for more details on OUTPUT/TIME/CHANS.\n" :
+    "Try `-hh' for more details on OUTPUT/TIME/BLEND/CHANS.\n" :
 
     "OUTPUT:\n"
     " Options `-n/--null',`-c/--stdout' and `-w/--wav' are used to set the\n"
@@ -239,6 +240,22 @@ static void print_usage(int level)
     " If time is not set the player tries to auto-detect the music duration.\n"
     " However a number of musics are going into unnecessary loops which make\n"
     " it harder to properly detect.\n"
+    "\n"
+    "BLENDING:\n"
+    " Blending defines how the 4 channels are mapped to stereo output.\n"
+    " Channels are mapped by pairs.\n"
+    " The left pair is channel A plus the channel specified by `X`.\n"
+    " `X` defaults to channel B.\n"
+    " The right pair is composed by the 2 remaining channels.\n"
+    " Both channels pairs are blended together according to `Y`.\n"
+    " . `0`   is full panning (L=A+X; R=A+B+C+D-L)\n"
+    " . `128` is centered (L=R=A+B+C+D)\n"
+    " . `256` is full reversed panning (R=A+X; L=A+B+C+D-R)\n"
+    " . Any value of `Y` in the range [0-256] is valid resulting in a linear\n"
+    "   blending such as:\n"
+    "   L = ( (A+X)*(256-Y) + (A+B+C+D-A-X)*Y )     ) / 256\n"
+    "   R = ( (A+X)*Y       + (A+B+C+D-A-X)*(256-Y) ) / 256\n"
+    "   `Y` defaults to " CPPSTR(BLEND_DEF)  ".\n"
     "\n"
     "CHANS:\n"
     " Select channels to be either muted or ignored. It can be either:\n"
@@ -566,7 +583,8 @@ static int find_mixer(char * arg, char ** pend)
 /**
  * Parse -r,--rate=[M:Q,]Hz.
  */
-static int uint_spr(char * arg, const char * name, int * prate, int * pmixer)
+static int uint_spr(char * const arg, const char * name,
+                    int * prate, int * pmixer)
 {
   int rate = SPR_DEF;
   char * end = arg;
@@ -601,7 +619,7 @@ static int uint_spr(char * arg, const char * name, int * prate, int * pmixer)
  * Parse -m/--mute -i/--ignore option argument. Either a string :=
  * [A-D]\+ or an integer {0..15}
  */
-static int uint_mute(char * arg, char * name)
+static int uint_mute(char * const arg, char * name)
 {
   int c = tolower(*arg), mute;
   if (c >= 'a' && c <= 'd') {
@@ -618,6 +636,28 @@ static int uint_mute(char * arg, char * name)
     mute = uint_arg(arg,name,0,15,0);
   }
   return mute;
+}
+
+/**
+ * Parse -b,--blend=[X,]Y.
+ */
+static int uint_blend(char * const arg, const char * name, int8_t * map)
+{
+  char * s = arg;
+  int blend = opt_blend, c = tolower(*s);
+
+  if (c >= 'b' && c <= 'd') {
+    *map = c - 'b';
+    c = *++s;
+    if (c == ',')
+      ++s;
+    else if (c == 0)
+      s = 0;
+  }
+  if (s)
+    blend = uint_arg(s,name,0,256,0);
+
+  return blend;
 }
 
 static zz_err_t too_few_arguments(void)
@@ -647,7 +687,7 @@ static zz_err_t too_many_arguments(void)
 
 int main(int argc, char *argv[])
 {
-  static char sopts[] = "hV" WAVOPT "cno:" "r:t:l:m:i:";
+  static char sopts[] = "hV" WAVOPT "cno:" "r:t:l:m:i:b:";
   static struct option lopts[] = {
     { "help",    0, 0, 'h' },
     { "usage",   0, 0, 'h' },
@@ -664,6 +704,7 @@ int main(int argc, char *argv[])
     { "length=", 1, 0, 'l' },
     { "mute=",   1, 0, 'm' },
     { "ignore=", 1, 0, 'i' },
+    { "blend=",  1, 0, 'b' },
     { 0 }
   };
   int c, ecode=ZZ_ERR, ecode2;
@@ -674,11 +715,13 @@ int main(int argc, char *argv[])
   zz_u8_t format;
   zz_out_t * out = 0;
 
+  argv[0] = me;
+
   /* Install logger */
   zz_log_fun(mylog,0);
   zz_log_bit(0, (1<<ZZ_LOG_DBG)-1);
 
-  opterr = 0;
+  opterr = 1;
   while ((c = getopt_long (argc, argv, sopts, lopts, 0)) != -1) {
     switch (c) {
     case 'h': opt_help++; break;
@@ -706,17 +749,21 @@ int main(int argc, char *argv[])
       if (-1 == (opt_ignore = uint_mute(optarg,"ignore")))
         RETURN (ZZ_EARG);
       break;
-
+    case 'b':
+      if (-1 == (opt_blend = uint_blend(optarg,"blend", &opt_cmap)))
+        RETURN (ZZ_EARG);
+      break;
     case 0: break;
     case '?':
-      if (optopt) {
-        if (isgraph(optopt))
-          emsg("unknown option -- `%c'\n",optopt);
-        else
-          emsg("unknown option -- `\\x%02X'\n",optopt);
-      } else if (optind-1 > 0 && optind-1 < argc) {
-        emsg("unknown option -- `%s'\n", argv[optind-1]+2);
-
+      if (!opterr) {
+        if (optopt) {
+          if (isgraph(optopt))
+            emsg("unknown option -- `%c'\n",optopt);
+          else
+            emsg("unknown option -- `\\x%02X'\n",optopt);
+        } else if (optind-1 > 0 && optind-1 < argc) {
+          emsg("unknown option -- `%s'\n", argv[optind-1]+2);
+        }
       }
       RETURN (ZZ_EARG);
     default:
@@ -804,6 +851,8 @@ int main(int argc, char *argv[])
   if (!out)
     RETURN (ZZ_EOUT);
 
+  zz_core_blend(0, opt_cmap, opt_blend);
+
   ecode = zz_init(P, opt_tickrate, max_ms);
   if (ecode)
     goto error_exit;
@@ -832,6 +881,7 @@ int main(int argc, char *argv[])
          " with the \"%s\" mixer at %luhz\n"
          " for %s @%huhz\n"
          " via \"%s\" at %luhz\n"
+         " blending L to %i%% of channels A+%c\n"
          "vset: \"%s\" (%hukHz)\n"
          "song: \"%s\" (%hukHz)\n\n"
          ,
@@ -841,6 +891,7 @@ int main(int argc, char *argv[])
          : timestr( max_ms == ZZ_EOF ? info.len.ms: max_ms),
          HU(info.len.rate),
          out->uri, LU(out->hz),
+         ((256-opt_blend)*100) >> 8, 'B'+opt_cmap,
          basename((char*)info.set.uri), HU(info.set.khz),
          basename((char*)info.sng.uri), HU(info.sng.khz )
       );
@@ -855,8 +906,8 @@ int main(int argc, char *argv[])
       imsg("Ripper  : %s\n", info.tag.ripper);
 
     do {
-      static int8_t pcm[1000];
-      zz_i16_t n = sizeof(pcm)>>1;
+      static int32_t pcm[256];
+      zz_i16_t n = sizeof(pcm) >> 2;
 
       n = zz_play(P,pcm,n);
       if (n < 0) {
@@ -866,7 +917,7 @@ int main(int argc, char *argv[])
       if (!n)
         break;
 
-      n <<= 1;
+      n <<= 2;
       if (n != out->write(out,pcm,n))
         ecode = ZZ_EOUT;
       else {

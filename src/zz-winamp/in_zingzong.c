@@ -89,14 +89,16 @@ typedef struct xinfo_s xinfo_t;
 static DWORD     g_tid;                 /* thread id               */
 static HANDLE    g_thdl;                /* thread handle           */
 static play_t    g_play;                /* play emulator instance  */
-static zz_info_t g_info;                /* current file info.      */
+static zz_info_t g_info;                /* current file info       */
 static xinfo_t   x_info;                /* unique x_info           */
 static zz_u32_t  g_spr = SPR_DEF;       /* sampling rate (hz)      */
 static int       g_maxlatency;          /* max latency in ms       */
-static zz_u8_t   g_mid = ZZ_MIXER_DEF;  /* mixer id */
+static zz_u8_t   g_mid = ZZ_MIXER_DEF;  /* mixer id                */
 static zz_u8_t   g_tr_measure = MEASURE_CONFIG;
+static zz_u8_t   g_map = 0;             /* channel mapping         */
+static zz_u16_t  g_lr8 = BLEND_DEF;     /* channel blending        */
 static zz_i32_t  g_dms;                 /* default play time (ms)  */
-static int16_t   g_pcm[576*2];          /* buffer for DSP filters  */
+static int32_t   g_pcm[576*2];          /* buffer for DSP filters  */
 static volatile LONG g_playing;         /* true while playing      */
 static volatile LONG g_stopreq;         /* stop requested          */
 static volatile LONG g_paused;          /* pause status            */
@@ -152,6 +154,9 @@ play_t * play_lock(void)
 static inline
 void play_unlock(play_t * play)
 { if (play == &g_play) unlock(g_lock); }
+
+play_t * PlayLock() { return play_lock(); }
+void     PlayUnlock(play_t *play) { play_unlock(play); }
 
 static inline
 struct xinfo_s * info_lock()
@@ -219,12 +224,15 @@ void config(HWND hwnd)
   cfg.mid = g_mid;
   cfg.spr = g_spr;
   cfg.dms = g_dms;
+  cfg.map = MAKELPARAM(g_map,g_lr8);
 
   if (0x1337 == ConfigDialog(g_mod.hDllInstance, hwnd, &cfg)) {
     ConfigSave(&cfg);              /* Save might re-check the value */
     g_mid = cfg.mid;
     g_spr = cfg.spr;
     g_dms = cfg.dms;
+    g_map = LOWORD(cfg.map);
+    g_lr8 = HIWORD(cfg.map);;
   }
 }
 
@@ -391,7 +399,7 @@ static zz_err_t
 load(zz_play_t P, zz_info_t *I, const char * uri, zz_u8_t measure)
 {
   zz_err_t ecode = E_INP;
-  zz_i32_t dms=g_dms, spr=g_spr, mid=g_mid;
+  zz_i32_t dms=g_dms, spr=g_spr, mid=g_mid, map=g_map, lr8=g_lr8;
 
   zz_assert( P );
   zz_assert( I );
@@ -407,8 +415,8 @@ load(zz_play_t P, zz_info_t *I, const char * uri, zz_u8_t measure)
        uri);
 
   zz_assert( P->format == ZZ_FORMAT_UNKNOWN );
-  zz_assert( P->vset.bin == 0 );
-  zz_assert( P->song.bin == 0 );
+  zz_assert( P->core.vset.bin == 0 );
+  zz_assert( P->core.song.bin == 0 );
   zz_assert( P->info.bin == 0 );
   zz_memclr(P,sizeof(*P));
 
@@ -424,10 +432,13 @@ load(zz_play_t P, zz_info_t *I, const char * uri, zz_u8_t measure)
     cfg.mid = mid;
     cfg.spr = spr;
     cfg.dms = dms;
+    cfg.map = MAKELPARAM(map,lr8);
     if (0x1337 == ConfigDialog(DLGHINST, DLGHWND, &cfg)) {
       mid = cfg.mid;
       spr = cfg.spr;
       dms = cfg.dms;
+      map = LOWORD(cfg.map);
+      lr8 = HIWORD(cfg.map);
     }
   }
 
@@ -444,6 +455,8 @@ load(zz_play_t P, zz_info_t *I, const char * uri, zz_u8_t measure)
     ecode = zz_setup(P, mid, spr);
     dmsg("zz_setup(mid:%hu spr:%lu) -> [%hu]\n",
          HU(mid), LU(spr), HU(ecode));
+    zz_core_blend(&P->core, map, lr8);
+    dmsg("zz_blend(map:A%c lr8:%hu\n", 'B'+map, HU(lr8));
   }
 
   if (ecode)
@@ -503,7 +516,7 @@ int play(const char * uri)
     goto exit;
 
   /* Init output module */
-  g_maxlatency = g_mod.outMod->Open(g_play.core.spr, 1, 16, 0, 0);
+  g_maxlatency = g_mod.outMod->Open(g_play.core.spr, 2, 16, 0, 0);
   if (g_maxlatency < 0)
     goto exit;
 
@@ -511,9 +524,9 @@ int play(const char * uri)
   g_mod.outMod->SetVolume(-666);
 
   /* Init info and visualization stuff */
-  g_mod.SetInfo(0, g_play.core.spr/1000, 1, 1);
+  g_mod.SetInfo(0, g_play.core.spr/1000, 2, 1);
   g_mod.SAVSAInit(g_maxlatency, g_play.core.spr);
-  g_mod.VSASetInfo(g_play.core.spr, 1);
+  g_mod.VSASetInfo(g_play.core.spr, 2);
 
   /* Init play thread */
   g_thdl = (HANDLE)
@@ -636,7 +649,7 @@ DWORD WINAPI playloop(LPVOID cookie)
 {
   zz_u8_t filling = 1;
   zz_u16_t npcm = 0, n;
-  int16_t * pcm;
+  int32_t * _pcm;
 
   atomic_set(&g_playing,1);
   for (;;) {
@@ -647,23 +660,26 @@ DWORD WINAPI playloop(LPVOID cookie)
     if (filling) {
       /* filling */
       n = 576 - npcm;
-      if (n < 0) break;
+      zz_assert( n > 0 );
+      if (n <= 0) break;
       n = zz_play(&g_play, g_pcm+npcm, n);
       if (n <= 0) break;
 
       npcm += n;
+      zz_assert( npcm <= 576 );
+
       if (npcm >= 576) {
         int vispos = g_mod.outMod->GetWrittenTime();
-        g_mod.SAAddPCMData (g_pcm, 1, 16, vispos);
-        g_mod.VSAAddPCMData(g_pcm, 1, 16, vispos);
+        g_mod.SAAddPCMData (g_pcm, 2, 16, vispos);
+        g_mod.VSAAddPCMData(g_pcm, 2, 16, vispos);
         if (g_mod.dsp_isactive())
-          npcm = g_mod.dsp_dosamples(g_pcm, n=npcm, 16, 1, g_play.core.spr);
+          npcm = g_mod.dsp_dosamples((void*)g_pcm, npcm, 16,2, g_play.core.spr);
         filling = 0;
-        pcm = g_pcm;
+        _pcm = g_pcm;
       }
     } else {
       /* flushing */
-      n = g_mod.outMod->CanWrite() >> 1;
+      n = g_mod.outMod->CanWrite() >> 2;
       if (!n) {
         Sleep(10);
         continue;
@@ -672,8 +688,8 @@ DWORD WINAPI playloop(LPVOID cookie)
         n = npcm;
 
       /* Write the pcm data to the output system */
-      g_mod.outMod->Write((char*)pcm, n*2);
-      pcm += n;
+      g_mod.outMod->Write((char*)_pcm, n << 2);
+      _pcm += n;
       npcm -= n;
       filling = !npcm;
     }
@@ -757,7 +773,11 @@ void init()
   g_mid = cfg.mid;
   g_spr = cfg.spr;
   g_dms = cfg.dms;
-  dmsg("init mixer:%hu spr:%lu dms:%lu\n", HU(g_mid), LU(g_spr), LU(g_dms));
+  g_map = LOWORD(cfg.map);
+  g_lr8 = HIWORD(cfg.map);;
+
+  dmsg("init mixer:%hu spr:%lu dms:%lu map:%hu lr8:%hu\n",
+       HU(g_mid), LU(g_spr), LU(g_dms), HU(g_map), HU(g_lr8));
 }
 
 static
@@ -813,11 +833,12 @@ intptr_t winampGetExtendedRead_open(
       zz_assert(!trc);
     } else {
       uint_least64_t bytes;
-      *nch = 1;
+      *nch = 2;
       *spr = trc->info.mix.spr;
       *bps = 16;
-      bytes = (uint_least64_t) trc->info.len.ms*trc->info.mix.spr/1000u*2u;
-      *siz = bytes > UINT_MAX ? UINT_MAX : bytes;
+      bytes = (uint_least64_t) trc->info.len.ms*trc->info.mix.spr/1000u;
+      bytes <<= 2;
+      *siz = (bytes > UINT_MAX ? UINT_MAX : bytes) & ~3;
     }
   }
   return (intptr_t) trc;
@@ -847,7 +868,7 @@ intptr_t winampGetExtendedRead_getData(
   if (!trc || !dst)
     return 0;
 
-  for (cnt = 0; len >= 2; ) {
+  for (cnt = 0; len >= 4; ) {
     int n;
 
     if (*end) {
@@ -864,7 +885,7 @@ intptr_t winampGetExtendedRead_getData(
       break;
     }
 
-    n = len >> 1;
+    n = len >> 2;
     if ( n >= 0x8000 )
       n = 0x7fff;
     n = zz_play(&trc->play, dst+cnt, -n);
@@ -878,7 +899,7 @@ intptr_t winampGetExtendedRead_getData(
       break;
     }
 
-    n <<= 1;
+    n <<= 2;
     cnt += n;
     len -= n;
   }

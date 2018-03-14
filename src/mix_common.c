@@ -25,9 +25,12 @@
 typedef struct mix_fp_s mix_fp_t;
 typedef struct mix_chan_s mix_chan_t;
 
+#define BLKMAX 64
+
 struct mix_chan_s {
   uint8_t *pcm, *end;
   u32_t idx, lpl, len, xtp;
+  i16_t buf[BLKMAX];
 };
 
 struct mix_fp_s {
@@ -38,46 +41,57 @@ struct mix_fp_s {
 #define ADDPCM() OPEPCM(+=);
 
 static inline void
-mix_add1(mix_chan_t * const restrict K, int16_t * restrict b, int n)
+mix_blk(mix_chan_t * const restrict K, int n)
 {
   const uint8_t * const pcm = (const uint8_t *)K->pcm;
   const u32_t stp = K->xtp;
   u32_t idx = K->idx;
+  i16_t * b;
 
-  if (n <= 0 || !K->pcm)
+  zz_assert( n >= 0 );
+  if (n <= 0)
     return;
 
-  zz_assert( K->pcm );
-  zz_assert( K->end > K->pcm );
-  zz_assert( K->xtp > 0 );
-  zz_assert( K->idx >= 0 && K->idx < K->len );
+  b = K->buf;
 
-  if (!K->lpl) {
-    /* Instrument does not loop */
-    do {
-      ADDPCM();
-      /* Have reach end ? */
-      if (idx >= K->len) {
-        K->pcm = 0;                     /* This only is mandatory */
-        break;
-      }
-    } while(--n);
-  } else {
-    const u32_t off = K->len - K->lpl;  /* loop start index */
-    /* Instrument does loop */
-    do {
-      ADDPCM();
-      /* Have reach end ? */
-      if (idx >= K->len) {
-        u32_t ovf = idx - K->len;
-        if (ovf >= K->lpl) ovf %= K->lpl;
-        /* dmsg("loop at %lx -> %lx\n", idx>>FP, (off+ovf)>>FP); */
-        idx = off+ovf;
-        zz_assert( idx >= off && idx < K->len );
-      }
-    } while(--n);
+  if ( K->pcm ) {
+    zz_assert( n <= BLKMAX );
+    zz_assert( K->pcm );
+    zz_assert( K->end > K->pcm );
+    zz_assert( K->xtp > 0 );
+    zz_assert( K->idx >= 0 && K->idx < K->len );
+
+    if (!K->lpl) {
+      /* Instrument does not loop */
+      do {
+        SETPCM();
+        /* Have reach end ? */
+        if ( unlikely (idx >= K->len) ) {
+          K->pcm = 0;                     /* This only is mandatory */
+          --n;
+          break;
+        }
+      } while (--n);
+    } else {
+      const u32_t off = K->len - K->lpl;  /* loop start index */
+      /* Instrument does loop */
+      do {
+        SETPCM();
+        /* Have reach end ? */
+        if (idx >= K->len) {
+          u32_t ovf = idx - K->len;
+          if (ovf >= K->lpl) ovf %= K->lpl;
+          idx = off+ovf;
+          zz_assert( idx >= off && idx < K->len );
+        }
+      } while (--n);
+    }
   }
   K->idx = idx;
+  if (n > 0)
+    do {
+      *b++ = 0;
+    } while (--n);
 }
 
 static u32_t xstep(u32_t stp, u32_t ikhz, u32_t ohz)
@@ -101,6 +115,7 @@ push_cb(core_t * const P, void * restrict pcm, i16_t N)
 {
   mix_fp_t * const M = (mix_fp_t *)P->data;
   int k;
+  i16_t rem = N;
 
   zz_assert( P );
   zz_assert( M );
@@ -110,12 +125,11 @@ push_cb(core_t * const P, void * restrict pcm, i16_t N)
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
-    mix_chan_t * const K = M->chan+k;
     chan_t     * const C = P->chan+k;
+    mix_chan_t * const K = M->chan+C->map;
     const u8_t trig = C->trig;
 
-    /* if (trig != TRIG_NOP) */
-    /*   dmsg("%c %s trig:%d\n",'A'+k,NAME,trig); */
+    zz_assert( (C->map & 3) == C->map );
 
     C->trig = TRIG_NOP;
     switch (trig) {
@@ -140,12 +154,21 @@ push_cb(core_t * const P, void * restrict pcm, i16_t N)
     }
   }
 
-  /* Clear mix buffer */
-  zz_memclr(pcm,N<<1);
+  zz_assert( P->lr8 <= 256 );
+  while (rem > 0) {
+    const int n = rem < BLKMAX ? rem : BLKMAX;
+    rem -= n;
 
-  /* Add voices */
-  for (k=0; k<4; ++k)
-    mix_add1(M->chan+k, pcm, N);
+    /* src voices */
+    for (k=0; k<4; ++k)
+      mix_blk(M->chan+k, n);
+
+    map_i16_to_i16(pcm,
+                   M->chan[0].buf, M->chan[1].buf,
+                   M->chan[2].buf, M->chan[3].buf,
+                   256-P->lr8, P->lr8, n);
+    pcm = ((int32_t*)pcm) + n;
+  }
 
   return N;
 }

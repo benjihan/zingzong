@@ -16,6 +16,7 @@
 #define F32MAX 48
 #define FLIMAX (F32MAX)
 #define FLOMAX (F32MAX)
+#define BLKMAX (F32MAX)
 
 typedef struct mix_data_s mix_data_t;
 typedef struct mix_chan_s mix_chan_t;
@@ -32,20 +33,15 @@ struct mix_chan_s {
   uint8_t *ptl;                         /* loop address (0=no loop) */
   uint8_t *pte;                         /* end address */
 
-  float    iflt[FLIMAX];                /* input pcm buffer */
-  float    oflt[FLOMAX];                /* output pcm buffer */
+  float    iflt[FLIMAX];                /* src input  buffer */
+  float    oflt[FLOMAX];                /* src output buffer */
+  float    buf[BLKMAX];                 /* channel pcm buffer*/
 };
 
 struct mix_data_s {
   int        quality;
   double     rate, irate, orate, rate_min, rate_max;
   mix_chan_t chan[4];
-
-  /***********************
-   * !!! ALWAYS LAST !!! *
-   ***********************/
-  int        flt_max;
-  float      flt_buf[1];
 };
 
 /* ----------------------------------------------------------------------
@@ -139,18 +135,21 @@ push_cb(core_t * const P, void * pcm, i16_t N)
 {
   mix_data_t * const M = (mix_data_t *) P->data;
   int k;
+  i16_t rem = N;
+  const float fscl = 32000.0 / 2.0 / 256.0;
+  const float rscl = (float) P->lr8 * fscl;
+  const float lscl = (float) (256-P->lr8) * fscl;
 
   zz_assert( P );
   zz_assert( M );
   zz_assert( pcm );
   zz_assert( N != 0 );
   zz_assert( N > 0 );
-  zz_assert( N <= M->flt_max );
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
-    mix_chan_t * const K = M->chan+k;
     chan_t     * const C = P->chan+k;
+    mix_chan_t * const K = M->chan+C->map;
 
     switch (C->trig) {
 
@@ -177,48 +176,53 @@ push_cb(core_t * const P, void * pcm, i16_t N)
     }
   }
 
-  /* Mix float channels */
-  for (k=0; k<4; ++k) {
-    mix_chan_t * const K = M->chan+k;
-    float * restrict flt = M->flt_buf;
-    int need;
+  /* Mix channels */
+  while (rem > 0) {
+    const int n = rem < BLKMAX ? rem : BLKMAX;
+    rem -= n;
 
-    for ( need = N; need > 0; ) {
-      int i, odone, want;
+    /* 4 voices */
+    for (k=0; k<4; ++k) {
+      mix_chan_t * const K = M->chan+k;
+      float * restrict flt = K->buf;
+      int need;
 
-      if ( ! K->run ) {
-        if (k == 0)
+      for ( need = n; need > 0; ) {
+        int odone, want;
+
+        if ( ! K->run ) {
           zz_memclr(flt, need * sizeof(*flt));
-        break;
+          break;
+        }
+
+        if ( (want = need) > FLOMAX )
+          want = FLOMAX;
+
+        odone = src_callback_read(K->st, 1.0/K->rate, want, K->oflt);
+        if (odone < 0) {
+          emsg_srate(K,src_error(K->st));
+          return -1;
+        }
+        zz_assert ( odone <= want );
+
+        if (odone < want) {
+          zz_assert ( !K->ptr );
+          if (!K->ptr)
+            K->run = 0;
+        }
+        need -= odone;
+
+        zz_memcpy(flt, K->oflt, sizeof(float)*odone);
+        flt += odone;
       }
-
-      if ( (want = need) > FLOMAX )
-        want = FLOMAX;
-
-      odone = src_callback_read(K->st, 1.0/K->rate, want, K->oflt);
-      if (odone < 0) {
-        emsg_srate(K,src_error(K->st));
-        return -1;
-      }
-      zz_assert ( odone <= want );
-
-      if (odone < want) {
-        zz_assert ( !K->ptr );
-        if (!K->ptr)
-          K->run = 0;
-      }
-      need -= odone;
-      if (k == 0)
-        for (i=0; i<odone; ++i)
-          *flt++ = K->oflt[i];
-      else
-        for (i=0; i<odone; ++i)
-          *flt++ += K->oflt[i];
-
     }
+
+    map_flt_to_i16(pcm,
+                   M->chan[0].buf, M->chan[1].buf,
+                   M->chan[2].buf, M->chan[3].buf,
+                   lscl, rscl, n);
+    pcm = ((int32_t*)pcm) + n;
   }
-  /* Convert back to s16 */
-  fltoi16(pcm, M->flt_buf, N);
 
   return N;
 }
@@ -248,7 +252,6 @@ static zz_err_t init_srate(core_t * const P, u32_t spr, const int quality)
 {
   zz_err_t ecode = E_SYS;
   int k;
-  u32_t N, size;
   zz_assert( !P->data );
   zz_assert( sizeof(float) == 4 );
 
@@ -264,13 +267,10 @@ static zz_err_t init_srate(core_t * const P, u32_t spr, const int quality)
   P->spr = spr;
 
   /* +1 float already allocated in mix_data_t struct */
-  N = ( P->spr + RATE_MIN - 1 ) / RATE_MIN;
-  size = sizeof(mix_data_t) + sizeof(float)*N;
-  ecode = zz_calloc(&P->data, size);
+  ecode = zz_calloc(&P->data, sizeof(mix_data_t));
   if (likely(E_OK == ecode)) {
     mix_data_t * M = P->data;
     zz_assert( M );
-    M->flt_max  = N+1;
     M->quality  = quality;
     M->irate    = (double) P->song.khz * 1000.0;
     M->orate    = (double) P->spr;

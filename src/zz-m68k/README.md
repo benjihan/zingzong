@@ -58,14 +58,14 @@
  for one of zingzong-m68k internal driver as described in the table
  below.
 
- |  Value |           Driver         |             Remarks            |
- |--------|--------------------------|--------------------------------|
- |    0   |  Auto detect             | Amiga 1st then "_SND" cookie.  |
- |    1   |  Amiga/Paula             | Must be loaded in chipmem.     |
- |    2   |  STf (PSG+Timer-A)       | System friendly (hopefully).   |
- |    3   |  STe (2x8bit DMA)        | 7-bit PCM resolution.          |
- |    4   |  Falcon (2x16bit-DMA)    | CPU only. Blended stereo.      |
- |    5   |  STe (1x8bit DMA)        | Improved dynamic range.        |
+ |  Value |           Driver         |             Remarks           |
+ |--------|--------------------------|-------------------------------|
+ |    0   |  Auto detect             | Amiga 1st then "_SND" cookie. |
+ |    1   |  Amiga/Paula             | Must be loaded in chipmem.    |
+ |    2   |  STf (PSG+Timer-A)       | System friendly (hopefully).  |
+ |    3   |  STe (2x8bit DMA)        | 7 bit sample resolution.      |
+ |    4   |  Falcon (2x16bit-DMA)    | CPU only. Blended stereo.     |
+ |    5   |  STe (1x8bit DMA)        | Improved dynamic range.       |
 
 
 #### Sampling rate (long spr)

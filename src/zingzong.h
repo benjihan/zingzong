@@ -86,13 +86,22 @@ enum {
 };
 
 /**
+ * Stereo channel mapping.
+ */
+enum {
+  ZZ_MAP_ABCD,                         /**< (0) Left:A+B Right:C+D. */
+  ZZ_MAP_ACBD,                         /**< (1) Left:A+C Right:B+D. */
+  ZZ_MAP_ADBC,                         /**< (2) Left:A+D Right:B+C. */
+};
+
+/**
  * Sampler quality.
  */
 enum zz_quality_e {
-  ZZ_FQ = 1,                            /**< Fastest quality. */
-  ZZ_LQ,                                /**< Low quality.     */
-  ZZ_MQ,                                /**< Medium quality.  */
-  ZZ_HQ                                 /**< High quality.    */
+  ZZ_FQ = 1,                            /**< (1) Fastest quality. */
+  ZZ_LQ,                                /**< (2) Low quality.     */
+  ZZ_MQ,                                /**< (3) Medium quality.  */
+  ZZ_HQ                                 /**< (4) High quality.    */
 };
 
 typedef zz_i8_t zz_err_t;
@@ -123,11 +132,14 @@ struct zz_info_s {
 
   /** mixer info. */
   struct {
-    zz_u32_t     spr;               /**< sampling rate.             */
-    zz_u8_t      num;               /**< mixer identifier.          */
-    const char * name;              /**< mixer name or "".          */
-    const char * desc;              /**< mixer description or "".   */
-  } mix;                            /**< mixer related info.        */
+    zz_u32_t     spr;          /**< sampling rate.                  */
+    zz_u8_t      num;          /**< mixer identifier.               */
+    zz_u8_t      map;          /**< channel mapping (ZZ_MAP_*).     */
+    zz_u16_t     lr8;          /**< 0:normal 128:center 256:invert. */
+
+    const char * name;         /**< mixer name or "".               */
+    const char * desc;         /**< mixer description or "".        */
+  } mix;                       /**< mixer related info.             */
 
   struct {
     const char * uri;               /**< URI or path.               */
@@ -151,6 +163,14 @@ struct zz_info_s {
  * Low level API (core)
  *
  * **********************************************************************/
+
+ZINGZONG_API
+/**
+ * Get zingzong version string.
+ *
+ * @retval "zingzong MAJOR.MINOR.PATCH.TWEAK"
+ */
+const char * zz_core_version(void);
 
 ZINGZONG_API
 /**
@@ -191,11 +211,10 @@ zz_i16_t zz_core_play(zz_core_t core, void * pcm, zz_i16_t n);
 
 ZINGZONG_API
 /**
- * Get zingzong version string.
- *
- * @retval "zingzong MAJOR.MINOR.PATCH.TWEAK"
+ * Set channel blending.
  */
-const char * zz_core_version(void);
+zz_u32_t zz_core_blend(zz_core_t core, zz_u8_t map, zz_u16_t lr8);
+
 
 /* **********************************************************************
  *
@@ -210,7 +229,7 @@ enum zz_log_e {
   ZZ_LOG_ERR,                           /**< Log error.   */
   ZZ_LOG_WRN,                           /**< Log warning. */
   ZZ_LOG_INF,                           /**< Log info.    */
-  ZZ_LOG_DBG                            /*/< Log debug.   */
+  ZZ_LOG_DBG                            /**< Log debug.   */
 };
 
 /**

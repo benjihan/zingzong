@@ -22,25 +22,13 @@
 
 /* Linear Interpolation.
  */
-static inline int lerp(const uint8_t * const pcm, u32_t idx)
+static inline i16_t lerp(const uint8_t * const pcm, u32_t idx)
 {
   const i32_t i = idx >> FP;
   const i16_t a = pcm[i+0]-128;           /* f(0) */
   const i16_t b = pcm[i+1]-128;           /* f(1) */
   const i16_t j = idx & ((1<<FP)-1);
-
-  const i16_t r = ( (b * j) + (a * ((1<<FP)-j)) ) >> ( FP - 6 );
-
-#if 0
-  if ( unlikely (r < -0x2000) )
-    return -0x2000;
-  else if ( unlikely (r > 0x1fff) )
-    return 0x1fff;
-#else
-  zz_assert( r >= -0x2000 );
-  zz_assert( r <   0x2000 );
-#endif
-
+  const i16_t r = ( (b * j) + (a * ((1<<FP)-j)) ) >> ( FP - 8 );
   return r;
 }
 

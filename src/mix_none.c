@@ -15,7 +15,7 @@
 
 #define OPEPCM(OP) do {                         \
     zz_assert( &pcm[idx>>FP] < K->end );        \
-    *b++ OP (pcm[idx>>FP]-128) << 6;            \
+    *b++ OP ( ( pcm[idx>>FP]-128 ) << 8 );      \
     idx += stp;                                 \
   } while (0)
 

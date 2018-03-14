@@ -215,7 +215,7 @@ zz_vfs_obj = $(zz_vfs_src:.c=.o)
 zz_pla_obj = $(zz_pla_src:.c=.o)
 zz_zzz_obj = $(zz_zzz_src:.c=.o)
 
-mix := $(addprefix mix_,none lerp qerp soxr srate float test)
+mix := $(addprefix mix_,none lerp qerp soxr srate help)
 out := out_ao out_raw
 vfs := vfs_file
 cor := zz_init zz_core

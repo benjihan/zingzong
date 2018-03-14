@@ -8,17 +8,6 @@
 MIXERID set     0               ; 0:Auto 1:Amiga 2:YM 3:DMA8 4:DMA16
 	endc
 
-zingzong_init: equ zingzong+$0
-zingzong_kill: equ zingzong+$4
-zingzong_play: equ zingzong+$8
-zingzong_mute: equ zingzong+$c
-zingzong_vers: equ zingzong+$10
-zingzong_stat: equ zingzong+$14
-zingzong_samp: equ zingzong+$18
-zingzong_driv: equ zingzong+$1c
-zingzong_core: equ zingzong+$20
-
-	
 llea:   macro
 	lea     vars(pc),\2
 	adda.l  #\1-vars,\2
@@ -471,3 +460,16 @@ myssp:
 	ds.l    32
 myusp:
 mytop:
+
+;;; ----------------------------------------
+;;;  Avoid forward references
+
+zingzong_init: equ zingzong+$0
+zingzong_kill: equ zingzong+$4
+zingzong_play: equ zingzong+$8
+zingzong_mute: equ zingzong+$c
+zingzong_vers: equ zingzong+$10
+zingzong_stat: equ zingzong+$14
+zingzong_samp: equ zingzong+$18
+zingzong_driv: equ zingzong+$1c
+zingzong_core: equ zingzong+$20

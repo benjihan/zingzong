@@ -29,6 +29,8 @@
 #define RATE_MIN 20
 #define RATE_MAX 1000
 
+#define BLEND_DEF 100
+
 #ifndef zz_void
 # define zz_void ((void)0)
 #endif
@@ -55,6 +57,9 @@
 #  define FMT12
 # endif
 #endif
+
+#define CPPSTR(S) CPPXTR(S)
+#define CPPXTR(S) #S
 
 #define LU(X) ((unsigned long)(X))    /* printf format shenanigans. */
 #define HU(X) ((unsigned short)(X))   /* printf format shenanigans. */

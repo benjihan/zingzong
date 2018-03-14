@@ -17,3 +17,7 @@
 #define IDC_MS2                                 40008
 #define IDC_MS1                                 40009
 #define IDC_MS0                                 40010
+#define IDC_ACBD                                40011
+#define IDC_ADBC                                40012
+#define IDC_ABCD                                40014
+#define IDC_BLEND                               40015

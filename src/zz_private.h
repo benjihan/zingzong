@@ -286,13 +286,14 @@ struct chan_s {
   sequ_t  *cur;                       /**< next sequence.           */
   inst_t  *ins;                       /**< instrument (zz_fast)     */
 
-  u8_t num;                         /**< channel number [0..3].     */
-  u8_t msk;                         /**< {0x11,0x22,0x44,0x88}.     */
-  u8_t trig;                        /**< see TRIG_* enum.           */
-  u8_t curi;                        /**< current instrument number. */
+  uint8_t num;                      /**< channel number [0..3].     */
+  uint8_t map;                      /**< channel number [0..3].     */
+  uint8_t msk;                      /**< {0x11,0x22,0x44,0x88}.     */
+  uint8_t trig;                     /**< see TRIG_* enum.           */
+  uint8_t curi;                     /**< current instrument number. */
 
   u16_t wait;                     /**< number of tick left to wait. */
-  note_t note;                          /**< note (and slide) info. */
+  note_t note;                    /**< note (and slide) info.       */
   struct loop_s {
     u16_t cnt;                          /**< loop count. */
     u16_t off;                          /**< loop point. */
@@ -312,9 +313,11 @@ struct core_s {
   void    *data;                /**< Mixer private data. */
   u32_t    tick;                /**< current tick (0:init 1:first). */
   u32_t    spr;                 /**< Sampling rate (hz). */
+  u16_t    lr8;                 /**< L/R channels blending. */
   uint8_t  mute;                /**< #0-3: ignored #4-7: muted. */
   uint8_t  loop;                /**< #0-3:loop #4-7:tick loop. */
   uint8_t  code;                /**< Error code. */
+  uint8_t  cmap;                /**< channel mapping (ZZ_MAP_*). */
   chan_t   chan[4];             /**< 4 channels info. */
 };
 
@@ -443,10 +446,22 @@ static inline u32_t byte_u32(const u8_t * const v)
 /* ---------------------------------------------------------------------- */
 
 /**
- * Floating point conversion.
+ * Mixer helper.
  * @{
  */
+ZZ_EXTERN_C
+void map_i16_to_i16(int16_t * d,
+                    const i16_t * va, const i16_t * vb,
+                    const i16_t * vc, const i16_t * vd,
+                    const i16_t sc1, const i16_t sc2, int n);
+
 #ifndef NO_FLOAT
+
+ZZ_EXTERN_C
+void map_flt_to_i16(int16_t * d,
+                    const float * va, const float * vb,
+                    const float * vc, const float * vd,
+                    const float sc1, const float sc2, const int n);
 
 ZZ_EXTERN_C
 void i8tofl(float * const d, const uint8_t * const s, const int n);
@@ -458,6 +473,8 @@ void fltoi16(int16_t * const d, const float * const s, const int n);
 /**
  * @}
  */
+
+
 
 /* ---------------------------------------------------------------------- */
 

@@ -268,8 +268,8 @@ int ConfigDialog(HINSTANCE hinst, HWND parent, config_t * cfg)
   if (res == 0x1337)
     *cfg = tmp;
 
-  dmsg("ConfigDialog => %lx (mid:%hu spr:%lu dms:%lu)\n",
-       LU(res), HU(cfg->mid), LU(cfg->spr), LU(cfg->dms));
+  dmsg("ConfigDialog => %lx (mid:%hu spr:%lu dms:%lu map:%lx)\n",
+       LU(res), HU(cfg->mid), LU(cfg->spr), LU(cfg->dms), LU(cfg->map));
   return res;
 }
 
@@ -286,6 +286,49 @@ static BOOL SetMixers(HWND hdlg, int cur)
   }
   SendDlgItemMessage(hdlg, IDC_MIXER, CB_SETCURSEL, icur, 0);
   return TRUE;
+}
+
+static int map_idc[] = { IDC_ABCD, IDC_ACBD, IDC_ADBC };
+
+static BOOL SetMap(HWND hdlg, DWORD cmap)
+{
+  int i;
+  unsigned int map = LOWORD(cmap), blend = HIWORD(cmap);
+  HWND tb;
+
+  if (map > 2u) map = 0;
+  if (blend > 256u) blend = BLEND_DEF;
+
+  for (i=0; i<3; ++i)
+    SendDlgItemMessage(hdlg, map_idc[i], BM_SETCHECK,
+                       i==map ? BST_CHECKED : BST_UNCHECKED, 0);
+
+  tb = GetDlgItem(hdlg, IDC_BLEND);
+  SendMessageA(tb, TBM_SETRANGE, 0, MAKELPARAM(0,256));
+  for(i=16; i<256; i += 16)
+    SendMessageA(tb, TBM_SETTIC, 0, i);
+  SendMessageA(tb, TBM_SETPOS, TRUE, blend);
+
+  return TRUE;
+}
+
+static int GetMap(HWND hdlg)
+{
+  int i, cmap = 0;
+
+  for ( i=0; i<3; ++i )
+    if (SendDlgItemMessage(hdlg, map_idc[i], BM_GETCHECK,0,0)
+        == BST_CHECKED) {
+      cmap = i;
+      dmsg("get-cmap: radio #%i\n", i);
+      break;
+    }
+
+  i = SendDlgItemMessage(hdlg, IDC_BLEND, TBM_GETPOS,0,0);
+  dmsg("get-blend: %i\n", i);
+  if (i<0 || i>256) i = BLEND_DEF;
+  cmap |= i << 16;
+  return cmap;
 }
 
 static int GetMid(HWND hdlg)
@@ -413,15 +456,35 @@ static int GetDms(HWND hdlg)
   return dms;
 }
 
+extern zz_play_t PlayLock();
+extern void      PlayUnlock();
+
 static INT_PTR CALLBACK
 ConfigProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
 {
-  int i;
+  int i = 0;
   config_t * cfg = (void *) GetWindowLongPtr(hdlg, GWLP_USERDATA);
   static config_t dummy;
   if (!cfg) cfg = &dummy;
 
   switch (msg) {
+
+  case WM_HSCROLL:
+
+    switch ( LOWORD(wp) ) {
+    case TB_ENDTRACK: {
+      unsigned pos = SendDlgItemMessage(hdlg, IDC_BLEND, TBM_GETPOS,0,0);
+      if (pos > 256) break;
+      wp = MAKELPARAM(LOWORD(wp), pos);
+    }
+    case TB_THUMBPOSITION: case TB_THUMBTRACK: {
+      zz_play_t play = PlayLock();
+      if (play) {
+        zz_core_blend((zz_core_t)play,-1,HIWORD(wp));
+        PlayUnlock(play);
+      }
+    } break;
+    } break;
 
   case WM_INITDIALOG: {
     cfg = (config_t *) lp;
@@ -438,10 +501,18 @@ ConfigProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
 
     SetMixers(hdlg, cfg->mid);
     SetSampling(hdlg, cfg->spr);
+    SetMap(hdlg, cfg->map);
     SetDms(hdlg, cfg->dms);
     SetWindowLongPtr(hdlg, GWLP_USERDATA, (LONG_PTR) cfg);
     /* cfg->focus = 0; */
   } return TRUE;
+
+  case WM_NOTIFY:
+    switch (((LPNMHDR)lp)->code) {
+    case TRBN_THUMBPOSCHANGING:
+      dmsg("NOTIFY: TRBN_THUMBPOSCHANGING\n");
+    }
+    break;
 
   case WM_COMMAND: {
     const int wlo = LOWORD(wp), whi = HIWORD(wp);
@@ -455,6 +526,8 @@ ConfigProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
       cfg->mid = GetMid(hdlg);
       cfg->spr = GetSpr(hdlg);
       cfg->dms = GetDms(hdlg);
+      cfg->map = GetMap(hdlg);
+
       EndDialog(hdlg, 0x1337);
       return TRUE;
 
@@ -464,6 +537,21 @@ ConfigProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
         EnableWindow(GetDlgItem(hdlg, IDC_SPRVAL), !i);
       }
       break;
+
+    case IDC_BLEND:
+      dmsg("BLEND: whi:%hu lp:%lu\n", HU(whi), LU(lp));
+      break;
+
+    case IDC_ADBC: ++i;
+    case IDC_ACBD: ++i;
+    case IDC_ABCD: {
+      zz_play_t play = PlayLock();
+      if (play) {
+        zz_core_blend((zz_core_t)play,i,-1);
+        PlayUnlock(play);
+      }
+      dmsg("Cmap: A%c\n", 'B'+i);
+    } break;
 
     } /* switch(wlo) */
   } break; /* WM_COMMAND */
@@ -499,6 +587,15 @@ int ConfigCheck(config_t * cfg, const char ** name)
     modified |= 4;
   }
 
+  if ( (LOWORD(cfg->map)) > 2 ) {
+    cfg->map &= ~0xFFFF;
+    modified |= 8;
+  }
+  if ( (HIWORD(cfg->map)) > 256 ) {
+    cfg->map = (cfg->map & 0xFFFF) | (BLEND_DEF << 16);
+    modified |= 8;
+  }
+
   if (cfg->mid == ZZ_MIXER_DEF)
     *name = "default";
 
@@ -524,6 +621,7 @@ int ConfigLoad(config_t * cfg)
   cfg->mid = ZZ_MIXER_DEF;
   cfg->spr = SPR_DEF;
   cfg->dms = 0;
+  cfg->map = BLEND_DEF << 16;
 
   if (ERROR_SUCCESS !=
       RegOpenKeyEx(HKEY_CURRENT_USER,keyname,0,KEY_READ,&hk))
@@ -556,6 +654,12 @@ int ConfigLoad(config_t * cfg)
     cfg->dms = val.num;
     dmsg("config-load: dms=%lu\n", LU(cfg->dms));
 
+    val.len = sizeof(val.num);
+    val.num = cfg->map;
+    RegGetValue(hk,0,"map",RRF_RT_REG_DWORD,0,&val.num,&val.len);
+    cfg->map = val.num;
+    dmsg("config-load: map=%lx\n", LU(cfg->map));
+
     RegCloseKey(hk);
   }
 
@@ -579,8 +683,8 @@ int ConfigSave(config_t * cfg)
     &hk,                                /* key handle */
     0);                                 /* disposition */
 
-  dmsg("config-save: mid:%hu spr:%lu dms:%lu -- %ld\n",
-       HU(cfg->mid), LU(cfg->spr), LU(cfg->dms), res);
+  dmsg("config-save: mid:%hu spr:%lu dms:%lu map:%lx -- %ld\n",
+       HU(cfg->mid), LU(cfg->spr), LU(cfg->dms), LU(cfg->map), LI(res));
 
   if (res == ERROR_SUCCESS) {
     const char * version = zz_core_version();
@@ -590,6 +694,8 @@ int ConfigSave(config_t * cfg)
     RegSetKeyValueA(hk,0,"spr",REG_DWORD,(char*)&dw,sizeof(dw));
     dw = cfg->dms;
     RegSetKeyValueA(hk,0,"dms",REG_DWORD,(char*)&dw,sizeof(dw));
+    dw = cfg->map;
+    RegSetKeyValueA(hk,0,"map",REG_DWORD,(char*)&dw,sizeof(dw));
     RegCloseKey(hk);
   } else {
     modified |= 1 << (sizeof(int)*8-1);

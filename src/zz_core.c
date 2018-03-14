@@ -20,6 +20,46 @@
 #define PACKAGE_STRING PACKAGE_NAME " " PACKAGE_VERSION
 #endif
 
+static uint8_t chan_maps[3][4] = {
+  /* ZZ_MAP_ABCD */ { 0,1,2,3 },
+  /* ZZ_MAP_ACBD */ { 0,2,1,3 },
+  /* ZZ_MAP_ADBC */ { 0,3,1,2 }
+};
+
+zz_u8_t  zz_chan_map = ZZ_MAP_ABCD;
+zz_u16_t zz_chan_lr8 = BLEND_DEF;
+
+zz_u32_t
+zz_core_blend(core_t * K, zz_u8_t map, zz_u16_t lr8)
+{
+  zz_u32_t old;
+
+  if (!K)
+    old = ( (zz_u32_t) zz_chan_lr8 << 16 ) | zz_chan_map;
+  else
+    old = ( (zz_u32_t) K->lr8 << 16 ) | K->cmap;
+
+  if (map < 3u) {
+    if (!K)
+      zz_chan_map = map;
+    else {
+      u8_t k;
+      K->cmap = map;
+      for (k=0; k<4; ++k)
+        K->chan[k].map = chan_maps[map][k];
+    }
+  }
+
+  if (lr8 <= 256u) {
+    if (!K)
+      zz_chan_lr8 = lr8;
+    else
+      K->lr8 = lr8;
+  }
+
+  return old;
+}
+
 const char *
 zz_core_version(void)
 {
@@ -336,7 +376,7 @@ static void rt_check(void)
   /* GB: When using m68k with -mnoshort the default int size is
    *     16bit. It is a problem for some of our bit-masks like
    *     instrument used for instance. We have to cast integer to a
-   *     32bit type such as long integer with the a 'l' prefix. This
+   *     32bit type such as long integer with the a 'l' suffix. This
    *     test that.
    */
   zz_assert( (1l<<20) == 0x100000 );
@@ -370,6 +410,7 @@ zz_core_init(core_t * K, mixer_t * M, u32_t spr)
     C->cur = C->seq = K->song.seq[k];
     C->loop_sp = C->loops;
   }
+  zz_core_blend(K, zz_chan_map, zz_chan_lr8);
   K->loop = 0x0F & K->mute; /* set ignored voices */
   K->tick = 0;
 

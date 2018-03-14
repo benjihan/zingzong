@@ -36,7 +36,7 @@
  *     For down-sampling we need anti-aliasing filter usually some
  *     kind of low-pass filter prior to a simple decimation process.
  */
-static inline int16_t lagrange(const uint8_t * const pcm, u32_t idx)
+static inline i16_t lagrange(const uint8_t * const pcm, u32_t idx)
 {
   const i32_t i = idx >> FP;
   const i32_t j = (idx >> (FP-7u)) & 0x7F; /* the mid point is f(.5) */
@@ -57,22 +57,13 @@ static inline int16_t lagrange(const uint8_t * const pcm, u32_t idx)
       ( c << 16 )
       );
 
-  /* scale r to 14-bit so that 4 voices fit into a 16 bit integer
-   * Apply an empirical additional 3:4 scale to avoid clipping as the
-   * interpolation can generate values outside the sample range.
+  /* scale r to 16-bit. Apply an empirical additional 3:4 scale to
+   * avoid clipping as the interpolation can generate values outside
+   * the sample range.
    */
-  r = ( r * 3 ) >> ( 2+24-14 );
-
-#if 0
-  if ( unlikely (r < -0x2000) )
-    return -0x2000;
-  else if ( unlikely (r > 0x1fff) )
-    return 0x1fff;
-#else
-  zz_assert( r >= -0x2000 );
-  zz_assert( r <   0x2000 );
-#endif
-
+  r = ( r * 3 ) >> ( 2+24-16 );
+  zz_assert( r >= -0x8000 );
+  zz_assert( r <=  0x7fff );
   return r;
 }
 

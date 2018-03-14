@@ -46,9 +46,6 @@ static out_raw_t raw = {
 
 static FILE * const null_ptr = (FILE *)&raw;
 
-#define XSTR(S) STR(S)
-#define STR(S) #S
-
 int8_t can_use_std = 3;
 
 int set_file_binary(FILE * f)
@@ -96,7 +93,7 @@ static int uri_is_stdout(const char * uri)
   return 0
     || !strncasecmp(uri,"stdout:",7)
     || !strcasecmp(uri,"/dev/stdout")
-    || !strcasecmp(uri,"/dev/fd/" XSTR(STDOUT_FILENO))
+    || !strcasecmp(uri,"/dev/fd/" CPPSTR(STDOUT_FILENO))
     ;
 }
 
@@ -105,7 +102,7 @@ static int uri_is_stderr(const char * uri)
   return 0
     || !strncasecmp(uri,"stderr:",7)
     || !strcasecmp(uri,"/dev/stderr")
-    || !strcasecmp(uri,"/dev/fd/" STR(STDERR_FILENO))
+    || !strcasecmp(uri,"/dev/fd/" CPPSTR(STDERR_FILENO))
     ;
 }
 

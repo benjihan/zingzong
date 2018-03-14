@@ -54,7 +54,7 @@ out_ao_open(zz_u32_t hz, const char * uri)
   ao_initialize();
   aoo.fmt.bits        = 16;
   aoo.fmt.rate        = hz;
-  aoo.fmt.channels    = 1;
+  aoo.fmt.channels    = 2;
   aoo.fmt.byte_format = AO_FMT_NATIVE;
   aoo.id = uri
     ? ao_driver_id("wav")

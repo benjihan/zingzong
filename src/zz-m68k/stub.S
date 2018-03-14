@@ -16,6 +16,7 @@ zingzong_init:	bra.w   player_init	// -> d0.l: 0:error 1:ready
 zingzong_kill:	bra.w   player_kill	// -> void
 zingzong_play:	bra.w   player_play	// -> void
 zingzong_mute:	bra.w	player_mute	// -> d0.b: old value
+zingzong_cmap:	bra.w	player_blend	// -> d0.l: old values (MSW/LSW)
 zingzong_vers:	bra.w	zz_core_version	// -> d0.l: version string
 zingzong_stat:	bra.w	player_status	// -> d0.l: error-code (0=OK)
 zingzong_samp:	bra.w	player_sampling // -> d0.l: sampling rate (in hz)
@@ -27,6 +28,7 @@ zingzong_core:	bra.w	player_core	// -> d0.l: internal zz_core_t
 	.global zingzong_kill
 	.global zingzong_play
 	.global zingzong_mute
+	.global zingzong_cmap
 	.global zingzong_vers
 	.global zingzong_stat
 	.global zingzong_samp

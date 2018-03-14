@@ -197,7 +197,7 @@ zz_LDFLAGS  = $(error zz_LDFLAGS)
 all: $(targets)
 .PHONY: all
 
-mix := $(addprefix mix_,none lerp qerp soxr srate float)
+mix := $(addprefix mix_,none lerp qerp soxr srate help)
 zz  := $(addprefix zz_,load init core play bin str vfs mixers log mem)
 src := in_zingzong dialogs vfs_file
 

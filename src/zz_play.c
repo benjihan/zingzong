@@ -105,8 +105,9 @@ zz_play(play_t * restrict P, void * restrict pcm, const i16_t n)
       /* GB: currently mixers should have mix it all. */
       zz_assert( cnt == written );
       cnt = written;
-      /* GB: currently assuming all mixers returns 16bit pcm */
-      pcm = (int16_t *) pcm + cnt;
+
+      /* $$$ GB: currently assuming all mixers returns 2x16bit pcm */
+      pcm = (int32_t *) pcm + cnt;
     }
     ret += cnt;
 
@@ -274,6 +275,9 @@ const char * zz_formatstr(zz_u8_t fmt)
   return "?";
 }
 
+extern zz_u8_t  zz_chan_map;
+extern zz_u16_t zz_chan_lr8;
+
 zz_err_t zz_info(zz_play_t P, zz_info_t * pinfo)
 {
   zz_assert(pinfo);
@@ -282,7 +286,11 @@ zz_err_t zz_info(zz_play_t P, zz_info_t * pinfo)
 
   if (!P || P->format == ZZ_FORMAT_UNKNOWN) {
     zz_memclr(pinfo,sizeof(*pinfo));
-    pinfo->fmt.str = zz_formatstr(pinfo->fmt.num);
+    pinfo->mix.map  = zz_chan_map;
+    pinfo->mix.lr8  = zz_chan_lr8;
+    pinfo->mix.spr  = SPR_DEF;
+    pinfo->len.rate = RATE_DEF;
+    pinfo->fmt.str  = zz_formatstr(pinfo->fmt.num);
   } else {
     dmsg("set info from <%s> \"%s\"\n",
          zz_formatstr(P->format),
@@ -296,6 +304,10 @@ zz_err_t zz_info(zz_play_t P, zz_info_t * pinfo)
       P->rate ? P->rate : P->core.song.rate;
     pinfo->mix.spr  = P->core.spr;
     pinfo->len.ms   = P->ms_len;
+
+    /* Blending */
+    pinfo->mix.map  = P->core.cmap;
+    pinfo->mix.lr8  = P->core.cmap;
 
     /* mixer */
     pinfo->mix.num = P->mixer_id;

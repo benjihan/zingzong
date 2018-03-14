@@ -47,7 +47,7 @@
 /* #define NOMSG */
 #define NOOPENFILE
 #define NORASTEROPS
-#define NOSCROLL
+/* #define NOSCROLL */
 #define NOSOUND
 /* #define NOSYSMETRICS */
 /* #define NOTEXTMETRIC */
@@ -85,7 +85,7 @@
 #define DLGHINST g_mod.hDllInstance
 
 typedef struct  {
-  int mid, spr, dms;
+  int mid, spr, dms, map;
 } config_t;
 
 /* defined in dialogs.c */
