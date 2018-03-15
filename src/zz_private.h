@@ -223,8 +223,12 @@ struct memb_s {
 /** Prepared instrument set. */
 struct vset_s {
   bin_t *bin;                /**< voiceset data container.          */
-  u8_t   khz;                /**< sampling rate from .set.          */
-  u8_t   nbi;                /**< number of instrument [1..20].     */
+  /* */
+  uint8_t khz;               /**< sampling rate from .set.          */
+  uint8_t nbi;               /**< number of instrument [1..20].     */
+  uint8_t nul;               /**< value of middle point PCM.        */
+  uint8_t one;               /**< value of positive max PCM.        */
+  u32_t  unroll;             /**< unrolled amount.                  */
   u32_t  iref;               /**< mask of instrument referenced.    */
   inst_t inst[20];           /**< instrument definitions.           */
 };
@@ -232,6 +236,7 @@ struct vset_s {
 /** Prepared song. */
 struct song_s {
   bin_t  *bin;               /**< song data container.              */
+  /* */
   uint8_t rate;              /**< tick rate (0: unspecified).       */
   uint8_t khz;               /**< header sampling rate (kHz).       */
   uint8_t barm;              /**< header bar measure.               */
@@ -250,6 +255,7 @@ struct song_s {
 /** Song meta info. */
 struct info_s {
   bin_t *bin;                /**< info data container.              */
+  /* */
   char  *album;              /**< decoded album.                    */
   char  *title;              /**< decoded title.                    */
   char  *artist;             /**< decoded artist.                   */

@@ -319,33 +319,21 @@ vset_init_header(vset_t *vset, const void * _hd)
   /* header */
   vset->khz = *hd++;
   vset->nbi = *hd++ - 1;
+  vset->nul = 128;
+  vset->one = 255;
+  vset->unroll = 0;
+  vset->iref = 0;
   dmsg("vset: spr:%hukHz, ins:%hu/0x%05hx\n",
        HU(vset->khz), HU(vset->nbi), HU(vset->iref));
 
   if (is_valid_khz(vset->khz) && is_valid_ins(vset->nbi)) {
     i8_t i;
 
-    /* copy instrument names */
-#if 0
-    for (i=0; i<20; ++i, hd += 7) {
-      i8_t j;
-      for (j=0; j<6; ++j)
-        vset->inst[i].nam[j] = (uint8_t)(hd[j]-32) <= 126-32 ? hd[j] : 32;
-      vset->inst[i].nam[j] = 0;
-    }
-#else
     hd += 7*20;                         /* skip instrument names */
-#endif
-
     /* copy instrument offset and setup */
     for (i=0; i<20; ++i, hd+=4) {
       inst_t * const inst = vset->inst+i;
-      /* inst->num = i+1; */
-      /* inst->oct = 0; */
-      /* inst->nul = 128; */
-      /* inst->lsr = 0; */
       inst->pcm = (uint8_t *) (intptr_t) U32(hd);
-      dmsg("I#%02hu [%6s] %p\n", HU(i+1), (char*)_hd+2+i*7, inst->pcm);
     }
     ecode = E_OK;
   }
@@ -511,7 +499,13 @@ vset_unroll(vset_t * const vset, const uint8_t *tohw)
   uint8_t * e;
   u32_t tot, unroll;
 
-  nbi = sort_inst(vset->inst, idx, vset->iref );
+  if (vset->unroll) {
+    dmsg("voice-set already prepared 0:%02hX 1:%02hX unroll:%lu\n",
+         HU(vset->nul), HU(vset->one), LU(vset->unroll));
+    return E_OK;
+  }
+
+  nbi = sort_inst(vset->inst, idx, vset->iref);
   if (!nbi)
     return E_SET;
 
@@ -528,6 +522,12 @@ vset_unroll(vset_t * const vset, const uint8_t *tohw)
     inst->pcm = e;
     tot += inst->len;
   }
+
+  if (tohw) {
+    vset->nul = tohw[vset->nul];
+    vset->one = tohw[vset->one];
+  }
+
   unroll = divu32(bin->max-tot, nbi);
   dmsg("total space is: %lu/%lu +%lu/spl\n",
        LU(tot), LU(bin->max),LU(unroll));
@@ -562,6 +562,8 @@ vset_unroll(vset_t * const vset, const uint8_t *tohw)
     zz_assert(pcm+2 < mcp);
     unroll_loop(pcm, mcp, inst->lpl, nul);
   }
+
+  vset->unroll = unroll;
 
   return ZZ_OK;
 }
