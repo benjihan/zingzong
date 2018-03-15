@@ -66,7 +66,7 @@
  |   `1`  |  Amiga/Paula             | Must be loaded in chipmem.    |
  |   `2`  |  STf (PSG+Timer-A)       | System friendly (hopefully).  |
  |   `3`  |  STe (8bit DMA)          | Support mono and stereo       |
- |    4   |  Falcon (2x16bit-DMA)    | CPU only. Blended stereo.     |
+ |   `4`  |  Falcon (2x16bit-DMA)    | CPU only. Blended stereo.     |
 
 #### Sampling rate (long spr)
 

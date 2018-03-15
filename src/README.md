@@ -40,19 +40,25 @@ If time is set to zero `0` or `inf` the player will run forever.
 ### Blending
 
 Blending defines how the 4 channels are mapped to stereo output.
-Channels are mapped by pairs. The left pair is channel A plus the
-channel specified by `X`. `X` defaults to channel B. The right pair is
-composed by the 2 remaining channels.
+The 4 channels are mapped as left pair (lP) and right pair (rP).
 
+ `X` | `lP`  | `rP`  |
+ ----|-------|-------|
+ `B` | `A+B` | `C+D` |
+ `C` | `A+C` | `B+D` |
+ `D` | `A+D` | `B+C` |
+ 
 Both channels pairs are blended together according to `Y`.
 
- * `0`   is full panning `L=A+X / R=A+B+C+D-L`
- * `128` is centered `L=R=A+B+C+D`
- * `256` is full reversed panning `R=A+X / L=A+B+C+D-R`
- * Any value of `Y` in the range [0-256] is valid resulting in a linear
-   blending such as:
-	* `L = ( (A+X)*(256-Y) + (A+B+C+D-A-X)*Y )     ) / 256`
-	* `R = ( (A+X)*Y       + (A+B+C+D-A-X)*(256-Y) ) / 256`
+  `Y`  |  Left output  |   Right output  |
+ ------|---------------|-----------------|
+ `0`   | `100%lP`      | `100%rP`        |
+ `64`  | `75%lP+25%rP` | `R=25%lP+75%rP` |
+ `128` | `50%lP+50%rP` | `R=50%lP+50%rP` |
+ `192` | `25%lP+75%rP` | `R=75%lP+25%rP` |
+ `256` | `100%rP`      | `R=100%lP`      |
+
+ `L:=((256-Y).lP+Y.rP)/256   R:=(Y.lP+(256-Y).rP)/256`
 
 
 ### Output
