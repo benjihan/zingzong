@@ -16,11 +16,12 @@
     +$04|  bra.w  zingzong_kill  ;; Stop player
     +$08|  bra.w  zingzong_play  ;; Run at tick rate (usually 200hz)
     +$0c|  bra.w  zingzong_mute  ;; Get/Set muted/ignored channels
-    +$10|  bra.w  zingzong_vers  ;; Get version string
-    +$14|  bra.w  zingzong_stat  ;; Get current status (0=OK)
-    +$18|  bra.w  zingzong_samp  ;; Get effective sampling rate
-    +$1c|  bra.w  zingzong_driv  ;; Get internal dri_t struct
-    +$20|  bra.w  zingzong_core  ;; Get internal core_t struct
+    +$10|  bra.w  zingzong_cmap  ;; Get/Set channel mapping and blending
+    +$14|  bra.w  zingzong_vers  ;; Get version string
+    +$18|  bra.w  zingzong_stat  ;; Get current status (0=OK)
+    +$1c|  bra.w  zingzong_samp  ;; Get effective sampling rate
+    +$20|  bra.w  zingzong_driv  ;; Get internal dri_t struct
+    +$24|  bra.w  zingzong_core  ;; Get internal core_t struct
 
 
 ### Prototypes
@@ -36,6 +37,7 @@
     void  zingzong_kill(void);
     void  zingzong_play(void);
     byte  zingzong_mute(byte clr, byte set);
+    long  zingzong_cmap(byte map, word lr8);
     char* zingzong_vers(void);
     byte  zingzong_stat(void);
     long  zingzong_samp(void);
@@ -60,13 +62,11 @@
 
  |  Value |           Driver         |             Remarks           |
  |--------|--------------------------|-------------------------------|
- |    0   |  Auto detect             | Amiga 1st then "_SND" cookie. |
- |    1   |  Amiga/Paula             | Must be loaded in chipmem.    |
- |    2   |  STf (PSG+Timer-A)       | System friendly (hopefully).  |
- |    3   |  STe (2x8bit DMA)        | 7 bit sample resolution.      |
+ |   `0`  |  Auto detect             | Amiga 1st then "_SND" cookie. |
+ |   `1`  |  Amiga/Paula             | Must be loaded in chipmem.    |
+ |   `2`  |  STf (PSG+Timer-A)       | System friendly (hopefully).  |
+ |   `3`  |  STe (8bit DMA)          | Support mono and stereo       |
  |    4   |  Falcon (2x16bit-DMA)    | CPU only. Blended stereo.     |
- |    5   |  STe (1x8bit DMA)        | Improved dynamic range.       |
-
 
 #### Sampling rate (long spr)
 
@@ -103,12 +103,12 @@
 --------------------------------------------------------------------------
 
     byte  zingzong_mute(byte clr, byte set);
-	
+
   * bits `#4-7` represent muted channels A to D respectively.
   * bits `#0-3` represent ignored channels A to D respectively.
 
  If a bit is set the corresponding channel is muted or ignored.
- 
+
  Muted channels are not sent to the mixer. More exactly they are
  forced into stopped state. Muted channels still have the command
  sequence parsed normally and may for instance generate an error. In
@@ -126,12 +126,70 @@ control byte.
 
 #### Examples
 
-	 zingzong_mute(0,0);      /* Read the current status */
-	 zingzong_mute(15,0);     /* Ignore all */
-	 zingzong_mute(0,255);    /* Play all */
-	 zingzong_mute(255,val);  /* Set the status to `val` */
+     zingzong_mute(0,0);      /* Read the current status */
+     zingzong_mute(15,0);     /* Ignore all */
+     zingzong_mute(0,255);    /* Play all */
+     zingzong_mute(255,val);  /* Set the status to `val` */
 
+--------------------------------------------------------------------------
+
+    long  zingzong_cmap(byte map, word lr8);
+
+#### Return value
+
+`zingzong_cmap()` returns the previous value of `map` and `lr8` packed
+into a long word such as `d0.l = lr8.w:map.w`.
+
+#### Parameters
+
+##### `byte map`
+
+`map` set the channel mapping. That is how the 4 voices `A/B/C/D` are
+mapped to the stereo output.
+
+Use `-1` to read the current value (all unsupported values left the
+parameter unchanged)
+
+
+  | `map` |  Left pair (`lP`) | Right pair (`rP`) |
+  |-------|-------------------|-------------------|
+  | `-1`  |         unchanged | unchanged         |
+  |  `0`  |          `lP=A+B` | `rP=C+D`          |
+  |  `1`  |          `lP=A+C` | `rP=B+D`          |
+  |  `2`  |          `lP=A+D` | `rP=B+C`          |
+
+
+##### `word lr8`
+
+`lr8` is the left/right blending factor. It's use to blend the L/R
+pairs into the `L`/`R` stereo channels.
+
+Use `-1` to read the current value (all unsupported values left the
+parameter unchanged)
+
+  | `lr8`  | Channel blending | Left out (`L`) | Right out (`R`) |
+  |--------|------------------|----------------|-----------------|
+  |  `-1`  | Read only        |    unchanged   |    unchanged    |
+  |   `0`  | Full panning     |    `100%lP`    |    `100%rP`     |
+  |  `64`  | Smooth panning   | `75%lP 25%rP ` |  `25%lP 75%rP`  |
+  |  `128` | Mono             | `50%lP 50%rP`  |  `50%lP 50%rP`  |
+  |  `192` | Smooth reverse   | `25%lP 75%rP`  |  `75%lP 25%rP`  |
+  |  `256` | Full reverse     |    `100%rP`    |    `100%lP`     |
+
+
+#### Notice
+
+  * The channel mapping/blending only makes sens for stereo drivers.
+  * Mapping should be supported by all stereo drivers.
+  * Blending might not be fully supported by stereo drivers. However
+    reversing the mapping using blending should always be supported.
+
+--------------------------------------------------------------------------
 
 ### Examples
 
- Have a look at `test_tos.s` or `test_sndh.s.`
+Have a look at
+
+[test_tos.s](http://github.com/benjihan/zingzong/blob/master/src/zz-m68k/test_tos.s)
+ or
+[test_sndh.s](http://github.com/benjihan/zingzong/blob/master/src/zz-m68k/test_sndh.s)

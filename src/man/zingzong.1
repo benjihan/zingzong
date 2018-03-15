@@ -20,7 +20,7 @@ Print version and copyright and exit.
 \fB\-t\fR \fB\-\-tick\fR=\fI\,HZ\/\fR
 Set player tick rate (default is 200hz).
 .TP
-\fB\-r\fR \fB\-\-rate\fR=\fI\,[R\/\fR,]HZ
+\fB\-r\fR \fB\-\-rate\fR=\fI\,[R\/,]HZ\fR
 Set re\-sampling method and rate (soxr,48K).
 .TP
 \fBR\fR :=
@@ -40,6 +40,9 @@ Set re\-sampling method and rate (soxr,48K).
 .TP
 \fB\-l\fR \fB\-\-length\fR=\fI\,TIME\/\fR
 Set play time.
+.TP
+\fB\-b\fR \fB\-\-blend\fR=\fI\,[X\/,]Y\fR
+Set channel mapping and blending (see below).
 .TP
 \fB\-m\fR \fB\-\-mute\fR=\fI\,CHANS\/\fR
 Mute selected channels (bit\-field or string).
@@ -75,6 +78,24 @@ output to the specified file instead of <stdout>.
 .TP
 \fB\-w/\-\-wav\fB
 unless set output is a file based on song filename.
+
+.SS "BLENDING:"
+.P
+Blending defines how the 4 channels are mapped to stereo output.
+The 4 channels are mapped as left pair (lP) and right pair (rP).
+   \fIX\fR := B  lP=A+B  rP=C+D (default)
+        C  lP=A+C  rP=B+D
+        D  lP=A+D  rP=B+C
+.P
+Both channels pairs are blended together according to \fIY\fR.
+   \fIY\fR := 0    L=100%lP       R=100%rP
+        64   L=75%lP+25%rP  R=25%lP+75%rP
+        128  L=50%lP+50%rP  R=50%lP+50%rP
+        192  L=25%lP+75%rP  R=75%lP+25%rP
+        256  L=100%rP       R=100%lP
+.P
+ L := ((256-Y).lP+Y.rP)/256   R := (Y.lP+(256-Y).rP)/256
+
 .SS "TIME:"
 .IP \[bu] 2
 0 or inf represents infinite duration

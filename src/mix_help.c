@@ -22,6 +22,11 @@ i16_clip(i32_t v)
   return v;
 }
 
+int16_t zz_i16_clip(i32_t v)
+{
+  return i16_clip(v);
+}
+
 #ifndef NO_FLOAT
 
 #include <math.h>
@@ -34,6 +39,11 @@ static inline i32_t
 fast_ftoi(const float f)
 {
   return (i32_t) f;
+}
+
+i32_t zz_ftoi(const float f)
+{
+  return fast_ftoi(f);
 }
 
 /* float to clipped int16_t */
@@ -72,26 +82,9 @@ void
 fltoi16(int16_t * restrict d, const float * restrict s, int n)
 {
   const float sc = 32768.0; int i;
-
-  /* $$$ Slow conversion. Need some improvement once everything work */
-  for (i=0; i<n; ++i) {
-#if 0
-    int v;
-    if ( unlikely(s[i] >= 1.0) )
-      v = 32767;
-    else if  ( unlikely(s[i] <= -1.0) )
-      v = -32768;
-    else
-      v =  (int)( s[i] * sc );
-    d[i] = v;
-#else
-    d[i] = s[i] * sc;
-    zz_assert(s[i] > -1.0);
-    zz_assert(s[i] <  1.0);
-#endif
-  }
+  for (i=0; i<n; ++i)
+    d[i] = i16_clip(s[i] * sc);
 }
-
 
 void
 map_flt_to_i16(int16_t * restrict d,

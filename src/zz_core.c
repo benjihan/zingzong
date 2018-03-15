@@ -39,7 +39,7 @@ zz_core_blend(core_t * K, zz_u8_t map, zz_u16_t lr8)
   else
     old = ( (zz_u32_t) K->lr8 << 16 ) | K->cmap;
 
-  if (map < 3u) {
+  if (map <= 2u) {
     if (!K)
       zz_chan_map = map;
     else {
