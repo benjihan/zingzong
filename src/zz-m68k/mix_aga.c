@@ -61,9 +61,9 @@ struct mix_aga_s {
     uint8_t oct;
     uint8_t reserved;
   } inst[20];
-  uint8_t tohw[256];
 };
 
+static uint8_t tohw[256];
 
 static mix_aga_t g_aga;
 
@@ -113,14 +113,15 @@ static i16_t push_aga(core_t * const P, void * pcm, i16_t npcm)
 {
   mix_aga_t * const M = (mix_aga_t *) P->data;
   int k;
+  const uint8_t channel_swap = (P->lr8>128) << 1;
 
   zz_assert(P);
   zz_assert( M == &g_aga );
 
   /* Setup channels */
   for (k=0; k<4; ++k) {
-    mix_chan_t * const K = M->chan+k;
     chan_t     * const C = P->chan+k;
+    mix_chan_t * const K = M->chan+(C->map^channel_swap);
     const uint8_t old_status = K->status;
 
     switch (K->status = C->trig) {
@@ -178,9 +179,11 @@ static zz_err_t init_aga(core_t * const P, u32_t spr)
   DMACON = 0x000F;                    /* disable audio DMAs */
   DMACON = 0x8200;                    /* enable DMAs */
   for (k=0; k<4; ++k) {
+    static const uint8_t order[4] = { 0,3,1,2 }; /* A/D/C/B */
     mix_chan_t * const K = M->chan+k;
-    K->dmacon = 1 << k;
-    K->hw = (volatile audio_t *) ( 0xDFF0A0 + (k<<4) );
+    const uint8_t o = order[k];
+    K->dmacon = 1 << o;
+    K->hw = (volatile audio_t *) ( 0xDFF0A0 + (o<<4) );
     K->hw->adr = 0;
     K->hw->len = 1;
     K->hw->vol = 0;
@@ -221,9 +224,10 @@ static zz_err_t init_aga(core_t * const P, u32_t spr)
   }
 
   /* Change PCM sign and unroll loops. */
-  for (k=0; k<256; ++k)
-    M->tohw[k] = k-128;
-  vset_unroll(&P->vset,M->tohw);
+  if (!*tohw)
+    for (k=0; k<256; ++k)
+      tohw[k] = k-128;
+  vset_unroll(&P->vset,tohw);
 
   for (k=0; k<20; ++k) {
     inst_t * const inst = P->vset.inst + k;
