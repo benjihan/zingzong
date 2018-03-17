@@ -138,7 +138,7 @@ static i16_t push_ste(core_t * const P, void *pcm, i16_t n)
   n = ULIGN(n+bias);
   if (n > TEMPMAX)
     n = TEMPMAX;
-  play_ata(&M->ata, n);
+  play_ata(&M->ata, P->chan, n);
 
   fast_mix(&_fifo[M->ata.fifo.i1], M->ata.fifo.n1);
   fast_mix(&_fifo[M->ata.fifo.i2], M->ata.fifo.n2);
@@ -184,7 +184,7 @@ static zz_err_t init_ste(core_t * const P, u32_t spr)
   init_dma(P);
   init_mix(P);
   init_spl(P);
-  init_ata(FIFOMAX,scale,0);
+  init_ata(FIFOMAX,scale);
 
   dmsg("spr:%lu dma:%02hx scale:%lx\n",
        LU(spr), HU(M->dma), LU(scale) );

@@ -100,7 +100,7 @@ static void never_inline init_mix(uint16_t lr8)
     int16_t w = v << 7;
 
     asm (
-      "muls   %[f],%[v]  \n\t"
+      "muls   %[f],%[v]    \n\t"
       "asr.l  #1,%[v]      \n\t"
       "sub.w  %[v],%[w]    \n\t"
       "move.w %[v],-(%%sp) \n\t"
@@ -110,6 +110,7 @@ static void never_inline init_mix(uint16_t lr8)
       : [v] "+d" (v), [w] "+d" (w)
       : [f] "iSd" (lr8)
       : "cc" );
+
     Tmix[0][x] = v;
     Tmix[1][x] = w;
   }
@@ -133,7 +134,7 @@ static i16_t push_s8s(core_t * const P, void *pcm, i16_t n)
   n = ULIGN(n+bias);
   if (n > TEMPMAX)
     n = TEMPMAX;
-  play_ata(&M->ata, n);
+  play_ata(&M->ata, P->chan, n);
 
   fast_mix(&_fifo[M->ata.fifo.i1], M->ata.fifo.n1);
   fast_mix(&_fifo[M->ata.fifo.i2], M->ata.fifo.n2);
@@ -179,7 +180,7 @@ static zz_err_t init_s8s(core_t * const P, u32_t spr)
   init_dma(P);
   init_mix(P->lr8);
   init_spl(P);
-  init_ata(FIFOMAX,scale,2);
+  init_ata(FIFOMAX,scale);
   dmsg("spr:%lu dma:%02hx scale:%lx\n",
        LU(spr), HU(M->dma), LU(scale) );
 

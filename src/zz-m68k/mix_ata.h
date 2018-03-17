@@ -42,20 +42,17 @@ struct mix_ata_s {
   fast_t   fast[4];                     /* Fast channel info */
 };
 
-void play_ata(ata_t * ata, int16_t n);
+void play_ata(ata_t * ata, chan_t * chn, int16_t n);
 void stop_ata(ata_t * ata);
 
-#define init_ata(SIZE, STEP, MI)                            \
+#define init_ata(SIZE, STEP)                                \
   do {                                                      \
-    int16_t i;                                              \
     M->ata.fifo.sz = SIZE;                                  \
     M->ata.fifo.wp = -1;                                    \
     M->ata.fifo.pb_play = pb_play;                          \
     M->ata.fifo.pb_stop = pb_stop;                          \
     M->ata.fifo.pb_user = M;                                \
     M->ata.step = STEP;                                     \
-    for(i=0; i<4; ++i)                                      \
-      M->ata.fast[i].chn = &P->chan[3&(i+MI)];              \
   } while (0)
 
 #undef FP

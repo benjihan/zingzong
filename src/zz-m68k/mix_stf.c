@@ -288,7 +288,7 @@ static i16_t push_stf(core_t * const P, void * pcm, i16_t n)
   zz_assert( n > 0 );
   zz_assert( n < MIXMAX );
 
-  play_ata(&M->ata, n);
+  play_ata(&M->ata, P->chan, n);
 
 #define fast_mix(N) \
   fast_stf(Tpcm, rout+M->ata.fifo.i##N, temp, M->ata.fast, M->ata.fifo.n##N)
@@ -328,7 +328,7 @@ static zz_err_t init_stf(core_t * const P, u32_t spr)
   scale  = ( divu( refspr<<13, spr) + 1 ) >> 1;
 
   init_spl(P);
-  init_ata(MIXMAX*2,scale,0);
+  init_ata(MIXMAX*2,scale);
 
   return ecode;
 }

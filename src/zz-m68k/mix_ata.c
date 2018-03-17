@@ -15,6 +15,7 @@ static void ata_trig(fast_t * restrict K, uint16_t scl)
 
   for (; K<E; ++K) {
     chan_t * restrict const C = K->chn;
+
     const u8_t trig = C->trig;
     C->trig = TRIG_NOP;
     switch (trig) {
@@ -96,8 +97,14 @@ static void fifo_play(fifo_t * const F, int16_t n)
   zz_assert( F->i2 == 0 || F->n2 == 0);
 }
 
-void play_ata(ata_t * restrict ata, int16_t n)
+void play_ata(ata_t * restrict ata, chan_t * restrict chn, int16_t n)
 {
+  /* setup channel mapping */
+  ata->fast[chn->pam].chn = chn; ++ chn;
+  ata->fast[chn->pam].chn = chn; ++ chn;
+  ata->fast[chn->pam].chn = chn; ++ chn;
+  ata->fast[chn->pam].chn = chn;
+
   ata_trig(ata->fast, ata->step);
   fifo_play(&ata->fifo, n);
 }
