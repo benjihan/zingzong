@@ -46,13 +46,13 @@ A_siz:	.struct .		| 32 20
 #endif
 
 	.section .text
-	.global fast_stf,fast_ste,fast_fal,fast_s7s
+	.global fast_stf,fast_ste,fast_fal,fast_s8s
 
 /// --------------------------------------------------------
-///		   a2	   a3	   a4	    a5	      d7
+///                a2      a3      a4       a5        d7
 /// void fast_stf(Tpcm.l, routs.l, temp.l, voices.l, cnt.l)
-///		   4(a7)   8(a7)   12(a7)  16(a7)    20(a7)
-///	 +11*4=44 48(a7)  52(a7)   56(a7)  60(a7)    64(a7)
+///                4(a7)   8(a7)   12(a7)  16(a7)    20(a7)
+///      +11*4=44 48(a7)  52(a7)   56(a7)  60(a7)    64(a7)
 
 fast_stf:
 	move.l	20(a7),d0	| d0: count
@@ -89,10 +89,10 @@ fast_stf:
 
 
 /// --------------------------------------------------------
-///		   a2	   a3	   a4	    a5	      d7
+///                a2      a3      a4       a5        d7
 /// void fast_ste(Tmix.l, dest.l, temp.l, voices.l, cnt.l)
-///		   4(a7)   8(a7)  12(a7)  16(a7)    20(a7)
-///	 +11*4=44 48(a7)  52(a7)  56(a7)  60(a7)    64(a7)
+///                4(a7)   8(a7)  12(a7)  16(a7)    20(a7)
+///      +11*4=44 48(a7)  52(a7)  56(a7)  60(a7)    64(a7)
 
 fast_ste:
 	move.l	20(a7),d0	| d0: count
@@ -128,11 +128,13 @@ fast_ste:
 0:	rts
 
 
+	.if	0
+
 /// --------------------------------------------------------
-///		   a4	   a5	    d7
+///                a4      a5       d7
 /// void fast_s7s(dest.l, voices.l, cnt.l)
-///		   4(a7)   8(a7)    12(a7)
-///	 +11*4=44 48(a7)  52(a7)    56(a7)
+///                4(a7)   8(a7)    12(a7)
+///      +11*4=44 48(a7)  52(a7)    56(a7)
 
 fast_s7s:
 	move.l	12(a7),d0	| d0: count
@@ -150,8 +152,6 @@ fast_s7s:
 	lea	mid_s8+2(pc),a6
 	move.l	a6,d6
 	lea	s7sAB_mix(pc),a6
-	|| lea	   s7sAB_mix(pc),a3
-	|| lea	   s7s_ini(pc),a6
 	bsr.s	mix_2chans
 
 	|| Arguments
@@ -164,29 +164,68 @@ fast_s7s:
 	lea	mid_s8+2(pc),a6
 	move.l	a6,d6
 	lea	s7sCD_mix(pc),a6
-	|| lea	   s7sCD_mix(pc),a3
-	|| lea	   s7s_ini(pc),a6
 	bsr.s	mix_2chans
 
 	movem.l (a7)+,d2-d7/a2-a6
 0:	rts
 
+	.endif
 
 /// --------------------------------------------------------
-///		   a4	   a5	    d7
-/// void fast_fal(dest.l, voices.l, cnt.l)
-///		   4(a7)   8(a7)    12(a7)
-///	 +11*4=44 48(a7)  52(a7)    56(a7)
+///                a2     a4       a5       d7
+/// void fast_s8s(Tmix.l,dest.l, voices.l, cnt.l)
+///                4(a7)  8(a7)   12(a7)   16(a7)
+///      +11*4=44 48(a7) 52(a7)   56(a7)   60(a7)
 
-fast_fal:
-	move.l	12(a7),d0	| d0: count
+fast_s8s:
+	move.l	16(a7),d0	| d0: count
 	beq.s	0f
 
 	|| 10 regs (d0/d1/a0/a1 not saved by m68k ABI)
 	movem.l d2-d7/a2-a6,-(a7)
 
-	|| Arguments		|     (44)     (48)
-	movem.l 48(a7),a4-a5	| a4: dest, a5:voices
+	|| Arguments		|
+	movem.l 48(a7),a2/a4-a5	| a2: Tmix, a4: dest, a5:voices
+	move.l	d0,d7		|
+	add.w	d7,d7		| d7: count*2
+
+	|| Mix A/B
+	lea	mid_u8+2(pc),a6
+	move.l	a6,d6
+	lea	mixAB_mix(pc),a6
+	bsr.s	mix_2chans
+
+	|| Arguments
+	move.l	52(a7),a4	| a4: dest
+	move.w	62(a7),d7	|
+	add.w	d7,d7		| d7: count*2
+	lea	1020(a2),a3	| a3: Tmix (reverse)
+	lea	2*A_siz(a5),a5	| a5: voice#C
+
+	|| Mix C/D
+	lea	mid_u8+2(pc),a6
+	move.l	a6,d6
+	lea	s8sCD_mix(pc),a6
+	bsr.s	mix_2chans
+
+	movem.l (a7)+,d2-d7/a2-a6
+0:	rts
+
+/// --------------------------------------------------------
+///                a2     a4       a5       d7
+/// void fast_fal(Tmix.l,dest.l, voices.l, cnt.l)
+///                4(a7)  8(a7)   12(a7)   16(a7)
+///      +11*4=44 48(a7) 52(a7)   56(a7)   60(a7)
+
+fast_fal:
+	move.l	16(a7),d0	| d0: count
+	beq.s	0f
+
+	|| 10 regs (d0/d1/a0/a1 not saved by m68k ABI)
+	movem.l d2-d7/a2-a6,-(a7)
+
+	|| Arguments		|
+	movem.l 48(a7),a2/a4-a5	| a2: Tmix, a4: dest, a5:voices
 	move.l	d0,d7		|
 	add.w	d7,d7		| d7: count*2
 	add.w	d7,a4		| a4: intermediate
@@ -198,8 +237,8 @@ fast_fal:
 	bsr.s	mix_2chans
 
 	|| Arguments
-	move.l	48(a7),a4	| a4: dest
-	move.w	58(a7),d7	|
+	move.l	52(a7),a4	| a4: dest
+	move.w	62(a7),d7	|
 	add.w	d7,d7		| d7: count*2
 	lea	0(a4,d7.w),a3	| a3: intermediate
 	lea	2*A_siz(a5),a5	| a5: voice#C
@@ -212,7 +251,7 @@ fast_fal:
 
 	movem.l (a7)+,d2-d7/a2-a6
 0:	rts
-
+	
 
 /// --------------------------------------------------------
 /// a2.l: mixer specific (usually convert table)
@@ -316,8 +355,8 @@ mix_2chans:
 ///
 
 mixAB_all:
-	clr.w	d6		| clear MSB
 	swap	d7		| d7: count in MSW
+	clr.w	d6		| d6: clear d6.w MSB
 mixAB_beg:
 	.rept	BLKLEN
 	|			 16/22
@@ -406,7 +445,7 @@ mixAB_mix:
 	bne.s	0f
 	move.w	d7,d6		| d6: -1,-3,-5 ...
 	swap	d7		| d7: count in MSW
-	not.w	d6		| d6: 0,2,4,6 ...
+	not.w	d6		| d6: 0,2,4,6 ... (clear d6.w MSB)
 	lea	mixAB_off(pc,d6.w),a6
 	adda.w	(a6),a6
 	jmp	(a6)
@@ -419,14 +458,16 @@ mixAB_off:
 	.short	2		| jump to next instruction
 0:	rts
 
+
+	.if	0
 /// --------------------------------------------------------
 /// Mix 2 voices (A&B) 8 bit stereo buffer
 /// --------------------------------------------------------
-/// a2	  .l scratch
-/// a3	  .l continue (s7sAB_mix or s7sCD_mix)
-/// a4	  .l 2x8 PCM buffer
-/// a5	  .l voices
-/// a6	  .l scratch
+/// a2    .l scratch
+/// a3    .l continue (s7sAB_mix or s7sCD_mix)
+/// a4    .l 2x8 PCM buffer
+/// a5    .l voices
+/// a6    .l scratch
 /// ----- -- -----------------------------------------------
 /// a0/a1 .w dec-stp
 /// d2/d3 .w dec-acu
@@ -435,45 +476,8 @@ mixAB_off:
 /// d6/d7 .w scratch
 ///
 
-	|| .equiv	A_rts, A_usr + 0
-	|| .equiv	A_usp, A_usr + 4
-	|| .equiv	A_srs, A_usr + 8
-
-|| s7s_rte:
-||	move.l	A_vecf(a5),0x10.w| Restore illegal vector
-||	move.l	A_usp(a5),a2	| a2= saved usp
-||	move.l	a2,usp		| ... and restore
-||	or.w	#0x2000,(a7)	| Set SR#S
-||	move.l	A_rts(a5),2(a7)		| Set PC
-||	rte			| User mode and rts
-
-|| s7s_ini:
-||	   move.l  (a7)+,A_rts(a5)	   | Pop and store RTS
-||	   move.l  usp,a2
-||	   move.l  a2,A_usp(a5)	   | Save usp
-||	   move.l  a7,A_ssp(a5)	   |
-||	   and	   #0xDF00,sr	   | Go user mode
-||	   move.l  a4,a7
-||	   jmp	   (a3)
-
-||	move.w	sr,d6
-||	btst	#13,d6
-||	sne	d6
-||	move.b	d6,A_srs(a5)	| Save sr
-||	beq.s	1f
-
-||	move.l	0x10.w,A_vec(a5)| save illegal vector
-||	lea	s7s_rte(pc),a2	|
-||	move.l	a2,0x10.w	| Install my illegal vector
-||	and	#0xDF00,sr	| Go user mode
-
-|| 1:	|| user mode
-||	move.l	a4,a7
-||	jmp	(a3)
-
-
 s7sAB_all:
-	moveq	#0,d6
+	moveq	#0,d6		| d6: clear d6.w MSB
 s7sAB_beg:
 	.rept	BLKLEN
 	|			 14/18
@@ -505,7 +509,7 @@ s7sAB_mix:
 	bset	#0,d7		| d7#0: set to detect end
 	bne.s	0f
 	move.w	d7,d6		| d6: -1,-3,-5 ...
-	not.w	d6		| d6: 0,2,4,6 ...
+	not.w	d6		| d6: 0,2,4,6 ... (clear d6.w MSB)
 	lea	s7sAB_off(pc,d6.w),a6
 	adda.w	(a6),a6
 	jmp	(a6)
@@ -518,20 +522,12 @@ s7sAB_off:
 	.short	2		| jump to next instruction
 0:	rts
 
-|| 0:	   tst.b	A_srs(a5)	| was super ?
-||	beq.s	1f
-||	illegal				| Go super and RTS !
-|| 1:
-	|| We were already in user mode
 
-	|| move.l  A_usp(a5),a2	   | restore USP
-	|| move.l  a2,usp
-	|| or	   #0x2000,sr	   | Go super
-	|| move.l  A_ssp(a5),a7	   | restore SSP
-	|| move.l  A_rts(a5),a2
-	|| jmp	   (a2)
-
-
+||| GB: This can be optimize with automatic stack alignment using a7
+|||     as destination pointer while running in usermode.
+|||
+||| 2*BLKLEN offset is a cheap trick to prevent gas to optimize 0(an)
+||| breaking the code tower.
 s7sCD_all:
 	lea	2*BLKLEN(a4),a4
 s7sCD_beg:
@@ -584,24 +580,8 @@ s7sCD_off:
 	.short	2		| jump to next instruction
 0:	rts
 
-|| 0:	   tst.b	A_srs(a5)	| was super ?
-||	beq.s	1f
-||	illegal				| Go super and RTS !
-|| 1:
-||	|| We were already in user mode
-||	move.l	A_usp(a5),a7	| restore USP
-||	move.l	A_rts(a5),a2
-||	jmp	(a2)
-
-
-	|| move.l  A_usp(a5),a2	   | restore USP
-	|| move.l  a2,usp
-	|| or	   #0x2000,sr	   | Go super
-	|| move.l  A_ssp(a5),a7	   | restore SSP
-	|| move.l  A_rts(a5),a2
-	|| jmp	   (a2)
-
-
+	.endif
+	
 /// --------------------------------------------------------
 /// STf/YM PART 2
 /// --------------------------------------------------------
@@ -611,11 +591,11 @@ s7sCD_off:
 /// store in the chained timer interrupt
 /// routines.
 /// --------------------------------------------------------
-/// a2	  .l PCM table (10bit)
-/// a3	  .l IRQ routines (output)
-/// a4	  .l intermediate buffer
-/// a5	  .l voices
-/// a6	  .l scratch
+/// a2    .l PCM table (10bit)
+/// a3    .l IRQ routines (output)
+/// a4    .l intermediate buffer
+/// a5    .l voices
+/// a6    .l scratch
 /// ----- -- -----------------------------------------------
 /// a0/a1 .w dec-stp
 /// d2/d3 .w dec-acu
@@ -625,8 +605,8 @@ s7sCD_off:
 ///
 
 stfCD_all:
-	clr.w	d6		| clear MSB
 	swap	d7		| d7: count in MSW
+	clr.w	d6		| d6: clear d6.w MSB
 stfCD_beg:
 	.set	i,0
 	.rept	BLKLEN
@@ -675,9 +655,9 @@ stfCD_mix:
 
 	bset	#0,d7		| d7#0: set to detect end
 	bne.s	0f
-	move.w	d7,d6
+	move.w	d7,d6		| d6: -1,-3,-5 ...
 	swap	d7		| d7: count in MSW
-	not.w	d6		| -2:0 -2:1 ...
+	not.w	d6		| d6: 0,2,4 ... and clear d6.w MSB
 	lea	stfCD_off(pc,d6.w),a6
 	adda.w	(a6),a6
 	jmp	(a6)
@@ -699,11 +679,11 @@ stfCD_off:
 /// Convert to signed 8bit PCM using the mix
 /// dynamic range mix table.
 /// --------------------------------------------------------
-/// a2	  .l Mix table (byte[1024])
-/// a3	  .l s8 pcm buffer (output)
-/// a4	  .l intermediate buffer
-/// a5	  .l voices
-/// a6	  .l scratch
+/// a2    .l Mix table (byte[1024])
+/// a3    .l s8 pcm buffer (output)
+/// a4    .l intermediate buffer
+/// a5    .l voices
+/// a6    .l scratch
 /// ----- -- -----------------------------------------------
 /// a0/a1 .w dec-stp
 /// d2/d3 .w dec-acu
@@ -712,8 +692,8 @@ stfCD_off:
 /// d6/d7 .w scratch
 
 steCD_all:
-	clr.w	d6		| clear MSB
 	swap	d7		| d7: count in MSW
+	clr.w	d6		| d6: clear MSB
 steCD_beg:
 	.rept	BLKLEN
 	|			 21/26
@@ -749,9 +729,9 @@ steCD_mix:
 
 	bset	#0,d7		| d7#0: set to detect end
 	bne.s	0f
-	move.w	d7,d6
+	move.w	d7,d6		| d6: -1,-3,-5 ...
 	swap	d7		| d7: count in MSW
-	not.w	d6		| -2:0 -2:1 ...
+	not.w	d6		| d6: 0,2,4 ... and clear d6.w MSB
 	lea	steCD_off(pc,d6.w),a6
 	adda.w	(a6),a6
 	jmp	(a6)
@@ -764,19 +744,18 @@ steCD_off:
 	.short	2		| jump to next instruction
 0:	rts
 
-
 /// --------------------------------------------------------
-/// Falcon 16bit DMA
+/// 8bit DMA blended stereo
 /// --------------------------------------------------------
 /// Add 2 voices (C&D) to the 2 voices (A&B)
-/// already in the intermediate buffer.
-/// Convert to signed Stereo 16bit PCM
+/// already in the intermediate buffer using a blending table
+/// between left and right pairs.
 /// --------------------------------------------------------
-/// a2	  .w $8000
-/// a3	  .w intermediate (inp)
-/// a4	  .l 2xs16 pcm buffer (out)
-/// a5	  .l voices
-/// a6	  .l scratch
+/// a2    .l L blending table BYTE[512]
+/// a3    .l R blending table BYTE[512]
+/// a4    .l 2xs16 pcm buffer (out)
+/// a5    .l voices
+/// a6    .l scratch
 /// ----- -- -----------------------------------------------
 /// a0/a1 .w dec-stp
 /// d2/d3 .w dec-acu
@@ -785,20 +764,93 @@ steCD_off:
 /// d6/d7 .w scratch
 ///
 
-	.equiv FALLEN, BLKLEN / 2
+s8sCD_all:
+	swap	d7		| d7: count in MSW
+s8sCD_beg:
+	.rept	BLKLEN
+	|| 		         29/38
+	|| ---------------------+-----+---
+	move.l	d4,a6		| 1/2 | 7/10
+	add.w	a0,d2		| 1/2 |
+	addx.l	d0,d4		| 2/2 |
+	clr.w	d7		| 1/2 | d7= cnt | 0000
+	move.b	(a6),d7		| 2/2 | d7= cnt | c
+	|| ---------------------+-----+---
+	move.l	d5,a6		| 1/2 | 7/10
+	add.w	a1,d3		| 1/2 |
+	addx.l	d1,d5		| 2/2 |
+	clr.w	d6		| 1/2 |
+	move.b	(a6),d6		| 2/2 | d6= ???? | d
+	|| ---------------------+-----+---
+	add.w	d7,d6		| 1/2 | 6/8
+	add.w	d6,d6		| 1/2 | d6= ???? | 2(d+c)
+	move.w	(a2,d6.w),d6	| 4/4 | d6= ???? | (c+d)*L : (c+d)*R
+	|| ---------------------+-----+---
+	move.w	(a4),d7	      	| 2/2 | 9/10
+	add.w	d7,d7	      	| 1/2 | d7= ???? | 4(a+b)
+	add.w	(a3,d7.w),d6 	| 4/4 | d6= (a+b)*L+(c+d)*R : (a+b)*R+(c+d)*L
+	move.w	d6,(a4)+      	| 2/2 |
+	|| 
+	.endr
+s8sCD_end:
+
+	.equiv	S8SCD_SIZE, (s8sCD_end-s8sCD_beg) / BLKLEN
+
+	|| adr,end,acu,dec,int,lpl
+	check_loop d4,A_end(a5),d2,a0,d0,A_lpl(a5),mid_u8
+	check_loop d5,B_end(a5),d3,a1,d1,B_lpl(a5),mid_u8
+
+	swap	d7		| d7: count in LSW
+s8sCD_mix:
+	sub.w	#BLKLEN*2,d7
+	bpl	s8sCD_all
+
+	bset	#0,d7		| d7#0: set to detect end
+	bne.s	0f
+
+	move.w	d7,d6		| d6: -1,-3,-5 ...
+	swap	d7		| d7: count in MSW
+	not.w	d6		| d6: 0,2,4 ... and clear d6.w MSB
+	lea	s8sCD_off(pc,d6.w),a6
+	adda.w	(a6),a6
+	jmp	(a6)
+s8sCD_off:
+	.set	i,0
+	.rept	BLKLEN-1
+	.set	i,i+S8SCD_SIZE
+	.short	s8sCD_beg+i-.
+	.endr
+	.short	2		| jump to next instruction
+0:	rts
+
+	
+
+/// --------------------------------------------------------
+/// Falcon 16bit DMA blended stereo
+/// --------------------------------------------------------
+/// Add 2 voices (C&D) to the 2 voices (A&B)
+/// already in the intermediate buffer using a blending table
+/// between left and right pairs.
+/// --------------------------------------------------------
+/// a2    .l blending table word[2][512]
+/// a3    .w intermediate (inp)
+/// a4    .l 2xs16 pcm buffer (out)
+/// a5    .l voices
+/// a6    .l scratch
+/// ----- -- -----------------------------------------------
+/// a0/a1 .w dec-stp
+/// d2/d3 .w dec-acu
+/// d0/d1 .l int-stp
+/// d4/d5 .l int-acu (adr)
+/// d6/d7 .w scratch
+///
 
 falCD_all:
 	swap	d7		| d7: count in MSW
 falCD_beg:
-	.rept	FALLEN
-	|			  x/56
-	| ----------------------+-----+---
-	moveq	#0,d6		| x/2 | x/12
-	move.w	(a3)+,d6	| x/2 | d6= 0000 | a+b
-	movea.w d6,a2		| x/2 | a2= 0000 | a+b
-	lea	0(a2,a2.l*2),a2 | x/4 | a2= 0000 | 3a+3b
-	swap	d6		| x/2 | d6= a+b	 | 0000
-	| ----------------------+-----+---
+	.rept	BLKLEN
+	|| 		          x/36
+	|| ---------------------+-----+---
 	move.l	d4,a6		| x/2 | x/10
 	add.w	a0,d2		| x/2 |
 	addx.l	d0,d4		| x/2 |
@@ -808,24 +860,21 @@ falCD_beg:
 	move.l	d5,a6		| x/2 | x/8
 	add.w	a1,d3		| x/2 |
 	addx.l	d1,d5		| x/2 |
-	move.b	(a6),d6		| x/2 | d6= a+b | d
+	clr.w	d6		| x/2 |
+	move.b	(a6),d6		| x/2 | d6= ???? | d
 	| ----------------------+-----+---
-	add.w	d7,d6		| x/2 | d6= a+b | c+d
-	move.w	d6,d7		| x/2 | d7= cnt | c+d
-	add.w	a2,d6		| x/2 | d6= a+b | 3a+3b+c+d
-	movea.w d7,a2		| x/2 | a2= 0000 | c+d
-	lea	0(a2,a2.l*2),a2 | x/4 | a2= 0000 | 3c+3d
-	swap	d6		| x/2 | d6= 3a+3b+c+d | a+b
-	add.w	a2,d6		| x/2 | d6= 3a+3b+c+d | 3c+3d+a+b
+	add.w	d7,d6		| x/2 | d6= cnt | d+c
+	move.l	0(a2,d6.w*4),d6	| x/4 | d6= L(c+d) | R(c+d)
+	swap	d6		| x/2 | d6= R(c+d) | L(c+d)
 	| ----------------------+-----+---
-	lsl.l	#5,d6		| x/2 |
-	eor.l	#0x80008000,d6	| x/6 |
+	move.w	(a3)+,d7	| x/2 | d7= ???? | a+b
+	add.l	0(a2,d7.w*4),d6	| x/4 | d6= L(a+b)+R(c+d) | R(a+b)+L(c+d)
 	move.l	d6,(a4)+	| x/2 |
-	|
+	|| 
 	.endr
 falCD_end:
 
-	.equiv	FALCD_SIZE, (falCD_end-falCD_beg) / FALLEN
+	.equiv	FALCD_SIZE, (falCD_end-falCD_beg) / BLKLEN
 
 	|| adr,end,acu,dec,int,lpl
 	check_loop d4,A_end(a5),d2,a0,d0,A_lpl(a5),mid_u8
@@ -833,20 +882,21 @@ falCD_end:
 
 	swap	d7		| d7: count in LSW
 falCD_mix:
-	sub.w	#FALLEN*2,d7
+	sub.w	#BLKLEN*2,d7
 	bpl	falCD_all
 
 	bset	#0,d7		| d7#0: set to detect end
 	bne.s	0f
-	move.w	d7,d6
+
+	move.w	d7,d6		| d6: -1,-3,-5 ...
 	swap	d7		| d7: count in MSW
-	not.w	d6		| -2:0 -2:1 ...
+	not.w	d6		| d6: 0,2,4 ... and clear d6.w MSB
 	lea	falCD_off(pc,d6.w),a6
 	adda.w	(a6),a6
 	jmp	(a6)
 falCD_off:
 	.set	i,0
-	.rept	FALLEN-1
+	.rept	BLKLEN-1
 	.set	i,i+FALCD_SIZE
 	.short	falCD_beg+i-.
 	.endr

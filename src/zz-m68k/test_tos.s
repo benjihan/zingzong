@@ -468,8 +468,10 @@ zingzong_init: equ zingzong+$0
 zingzong_kill: equ zingzong+$4
 zingzong_play: equ zingzong+$8
 zingzong_mute: equ zingzong+$c
-zingzong_vers: equ zingzong+$10
-zingzong_stat: equ zingzong+$14
-zingzong_samp: equ zingzong+$18
-zingzong_driv: equ zingzong+$1c
-zingzong_core: equ zingzong+$20
+zingzong_cmap: equ zingzong+$10
+zingzong_vers: equ zingzong+$14
+zingzong_stat: equ zingzong+$18
+zingzong_samp: equ zingzong+$1c
+zingzong_driv: equ zingzong+$20
+zingzong_core: equ zingzong+$24
+	

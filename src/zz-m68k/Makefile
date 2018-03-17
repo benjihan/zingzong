@@ -131,7 +131,7 @@ PACKAGE_CPPFLAGS  = \
 
 com = player
 zzz = zz_m68k zz_core zz_init zz_log
-mix = mix_aga mix_stf mix_s7s mix_ste mix_fal mix_ata m68k_mix 
+mix = mix_aga mix_stf mix_ste mix_s8s mix_fal mix_ata m68k_mix 
 m68 = m68k_mix.S m68k_mem.S
 
 sources := $(sort $(addsuffix .c,$(com) $(zzz) $(mix)) $(m68))
@@ -176,7 +176,7 @@ NOLIBS      = -nodefaultlibs -nostdlib
 #      the final linker scripts.
 # ----------------------------------------------------------------------
 
-drilist := aga stf s7s ste fal
+drilist := aga stf s8s ste fal
 drivers := $(patsubst %,dri_%.elf,$(drilist)) mix_ata.o $(m68:%.S=%.o)
 
 drivers: $(drivers)
@@ -186,6 +186,7 @@ dri_aga.elf: mix_aga.o
 dri_stf.elf: mix_stf.o
 dri_ste.elf: mix_ste.o
 dri_s7s.elf: mix_s7s.o
+dri_s8s.elf: mix_s8s.o
 dri_fal.elf: mix_fal.o
 
 mix_ata.o: JUMP_TABLE = jump-tables
@@ -307,15 +308,14 @@ song.dep: $(SONGFILE) $(VSETFILE)
 #  TOS test files
 # ----------------------------------------------------------------------
 
-test_tos: $(patsubst %,test_%.tos,def stf s7s ste fal)
+test_tos: $(patsubst %,test_%.tos,def stf ste fal)
 PHONY: test_tos
 
 MIXERID = $(error MIXERID must be defined)
 test_def.tos: MIXERID=0
 test_stf.tos: MIXERID=2
-test_s7s.tos: MIXERID=3
+test_ste.tos: MIXERID=3
 test_fal.tos: MIXERID=4
-test_ste.tos: MIXERID=5
 test_%.tos: test_tos.s zingzong.bin zingzong.sym song_dat
 	$(call M,TOS,$@)
 	$(VASMTOS) $@  $< -DMIXERID=$(MIXERID) -DZZSYMB=1

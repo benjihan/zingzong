@@ -126,10 +126,8 @@ push_cb(core_t * const P, void * restrict pcm, i16_t N)
   /* Setup channels */
   for (k=0; k<4; ++k) {
     chan_t     * const C = P->chan+k;
-    mix_chan_t * const K = M->chan+C->map;
+    mix_chan_t * const K = M->chan + C->pam;
     const u8_t trig = C->trig;
-
-    zz_assert( (C->map & 3) == C->map );
 
     C->trig = TRIG_NOP;
     switch (trig) {
@@ -184,6 +182,7 @@ static zz_err_t init_cb(core_t * const P, u32_t spr)
 {
   zz_err_t ecode = E_OK;
   mix_fp_t * M = local_calloc(sizeof(mix_fp_t), &ecode);
+
   if (likely(M)) {
     zz_assert( !P->data );
     P->data = M;

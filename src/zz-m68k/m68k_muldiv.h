@@ -8,11 +8,25 @@
 #ifndef M68K_MULDIV_H
 #define M68K_MULDIV_H
 
+#define muls(a,b)   m68k_muls((a),(b))
 #define mulu(a,b)   m68k_mulu((a),(b))
 #define divu(a,b)   m68k_divu((a),(b))
 #define modu(a,b)   m68k_modu((a),(b))
 #define mulu32(a,b) m68k_mulu32((a),(b))
 #define divu32(a,b) m68k_divu32((a),(b))
+
+static inline int32_t always_inline
+m68k_muls(int16_t a, int16_t b)
+{
+  int32_t c;
+  asm (
+    "muls.w %1,%0\n\t"
+    : "=d" (c)
+    : "iSd" (a), "0" (b)
+    : "cc"
+    );
+  return c;
+}
 
 static inline uint32_t always_inline
 m68k_mulu(uint16_t a, uint16_t b)

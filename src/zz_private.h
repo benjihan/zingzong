@@ -293,7 +293,7 @@ struct chan_s {
   inst_t  *ins;                       /**< instrument (zz_fast)     */
 
   uint8_t num;                      /**< channel number [0..3].     */
-  uint8_t map;                      /**< channel number [0..3].     */
+  uint8_t pam;                      /**< map to [0..3],             */
   uint8_t msk;                      /**< {0x11,0x22,0x44,0x88}.     */
   uint8_t trig;                     /**< see TRIG_* enum.           */
   uint8_t curi;                     /**< current instrument number. */
@@ -324,6 +324,7 @@ struct core_s {
   uint8_t  loop;                /**< #0-3:loop #4-7:tick loop. */
   uint8_t  code;                /**< Error code. */
   uint8_t  cmap;                /**< channel mapping (ZZ_MAP_*). */
+
   chan_t   chan[4];             /**< 4 channels info. */
 };
 

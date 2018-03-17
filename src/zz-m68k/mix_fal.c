@@ -18,7 +18,7 @@
 #define ULIGN(X)      ALIGN((X)+MIXALIGN-1)
 #define IS_ALIGN(X)   ((X) == ALIGN(X))
 #define init_spl(P)   init_spl8(P)
-#define fast_mix(R,N) fast_fal(R,M->ata.fast,N)
+#define fast_mix(R,N) fast_fal(Tmix,R,M->ata.fast,N)
 #define MIXALIGN      1
 #define FAL_DMA_MODE  (DMA_MODE_16BIT)
 typedef int32_t spl_t;
@@ -49,9 +49,11 @@ struct mix_fal_s {
 
 static mix_fal_t g_fal;                 /* Falcon mixer instance */
 static spl_t _fifo[FIFOMAX];            /* FIFO buffer */
+static spl_t Tmix[510];                 /*  */
+static uint16_t Tmix_lr8;
 
 ZZ_EXTERN_C
-void fast_fal(spl_t * dest, mix_fast_t * voices, int32_t n);
+void fast_fal(spl_t * Tmix, spl_t * dest, mix_fast_t * voices, int32_t n);
 
 #if WITH_LOCKSND
 
@@ -136,6 +138,20 @@ static void never_inline init_spl8(core_t * K)
   vset_unroll(&K->vset,0);
 }
 
+static void never_inline init_mix(uint16_t lr8)
+{
+  int16_t x;
+
+  /* 2 U8 voices added => {0..510} */
+  for (x=0; x<510; ++x) {
+    int16_t v = x-255;                  /* -255 .. 255 */
+    int16_t w = v << 7;
+    v = muls(v,lr8) >> 1;
+    w -= v;
+    Tmix[x] = ((int32_t)w<<16) | (uint16_t) v;
+  }
+  Tmix_lr8 = lr8;
+}
 
 static i16_t push_fal(core_t * const P, void *pcm, i16_t n)
 {
@@ -148,6 +164,9 @@ static i16_t push_fal(core_t * const P, void *pcm, i16_t n)
   zz_assert( M == &g_fal );
   zz_assert( IS_ALIGN(FIFOMAX) );
   zz_assert( IS_ALIGN(TEMPMAX) );
+
+  if (P->lr8 != Tmix_lr8)
+    init_mix(P->lr8);
 
   n = ULIGN(n+bias);
   if (n > TEMPMAX)
@@ -199,6 +218,7 @@ static zz_err_t init_fal(core_t * const P, u32_t spr)
     ecode = E_MIX;
   } else {
     init_dma(P);
+    init_mix(P->lr8);
     init_spl(P);
     init_ata(FIFOMAX,scale,0);
     dmsg("spr:%lu dma:%02hx scale:%lx\n",

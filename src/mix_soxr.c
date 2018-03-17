@@ -155,7 +155,7 @@ push_soxr(core_t * const P, void * pcm, i16_t N)
   /* Setup channels */
   for (k=0; k<4; ++k) {
     chan_t     * const C = P->chan+k;
-    mix_chan_t * const K = M->chan+C->map;
+    mix_chan_t * const K = M->chan+C->pam;
     int slew = 0;
     const int slew_val = N>>1;
 

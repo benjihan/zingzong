@@ -20,10 +20,11 @@
 #define PACKAGE_STRING PACKAGE_NAME " " PACKAGE_VERSION
 #endif
 
+/* reverse mapping */
 static uint8_t chan_maps[3][4] = {
-  /* ZZ_MAP_ABCD */ { 0,1,2,3 },
-  /* ZZ_MAP_ACBD */ { 0,2,1,3 },
-  /* ZZ_MAP_ADBC */ { 0,3,1,2 }
+  /* ZZ_MAP_ABCD */ { 0,1,2,3 }, /* A B C D */
+  /* ZZ_MAP_ACBD */ { 0,2,1,3 }, /* A C B D */
+  /* ZZ_MAP_ADBC */ { 0,2,3,1 }  /* A C D B */
 };
 
 zz_u8_t  zz_chan_map = ZZ_MAP_ABCD;
@@ -45,7 +46,7 @@ zz_core_blend(core_t * K, zz_u8_t map, zz_u16_t lr8)
       u8_t k;
       K->cmap = map;
       for (k=0; k<4; ++k)
-        K->chan[k].map = chan_maps[map][k];
+        K->chan[k].pam = chan_maps[map][k];
     }
   }
 
@@ -55,6 +56,17 @@ zz_core_blend(core_t * K, zz_u8_t map, zz_u16_t lr8)
     else
       K->lr8 = lr8;
   }
+
+#ifndef NDEBUG
+  if (K) {
+    i8_t k; char s[5];
+    for (k=0; k<4;++k)
+      s[K->chan[k].pam] = 'A'+k;
+    s[k] = 0;
+    dmsg("blending: %3hu (%hu) %s\n",
+         HU(K->lr8), HU(K->cmap), s);
+  }
+#endif
 
   return old;
 }

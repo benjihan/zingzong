@@ -34,11 +34,11 @@ typedef struct mix_chan_s mix_chan_t;
 typedef struct audio_s audio_t;
 
 struct audio_s {
-  uint32_t adr;                        /* 00.l: sample address */
-  uint16_t len;                        /* 04.w sample length in word (0=65536) */
-  uint16_t per;                        /* 06.w period */
-  uint16_t vol;                        /* 08.w volume [0..$40] */
-  uint16_t dat;                        /* 0A.w current PCM */
+  uint32_t adr;             /* 00.l: sample address */
+  uint16_t len;             /* 04.w sample length in word (0=65536) */
+  uint16_t per;             /* 06.w period */
+  uint16_t vol;             /* 08.w volume [0..$40] */
+  uint16_t dat;             /* 0A.w current PCM */
 };
 
 struct mix_chan_s {
@@ -113,7 +113,7 @@ static i16_t push_aga(core_t * const P, void * pcm, i16_t npcm)
 {
   mix_aga_t * const M = (mix_aga_t *) P->data;
   int k;
-  const uint8_t channel_swap = (P->lr8>128) << 1;
+  const uint8_t lr_swap = (P->lr8>128) << 1;
 
   zz_assert(P);
   zz_assert( M == &g_aga );
@@ -121,7 +121,7 @@ static i16_t push_aga(core_t * const P, void * pcm, i16_t npcm)
   /* Setup channels */
   for (k=0; k<4; ++k) {
     chan_t     * const C = P->chan+k;
-    mix_chan_t * const K = M->chan+(C->map^channel_swap);
+    mix_chan_t * const K = M->chan+(C->pam^lr_swap);
     const uint8_t old_status = K->status;
 
     switch (K->status = C->trig) {
