@@ -93,29 +93,38 @@ static void never_inline init_spl(core_t * P)
 static void never_inline init_mix(uint16_t lr8)
 {
   int16_t x;
-
   /* 2 U8 voices added => {0..510} */
-  for (x=0; x<510; ++x) {
-    int16_t v = x-255;                  /* -255 .. 255 */
-    int16_t w = v << 7;
-
+  int32_t v9 = muls(-255,lr8);
+  int16_t w8 = -255 << 7;
+  for (x=0; x<510; ++x, v9 += lr8, w8 += 128) {
+    int16_t v = v9 >> 1;
+    int16_t w = w8 - v;
     asm (
-      "muls   %[f],%[v]    \n\t"
-      "asr.l  #1,%[v]      \n\t"
-      "sub.w  %[v],%[w]    \n\t"
       "move.w %[v],-(%%sp) \n\t"
       "move.b (%%sp)+,%[w] \n\t"
       "move.w %[w],-(%%sp) \n\t"
       "move.b (%%sp)+,%[v] \n\t"
-      : [v] "+d" (v), [w] "+d" (w)
-      : [f] "iSd" (lr8)
-      : "cc" );
+      : [v] "+d" (v), [w] "+d" (w) : : "cc");
+    Tmix[0][x] = w;
+    Tmix[1][x] = v;
 
-    Tmix[0][x] = v;
-    Tmix[1][x] = w;
+#ifndef NDEBUG
+    dmsg("L/R[%hu]=%04hx/%04hx\n", HU(x), HU(w), HU(v) );
+    zz_assert( (uint8_t) (w>>8) == (uint8_t)v );
+    zz_assert( (uint8_t) (v>>8) == (uint8_t)w );
+    if (1) {
+      int16_t r;
+      r = (int16_t)(int8_t)v + (int16_t)(int8_t)w;
+      zz_assert( r >= -128 && r <=  127 );
+    }
+#endif
   }
+
   Tmix_lr8 = lr8;
 }
+
+
+
 
 static i16_t push_s8s(core_t * const P, void *pcm, i16_t n)
 {
