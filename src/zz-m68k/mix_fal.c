@@ -141,15 +141,25 @@ static void never_inline init_spl8(core_t * K)
 static void never_inline init_mix(uint16_t lr8)
 {
   int16_t x;
+  int32_t v9 = muls(-255,lr8);
+  int16_t w8 = -255 << 7;
 
   /* 2 U8 voices added => {0..510} */
-  for (x=0; x<510; ++x) {
-    int16_t v = x-255;                  /* -255 .. 255 */
-    int16_t w = v << 7;
-    v = muls(v,lr8) >> 1;
-    w -= v;
+  for (x=0; x<510; ++x, v9 += lr8, w8 += 128) {
+    int16_t v = v9 >> 1;
+    int16_t w = w8 - v;
     Tmix[x] = ((int32_t)w<<16) | (uint16_t) v;
+
+#ifndef NDEBUG
+    dmsg("L/R[%03hx]=%08lx/%08lx\n",HU(x),LU(Tmix[x]));
+    if (1) {
+      int32_t r;
+      r = (int32_t)v + (int32_t)w;
+      zz_assert( r >= -0x8000 && r <= 0x7FFF 127 );
+    }
+#endif
   }
+
   Tmix_lr8 = lr8;
 }
 

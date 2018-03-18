@@ -93,9 +93,10 @@ static void never_inline init_spl(core_t * P)
 static void never_inline init_mix(uint16_t lr8)
 {
   int16_t x;
-  /* 2 U8 voices added => {0..510} */
   int32_t v9 = muls(-255,lr8);
   int16_t w8 = -255 << 7;
+
+  /* 2 U8 voices added => {0..510} */
   for (x=0; x<510; ++x, v9 += lr8, w8 += 128) {
     int16_t v = v9 >> 1;
     int16_t w = w8 - v;
@@ -122,9 +123,6 @@ static void never_inline init_mix(uint16_t lr8)
 
   Tmix_lr8 = lr8;
 }
-
-
-
 
 static i16_t push_s8s(core_t * const P, void *pcm, i16_t n)
 {
