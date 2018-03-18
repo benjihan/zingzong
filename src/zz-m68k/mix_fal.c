@@ -48,9 +48,9 @@ struct mix_fal_s {
 };
 
 static mix_fal_t g_fal;                 /* Falcon mixer instance */
-static spl_t _fifo[FIFOMAX];            /* FIFO buffer */
-static spl_t Tmix[510];                 /*  */
-static uint16_t Tmix_lr8;
+static spl_t    _fifo[FIFOMAX];         /* FIFO buffer */
+static spl_t     Tmix[510];             /* Blending table */
+static uint16_t  Tmix_lr8;              /* Tmix current setup */
 
 ZZ_EXTERN_C
 void fast_fal(spl_t * Tmix, spl_t * dest, mix_fast_t * voices, int32_t n);
@@ -151,11 +151,11 @@ static void never_inline init_mix(uint16_t lr8)
     Tmix[x] = ((int32_t)w<<16) | (uint16_t) v;
 
 #ifndef NDEBUG
-    dmsg("L/R[%03hx]=%08lx/%08lx\n",HU(x),LU(Tmix[x]));
+    dmsg("L/R[%03hx]=%08lx\n",HU(x),LU(Tmix[x]));
     if (1) {
       int32_t r;
       r = (int32_t)v + (int32_t)w;
-      zz_assert( r >= -0x8000 && r <= 0x7FFF 127 );
+      zz_assert( r >= -0x8000 && r <= 0x7FFF );
     }
 #endif
   }
@@ -232,7 +232,7 @@ static zz_err_t init_fal(core_t * const P, u32_t spr)
     init_spl(P);
     init_ata(FIFOMAX,scale);
     dmsg("spr:%lu dma:%02hx scale:%lx\n",
-         LU(spr), HU(M->dma), LU(scale) );
+         LU(spr), HU(M->dma), LU(scale));
   }
   P->data = M;
   return ecode;

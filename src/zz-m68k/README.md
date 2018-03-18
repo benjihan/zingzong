@@ -138,7 +138,9 @@ control byte.
 #### Return value
 
 `zingzong_cmap()` returns the previous value of `map` and `lr8` packed
-into a long word such as `d0.l = lr8.w:map.w`.
+into a long word such as `d0.l = lr8.w:map.w`. If the player is not
+running (before `zingzong_init()` or after `zingzong_stop()`) the
+default values are affected.
 
 #### Parameters
 

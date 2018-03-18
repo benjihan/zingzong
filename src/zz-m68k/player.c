@@ -94,7 +94,7 @@ void player_kill(void)
 
 long player_blend(uint8_t cmap, uint16_t blend)
 {
-  return zz_core_blend(&play.core, cmap, blend);
+  return zz_core_blend(play.ready ? &play.core : 0, cmap, blend);
 }
 
 long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
@@ -105,7 +105,6 @@ long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
 #endif
 
   /* specific m68k checks */
-  dmsg("sizeof(inst_t) == %hu\n",HU(sizeof(inst_t)));
   zz_assert( sizeof(inst_t) == 16 );
 
   BRKMSG("player_init()");

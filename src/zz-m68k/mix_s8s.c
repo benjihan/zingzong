@@ -106,11 +106,11 @@ static void never_inline init_mix(uint16_t lr8)
       "move.w %[w],-(%%sp) \n\t"
       "move.b (%%sp)+,%[v] \n\t"
       : [v] "+d" (v), [w] "+d" (w) : : "cc");
-    Tmix[0][x] = w;
-    Tmix[1][x] = v;
+    Tmix[0][x] = w;                     /* L-pair table */
+    Tmix[1][x] = v;                     /* R-pair table */
 
 #ifndef NDEBUG
-    dmsg("L/R[%hu]=%04hx/%04hx\n", HU(x), HU(w), HU(v) );
+    dmsg("L/R[%03hx]=%04hx/%04hx\n", HU(x), HU(Tmix[0][x]), HU(Tmix[1][x]));
     zz_assert( (uint8_t) (w>>8) == (uint8_t)v );
     zz_assert( (uint8_t) (v>>8) == (uint8_t)w );
     if (1) {
@@ -189,7 +189,7 @@ static zz_err_t init_s8s(core_t * const P, u32_t spr)
   init_spl(P);
   init_ata(FIFOMAX,scale);
   dmsg("spr:%lu dma:%02hx scale:%lx\n",
-       LU(spr), HU(M->dma), LU(scale) );
+       LU(spr), HU(M->dma), LU(scale));
 
   return ecode;
 }

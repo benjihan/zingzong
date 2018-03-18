@@ -751,8 +751,8 @@ steCD_off:
 /// already in the intermediate buffer using a blending table
 /// between left and right pairs.
 /// --------------------------------------------------------
-/// a2    .l L blending table BYTE[512]
-/// a3    .l R blending table BYTE[512]
+/// a2    .l L-pair blending table WORD[510]
+/// a3    .l R-pair blending table WORD[510]
 /// a4    .l 2xs16 pcm buffer (out)
 /// a5    .l voices
 /// a6    .l scratch
@@ -784,11 +784,11 @@ s8sCD_beg:
 	|| ---------------------+-----+---
 	add.w	d7,d6		| 1/2 | 6/8
 	add.w	d6,d6		| 1/2 | d6= ???? | 2(d+c)
-	move.w	(a2,d6.w),d6	| 4/4 | d6= ???? | (c+d)*L : (c+d)*R
+	move.w	(a3,d6.w),d6	| 4/4 | d6= ???? | (c+d)*L : (c+d)*R
 	|| ---------------------+-----+---
 	move.w	(a4),d7	      	| 2/2 | 9/10
 	add.w	d7,d7	      	| 1/2 | d7= ???? | 4(a+b)
-	add.w	(a3,d7.w),d6 	| 4/4 | d6= (a+b)*L+(c+d)*R : (a+b)*R+(c+d)*L
+	add.w	(a2,d7.w),d6 	| 4/4 | d6= (a+b)*L+(c+d)*R : (a+b)*R+(c+d)*L
 	move.w	d6,(a4)+      	| 2/2 |
 	|| 
 	.endr
@@ -832,7 +832,7 @@ s8sCD_off:
 /// already in the intermediate buffer using a blending table
 /// between left and right pairs.
 /// --------------------------------------------------------
-/// a2    .l blending table word[2][512]
+/// a2    .l L-pair blending table LONG[510]
 /// a3    .w intermediate (inp)
 /// a4    .l 2xs16 pcm buffer (out)
 /// a5    .l voices
