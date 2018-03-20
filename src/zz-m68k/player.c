@@ -25,13 +25,13 @@ struct m68kplay {
   core_t   core;
   uint16_t ppt;
   zz_u8_t  dri;
-  mixer_t *mix;
+  /* mixer_t *mix; */
   void    *set;
   volatile int8_t ready;
 };
 
-static m68k_t play;
-static bin_t songbin, vsetbin;
+ZZ_STATIC m68k_t play;
+ZZ_STATIC bin_t songbin, vsetbin;
 
 static bin_t * set_bin(bin_t * bin, bin_t *src, int16_t off)
 {
@@ -42,7 +42,7 @@ static bin_t * set_bin(bin_t * bin, bin_t *src, int16_t off)
 }
 
 #ifdef DEBUG
-static void
+ZZ_STATIC void
 logfunc(zz_u8_t chan, void * user, const char *fmt, va_list list)
 {
 #ifndef NO_LIBC
@@ -78,7 +78,7 @@ long player_status(void)
 
 long player_driver(void)
 {
-  return (intptr_t) play.mix;
+  return (intptr_t) play.core.mixer;
 }
 
 long player_sampling(void)
@@ -99,6 +99,7 @@ long player_blend(uint8_t cmap, uint16_t blend)
 
 long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
 {
+  mixer_t * mixer = 0;
   zz_err_t err = 0;
 #ifdef DEBUG
   zz_log_fun(logfunc,0);
@@ -114,11 +115,11 @@ long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
 
   if (dri >= 0x100) {
     play.dri = ZZ_MIXER_XTN;
-    play.mix = (mixer_t*) dri;
+    mixer = (mixer_t*) dri;
   }
   else {
     play.dri = (uint8_t) (dri-1);
-    play.mix = zz_mixer_get(&play.dri);
+    mixer = zz_mixer_get(&play.dri);
   }
 
   /* Skip the headers because that's how it is. */
@@ -149,14 +150,14 @@ long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
   zz_assert( ! play.core.code );
 
   err = err
-    || zz_core_init(&play.core, play.mix, spr)
+    || zz_core_init(&play.core, mixer, spr)
     ;
 
   zz_assert( ! play.core.code );
   play.ppt = divu(play.core.spr+199,200);
 
   dmsg("init: mixer#%hu:%s code=%hx ppt=%hu spr:%hu\n",
-       HU(dri),play.mix->name,
+       HU(dri),play.core.mixer->name,
        HU(play.core.code), HU(play.ppt), HU(play.core.spr));
 
   zz_assert( ! play.core.code );

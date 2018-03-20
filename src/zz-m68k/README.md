@@ -94,6 +94,20 @@
  | `ZZ_MQ` | 25033 hz | 14000-27999           |
  | `ZZ_HQ` | 50066 hz | >=28000               |
 
+ Keep in mind that the 8mhz CPU is not enough to use the 50khz
+ sampling rate.
+
+ The STe driver comes with 3 distinct flavors. The flavor is selected
+ during the init (`zingzong_init()`) depending on the left/right
+ blending factor (see zingzong_cmap()')
+ 
+ |   `lr8`   | STe driver flavor               |
+ |-----------|---------------------------------|
+ |   `128`   | Mono with boosted dynamic range |
+ | `0`/`256` | Stereo with full separation     |
+ |  Others   | Blended Stereo (default)        |
+ 
+
  * Falcon / DMA-16bit driver
 
  The current driver does not use the extra sampling rate available to
@@ -172,11 +186,11 @@ parameter unchanged)
   | `lr8`  | Channel blending | Left out (`L`) | Right out (`R`) |
   |--------|------------------|----------------|-----------------|
   |  `-1`  | Read only        |    unchanged   |    unchanged    |
-  |   `0`  | Full panning     |    `100%lP`    |    `100%rP`     |
-  |  `64`  | Smooth panning   | `75%lP 25%rP ` |  `25%lP 75%rP`  |
+  |   `0`  | Full separated   |    `100%lP`    |    `100%rP`     |
+  |  `64`  | Smooth blend     | `75%lP 25%rP ` |  `25%lP 75%rP`  |
   |  `128` | Mono             | `50%lP 50%rP`  |  `50%lP 50%rP`  |
-  |  `192` | Smooth reverse   | `25%lP 75%rP`  |  `75%lP 25%rP`  |
-  |  `256` | Full reverse     |    `100%rP`    |    `100%lP`     |
+  |  `192` | Smooth reversed  | `25%lP 75%rP`  |  `75%lP 25%rP`  |
+  |  `256` | Full reversed    |    `100%rP`    |    `100%lP`     |
 
 
 #### Notice

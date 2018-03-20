@@ -8,9 +8,14 @@
 #include "../zz_private.h"
 #include "zz_m68k.h"
 
+#ifndef mixer_STE
+#define mixer_STE mixer_ste_hub
+#endif
+
 void bin_free(bin_t ** pbin) {}
 
-static mixer_t mixer;
+ZZ_STATIC mixer_t mixer;
+ZZ_STATIC uint32_t _SND;                /* '_SND' cookie value */
 
 /* TOS cookie jar */
 #define COOKIEJAR (* (uint32_t **) 0x5A0)
@@ -100,10 +105,12 @@ uint8_t guess_hardware(void)
     uint32_t * jar = COOKIEJAR, cookie;
     uint8_t snd = SND_YM2149;
 
+    _SND = 0;
     while (cookie = *jar++, cookie) {
       uint32_t value = *jar++;
       if (cookie == FCC('_','S','N','D')/* '_SND' */) {
         snd = value;
+        _SND = value;
         break;
       }
     }
@@ -123,9 +130,12 @@ uint8_t guess_hardware(void)
 
 ZZ_EXTERN_C mixer_t * mixer_aga(mixer_t * const M);
 ZZ_EXTERN_C mixer_t * mixer_stf(mixer_t * const M);
-//ZZ_EXTERN_C mixer_t * mixer_ste(mixer_t * const M);
 ZZ_EXTERN_C mixer_t * mixer_fal(mixer_t * const M);
-ZZ_EXTERN_C mixer_t * mixer_s8s(mixer_t * const M);
+
+ZZ_EXTERN_C mixer_t * mixer_ste_hub(mixer_t * const M);
+ZZ_EXTERN_C mixer_t * mixer_ste_dnr(mixer_t * const M);
+ZZ_EXTERN_C mixer_t * mixer_ste_lrb(mixer_t * const M);
+ZZ_EXTERN_C mixer_t * mixer_ste_s7s(mixer_t * const M);
 
 static mixer_t * mixer_of(zz_u8_t n, mixer_t * M)
 {
@@ -134,7 +144,7 @@ static mixer_t * mixer_of(zz_u8_t n, mixer_t * M)
 
   case MIXER_AGA: M = mixer_aga(M); break;
   case MIXER_STF: M = mixer_stf(M); break;
-  case MIXER_STE: M = mixer_s8s(M); break;
+  case MIXER_STE: M = mixer_STE(M); break;
   case MIXER_FAL: M = mixer_fal(M); break;
   default: M = 0;
   }
@@ -155,7 +165,6 @@ mixer_t * zz_mixer_get(zz_u8_t * const pn)
 zz_u8_t zz_mixer_enum(zz_u8_t n, const char ** pname, const char ** pdesc)
 {
   const mixer_t * M;
-
   if (M = zz_mixer_get(&n), M) {
     *pname = M->name;
     *pdesc = M->desc;

@@ -431,9 +431,8 @@ zz_core_init(core_t * K, mixer_t * M, u32_t spr)
     ecode = E_MIX;
   else {
     K->spr = 0;
+    K->mixer = M;
     ecode = M->init(K, spr);
-    if (!ecode)
-      K->mixer = M;
   }
 
   return K->code = ecode;

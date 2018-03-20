@@ -56,10 +56,7 @@ struct mix_aga_s {
   struct aga_inst {
     uint32_t adr, lp_adr;
     uint16_t len, lp_len;
-    uint8_t num;
-    uint8_t vol;
-    uint8_t oct;
-    uint8_t reserved;
+    uint8_t num,oct,align[2];
   } inst[20];
 };
 
@@ -134,7 +131,7 @@ static i16_t push_aga(core_t * const P, void * pcm, i16_t npcm)
       K->lp_len  = M->inst[C->curi].lp_len;
       K->hw->adr = M->inst[C->curi].adr;
       K->hw->len = M->inst[C->curi].len;
-      K->hw->vol = M->inst[C->curi].vol;
+      K->hw->vol = 48;
       K->hw->per = xstep(C->note.cur >> K->oct, P->song.khz, K->inum);
       DMACON = 0x8000 | K->dmacon;      /* Enable audio channel DMA */
       break;
@@ -236,7 +233,6 @@ static zz_err_t init_aga(core_t * const P, u32_t spr)
     M->inst[k].num = k;
     M->inst[k].len = 1;
     if (!inst->len) continue;
-    M->inst[k].vol = 64;
     M->inst[k].adr = -2 & ( (intptr_t) inst->pcm + 1 );
 
     /* Get unrolled end with hardware limitation (even,<128KiB) */

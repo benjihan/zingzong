@@ -100,13 +100,13 @@ m68_SHORT    = no-short
 zz_CFLAGS   += -g -Og
 zz_CPPFLAGS += -DNO_VFS -DDEBUG=1
 ELFLIBS      =
-zzx          = $(zzz)
+zzo          = $(m68_o) $(zzz_o)
 else
 m68_pcrel    = pcrel
 zz_CFLAGS   += -g -Os -fomit-frame-pointer
 zz_CPPFLAGS += -DZZ_MINIMAL -DNDEBUG=1
 ELFLIBS      = $(NOSTART) $(NOLIBS)
-zzx          = $(filter-out zz_log,$(zzz))
+zzo          = $(m68_o) $(filter-out zz_log.o,$(zzz_o))
 endif
 
 zz_ASFLAGS  += --register-prefix-optional # no annoying %
@@ -129,12 +129,18 @@ PACKAGE_CPPFLAGS  = \
  -DPACKAGE_NAME='"$(PACKAGE)"' \
  -DPACKAGE_VERSION='"$(VERSION)"'
 
-com = player
-zzz = zz_m68k zz_core zz_init zz_log
-mix = mix_aga mix_stf mix_ste mix_s8s mix_fal mix_ata m68k_mix 
-m68 = m68k_mix.S m68k_mem.S
+zzz = player zz_m68k zz_core zz_init zz_log mix_ata
+dri = mix_aga mix_stf mix_fal $(foreach X,hub dnr lrb s7s,mix_ste_$(X))
+m68 = m68k_mix m68k_mem
 
-sources := $(sort $(addsuffix .c,$(com) $(zzz) $(mix)) $(m68))
+dri_c = $(addsuffix .c,$(dri))
+dri_o = $(addsuffix .o,$(dri))
+zzz_c = $(addsuffix .c,$(zzz))
+zzz_o = $(addsuffix .o,$(zzz))
+m68_S = $(addsuffix .S,$(m68))
+m68_o = $(addsuffix .o,$(m68))
+
+sources := $(sort $(zzz_c) $(dri_c) $(m68_S) stub.S sc68_start.S)
 
 # ----------------------------------------------------------------------
 #  Targets
@@ -176,20 +182,28 @@ NOLIBS      = -nodefaultlibs -nostdlib
 #      the final linker scripts.
 # ----------------------------------------------------------------------
 
-drilist := aga stf s8s ste fal
-drivers := $(patsubst %,dri_%.elf,$(drilist)) mix_ata.o $(m68:%.S=%.o)
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# !!!                                    !!!
+# !!! DO NOT forget to update zingzong.x !!!
+# !!!                                    !!!
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+drilist := aga stf fal dnr lrb s7s hub
+drivers := $(patsubst %,dri_%.elf,$(drilist))
 
 drivers: $(drivers)
 .PHONY: drivers
 
+dri_fal.elf: mix_fal.o
 dri_aga.elf: mix_aga.o
 dri_stf.elf: mix_stf.o
-dri_ste.elf: mix_ste.o
-dri_s7s.elf: mix_s7s.o
-dri_s8s.elf: mix_s8s.o
-dri_fal.elf: mix_fal.o
+dri_hub.elf: mix_ste_hub.o
+dri_dnr.elf: mix_ste_dnr.o
+dri_s7s.elf: mix_ste_s7s.o
+dri_lrb.elf: mix_ste_lrb.o
 
 mix_ata.o: JUMP_TABLE = jump-tables
+
 
 DRIFLAGS = -r -static $(NOSTART) $(NOLIBS)
 
@@ -208,11 +222,13 @@ zingzong player: zingzong.bin zingzong.sym
 ELFFLAGS = -static $(ELFLIBS) $(NOUNDEF) $(MAPFLAGS)
 MAPFLAGS = $(call maybe-wl,-Map=$*.map)
 
+zingzong_o = stub.o $(zzo) $(drivers)
+
 .PRECIOUS: zingzong.elf
 zingzong.elf: START_SYMB = zingzong
 zingzong.elf: START_ADDR = C0000000
 zingzong.elf: LDFLAGS    = -T $(srcdir)/zingzong.x $(ELFFLAGS)
-zingzong.elf: $(addsuffix .o,stub m68k_mix $(com) $(zzx)) $(drivers)
+zingzong.elf: $(zingzong_o)
 stub.o: $(srcdir)/zingzong.x # GB: force rebuild when script change
 
 # ----------------------------------------------------------------------
@@ -253,7 +269,8 @@ clean-test:
 .PHONY: test
 test: test.sc68 test.sndh
 
-test_o = $(addsuffix .o,sc68_start $(com) $(zzx))
+test_o = sc68_start.o $(zzo) $(drivers)
+
 .PRECIOUS: test.elf
 test.elf: START_SYMB = sc68_start
 test.elf: START_ADDR = 00010000
@@ -311,14 +328,22 @@ song.dep: $(SONGFILE) $(VSETFILE)
 test_tos: $(patsubst %,test_%.tos,def stf ste fal)
 PHONY: test_tos
 
-MIXERID = $(error MIXERID must be defined)
-test_def.tos: MIXERID=0
-test_stf.tos: MIXERID=2
-test_ste.tos: MIXERID=3
-test_fal.tos: MIXERID=4
+TOS_FLAGS = -DMID=$(MID) -DZZSYMB=1
+ifdef SPR
+TOS_FLAGS += -DSPR=$(SPR)
+endif
+ifdef LR8
+TOS_FLAGS += -DLR8=$(LR8)
+endif
+
+MID = $(error MID must be defined)
+test_def.tos: MID=0
+test_stf.tos: MID=2
+test_ste.tos: MID=3
+test_fal.tos: MID=4
 test_%.tos: test_tos.s zingzong.bin zingzong.sym song_dat
 	$(call M,TOS,$@)
-	$(VASMTOS) $@  $< -DMIXERID=$(MIXERID) -DZZSYMB=1
+	$(VASMTOS) $@ $< $(TOS_FLAGS)
 
 # ----------------------------------------------------------------------
 #  Implicite rules

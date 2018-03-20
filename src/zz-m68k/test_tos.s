@@ -5,19 +5,32 @@
 ;;;
 
 
-	ifnd	MIXERID
-MIXERID set	0		; 0:Auto 1:Amiga 2:YM 3:DMA8 4:DMA16
+	ifnd	MID
+MID:	set	0		; 0:Auto 1:Amiga 2:YM 3:DMA8 4:DMA16
 	endc
 
-ZZ_ABCD: set 0
-ZZ_ACBD: set 1
-ZZ_ADBC: set 2
+	ifnd	LR8
+LR8:	set	86		; 0-256 (128 is middle)
+	endc
 
-ZZ_MUTE_A: set %00010001
-ZZ_MUTE_B: set %00100010
-ZZ_MUTE_C: set %01000100
-ZZ_MUTE_D: set %10001000
+	ifnd	SPR
+SPR:	set	0		; 0:song default
+	endc
 
+	
+ZZ_MAP_B set 0			; L=A+B R=C+D
+ZZ_MAP_C set 1			; L=A+C R=B+D
+ZZ_MAP_D set 2			; L=A+D R=B+C
+
+ZZ_SPR_F set 1			; Driver fast quality 
+ZZ_SPR_L set 2			; Driver lowest quality
+ZZ_SPR_M set 3			; Driver medium quality
+ZZ_SPR_H set 4			; Driver highest quality
+
+ZZ_CHN_A set %00010001		; Ignore/Mute channel A
+ZZ_CHN_B set %00100010		; Ignore/Mute channel B
+ZZ_CHN_C set %01000100		; Ignore/Mute channel C
+ZZ_CHN_D set %10001000		; Ignore/Mute channel D
 	
 llea:	macro
 	lea	vars(pc),\2
@@ -311,7 +324,7 @@ deci:
 	moveq	#"0",d1
 .lp1:
 	sub.w	d2,d0
-	bmi.s	.nx1
+	bcs.s	.nx1
 	addq.b	#1,d1
 	bra.s	.lp1
 .nx1:
@@ -397,8 +410,8 @@ zz_init:
 	movem.l d1/a0-a1,-(a7)
 
 	clr.l	lri(a6)
-	move.l	#96<<16,lr8(a6)	 ; 0:full 128:middle 256:reversed
-	move.w	#ZZ_ABCD,map(a6) ; 0:AB/CD 1:AC/BD 2:AD/BC
+	move.l	#LR8<<16,lr8(a6) ; 0:full 128:middle 256:reversed
+	clr.w	map(a6)		 ; 0:AB/CD 1:AC/BD 2:AD/BC
 
 	;; Set stereo channel mapping
 	move.w	lr8(a6),-(a7)
@@ -407,10 +420,10 @@ zz_init:
 	addq.w	#4,a7
 
 	;; Sampling/Quality (0:default)
-	clr.l	-(a7)
+	move.l	#SPR,-(a7)
 
 	;; Driver (0:Auto 1:AGA 2:STf 3:STe 4:Falcon)
-	pea	MIXERID.w
+	pea	MID.w
 
 	;; vset bin_t address
 	lea	tovset(pc),a0

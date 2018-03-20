@@ -11,35 +11,36 @@
 typedef struct mix_fast_s fast_t;
 /* !!! change in m68k_mix.S as well !!! */
 struct mix_fast_s {
-  uint8_t *end;                         /*  0 */
-  uint8_t *cur;                         /*  4 */
-  uint32_t xtp;                         /*  8 */
-  uint16_t dec;                         /* 12 */
-  uint16_t lpl;                         /* 14 */
-  chan_t  *chn;                         /* 16 */
-  uint8_t  usr[12];                     /* 20 */
-};                                      /* 32 bytes */
+  uint8_t *end;                 /*  0: sample end                   */
+  uint8_t *cur;                 /*  4: sample current pointer       */
+  uint32_t xtp;                 /*  8: read step (FP16)             */
+  uint16_t dec;                 /* 12: FP16 precision               */
+  uint16_t lpl;                 /* 14: Loop length (0:no-loop)      */
+  chan_t  *chn;                 /* 16: attached play channel        */
+  uint8_t  usr[12];             /* 20: free space for driver to use */
+};                              /* 32: bytes                        */
 
 typedef struct mix_fifo_s fifo_t;
 typedef int16_t (*pb_play_t)(void);
 typedef void    (*pb_stop_t)(void);
 struct mix_fifo_s {
-  pb_play_t pb_play;             /*  0  playback start/run */
-  pb_stop_t pb_stop;             /*  4  playback stop      */
-  void *    pb_user;             /*  8  playback cookie    */
-  int16_t sz;                    /* 12  FIFO buffer size */
-  int16_t ro;                    /* 14  previous read position */
-  int16_t rp;                    /* 16  current read position  */
-  int16_t wp;                    /* 18  last write position */
-  int16_t i1,n1;                 /* 20,22 index and size of part #1 */
-  int16_t i2,n2;                 /* 24,26 index and size of part #2 */
+  pb_play_t pb_play;                   /* Playback start/run        */
+  pb_stop_t pb_stop;                   /* Playback stop             */
+  void *    pb_user;                   /* Playback cookie           */
+  int16_t sz;                          /* FIFO buffer size          */
+  int16_t ro;                          /* Previous read position    */
+  int16_t rp;                          /* Current read position     */
+  int16_t wp;                          /* Last write position       */
+  int16_t i1,n1;                       /* Index and size of part #1 */
+  int16_t i2,n2;                       /* Index and size of part #2 */
 };
 
 typedef struct mix_ata_s ata_t;
 struct mix_ata_s {
-  fifo_t   fifo;                        /* Generic FIFO */
+  fifo_t   fifo;                        /* Generic FIFO       */
   uint16_t step;                        /* Step scale (pitch) */
-  fast_t   fast[4];                     /* Fast channel info */
+  uint8_t  swap;                        /* Xor L/R swap       */
+  fast_t   fast[4];                     /* Fast channel info  */
 };
 
 void play_ata(ata_t * ata, chan_t * chn, int16_t n);
@@ -53,14 +54,16 @@ void stop_ata(ata_t * ata);
     M->ata.fifo.pb_stop = pb_stop;                          \
     M->ata.fifo.pb_user = M;                                \
     M->ata.step = STEP;                                     \
+    M->ata.swap = 0;                                        \
   } while (0)
 
 #undef FP
 #define FP 16
 
-#define DMA     ((volatile uint8_t  * )0xFFFF8900)
-#define DMAB(X) ((volatile uint8_t  * )0xFFFF8900)[X]
+#define DMA     ((volatile uint8_t  *)0xFFFF8900)
+#define DMAB(X) ((volatile uint8_t  *)0xFFFF8900)[X]
 #define DMAW(X) *(volatile uint16_t *)(0xFFFF8900+(X))
+#define MFP     ((volatile uint8_t  *)0xFFFFFA00)
 
 enum {
   /* STE Sound DMA registers map. */
@@ -101,30 +104,29 @@ enum {
 };
 
 static inline
-void * dma_position(void)
+uint16_t enter_critical(void)
 {
-  void * pos;
-  asm volatile(
-    "   lea 0x8909.w,%%a0      \n"
-    "   moveq #-1,%[pos]       \n"
-    "0:"
-    "   move.l %[pos],%%d1     \n"
-    "   moveq #0,%[pos]        \n"
-    "   move.b (%%a0),%[pos]   \n"
-    "   swap %[pos]            \n"
-    "   movep.w 2(%%a0),%[pos] \n"
-    "   cmp.l %[pos],%%d1      \n"
-    "   bne.s 0b               \n\t"
-    : [pos] "=d" (pos)
-    :
-    : "cc","d1","a0");
-  return pos;
+  uint16_t ipl;
+  asm volatile (
+    "  move.w  %%sr,%[ipl]   \n"
+    "  ori     #0x0700,%%sr  \n\t"
+    : [ipl] "=md" (ipl));
+  return ipl;
 }
 
 static inline
-void dma_write_ptr(volatile uint8_t * reg, const void * adr)
+void leave_critical(uint16_t ipl)
 {
-  asm volatile(
+  asm volatile (
+    "  move %[ipl],%%sr  \n\t"
+    :
+    : [ipl] "imd" (ipl));
+}
+
+static inline
+void dma8_write_ptr(volatile uint8_t * reg, const void * adr)
+{
+  asm volatile (
     "   swap %[adr]              \n"
     "   move.b %[adr],(%[hw])    \n"
     "   swap %[adr]              \n"
@@ -135,20 +137,28 @@ void dma_write_ptr(volatile uint8_t * reg, const void * adr)
 }
 
 static inline
-void dma_stop(void)
+void dma8_stop(void)
 {
-  DMAW(DMAW_CNTL) = 0;
-  DMAW(DMAW_MODE) = 0;
+  DMA[DMA_CNTL] = 0;
 }
 
 static inline
-void dma_start(void * adr, void * end, uint16_t mode)
+void dma8_start(void)
 {
-  dma_stop();
-  dma_write_ptr(DMA+DMA_ADR, adr);
-  dma_write_ptr(DMA+DMA_END, end);
-  DMAW(DMAW_MODE) = mode;
-  DMAW(DMAW_CNTL) = DMA_CNTL_ON|DMA_CNTL_LOOP;
+  DMA[DMA_CNTL] = DMA_CNTL_ON|DMA_CNTL_LOOP;
 }
+
+static inline
+int16_t dma8_running(void)
+{
+  return (DMA[DMA_CNTL] & (DMA_CNTL_ON|DMA_CNTL_LOOP))
+    == (DMA_CNTL_ON|DMA_CNTL_LOOP);
+}
+
+ZZ_EXTERN_C
+void dma8_setup(void * adr, void * end, uint16_t mode);
+
+ZZ_EXTERN_C
+void * dma8_position(void);
 
 #endif

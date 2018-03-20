@@ -182,12 +182,10 @@ static void clear_ym_regs(void)
 
 static void never_inline stop_sound(void)
 {
-  int16_t savesr;
-  asm volatile ("move.w %%sr,%[savesr] \n\t"
-                "move.w #0x2700,%%sr   \n\t" : [savesr] "=m" (savesr) );
+  int16_t ipl = enter_critical();
   YMB[0] = 7;
   YMB[2] = YMB[0] | 0077;
-  asm volatile ("move.w %[savesr],%%sr \n\t" :: [savesr] "m" (savesr) );
+  leave_critical(ipl);
   clear_ym_regs();
 }
 
@@ -196,31 +194,26 @@ static void never_inline stop_sound(void)
 static void never_inline prepare_sound(void)
 {
 #if HALF_TONE
-  int16_t savesr;
-  asm volatile ("move.w %%sr,%[savesr] \n\t"
-                "move.w #0x2700,%%sr   \n\t" : [savesr] "=m" (savesr) );
+  int16_t ipl = enter_critical();
   YMB[0] = 7;
   YMB[2] = (YMB[0] & 0300) | 0070;
-  asm volatile ("move.w %[savesr],%%sr \n\t" :: [savesr] "m" (savesr) );
+  leave_critical(ipl);
   clear_ym_regs();
 #else
   stop_sound();
 #endif
 }
 
-
-static void never_inline init_spl(core_t * P)
+static void init_spl(core_t * P)
 {
   vset_unroll(&P->vset,0);
 }
-
 
 static void stop_timer(void)
 {
   MFP[0x19]  = 0;                       /* Stop timer-A */
   MFP[0x17] |= 8;                       /* SEI */
 }
-
 
 static uint16_t never_inline set_sampling(core_t * const P, uint16_t spr)
 {
@@ -241,16 +234,16 @@ static void start_timer(void)
   MFP[0x19] = g_stf.tcr;
 }
 
-
 static int16_t pb_play(void)
 {
   zz_assert( g_stf.ata.fifo.sz == MIXMAX*2 );
 
   if ( ! (MFP[0x19]&7) ) {
+    zz_assert( g_stf.ata.fifo.ro == 0 );
+    zz_assert( g_stf.ata.fifo.wp >  0 );
+    zz_assert( g_stf.ata.fifo.rp == 0 );
     start_timer();
     prepare_sound();
-    dmsg("Timer-A cntl:%02x data:%02hx %p\n",
-         HU(MFP[0x19]), HU(MFP[0x1F]), VEC);
     return 0;
   } else {
     trout_t * const pos = VEC;
@@ -260,13 +253,11 @@ static int16_t pb_play(void)
   }
 }
 
-
 static void pb_stop(void)
 {
   stop_timer();
   stop_sound();
 }
-
 
 static i16_t push_stf(core_t * const P, void * pcm, i16_t n)
 {

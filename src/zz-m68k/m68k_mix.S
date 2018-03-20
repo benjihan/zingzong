@@ -11,8 +11,7 @@
 
 #define BLKLEN	12	// Mix this many PCMs without loop check
 #define IRQSIZ	32	// Size of the STf replay chained timer routine
-
-
+	
 /// @see mix_ata.h:mix_fast_t
 	.struct 0
 A_end:	.struct .+4		| 00
@@ -36,17 +35,21 @@ A_siz:	.struct .		| 32 20
 
 #ifndef NDEBUG
 	.macro	break
+#ifdef SC68	
 	clr.l	-(a7)
 	pea	0x5C68DB61
 	trap	#0
 	addq.w	#8,a7
+#else
+	illegal
+#endif	
 	.endm
 #else
 # define break
 #endif
 
 	.section .text
-	.global fast_stf,fast_ste,fast_fal,fast_s8s
+	.global fast_stf,fast_dnr,fast_fal,fast_lrb,fast_s7s
 
 /// --------------------------------------------------------
 ///                a2      a3      a4       a5        d7
@@ -90,11 +93,11 @@ fast_stf:
 
 /// --------------------------------------------------------
 ///                a2      a3      a4       a5        d7
-/// void fast_ste(Tmix.l, dest.l, temp.l, voices.l, cnt.l)
+/// void fast_dnr(Tmix.l, dest.l, temp.l, voices.l, cnt.l)
 ///                4(a7)   8(a7)  12(a7)  16(a7)    20(a7)
 ///      +11*4=44 48(a7)  52(a7)  56(a7)  60(a7)    64(a7)
 
-fast_ste:
+fast_dnr:
 	move.l	20(a7),d0	| d0: count
 	beq.s	0f
 
@@ -121,14 +124,12 @@ fast_ste:
 	|| Mix C/D
 	lea	mid_u8+2(pc),a6
 	move.l	a6,d6
-	lea	steCD_mix(pc),a6
+	lea	dnrCD_mix(pc),a6
 	bsr	mix_2chans
 
 	movem.l (a7)+,d2-d7/a2-a6 | 11 regs
 0:	rts
 
-
-	.if	0
 
 /// --------------------------------------------------------
 ///                a4      a5       d7
@@ -152,7 +153,7 @@ fast_s7s:
 	lea	mid_s8+2(pc),a6
 	move.l	a6,d6
 	lea	s7sAB_mix(pc),a6
-	bsr.s	mix_2chans
+	bsr	mix_2chans
 
 	|| Arguments
 	move.l	48(a7),a4	| a4: dest
@@ -164,20 +165,18 @@ fast_s7s:
 	lea	mid_s8+2(pc),a6
 	move.l	a6,d6
 	lea	s7sCD_mix(pc),a6
-	bsr.s	mix_2chans
+	bsr	mix_2chans
 
 	movem.l (a7)+,d2-d7/a2-a6
 0:	rts
 
-	.endif
-
 /// --------------------------------------------------------
 ///                a2     a4       a5       d7
-/// void fast_s8s(Tmix.l,dest.l, voices.l, cnt.l)
+/// void fast_lrb(Tmix.l,dest.l, voices.l, cnt.l)
 ///                4(a7)  8(a7)   12(a7)   16(a7)
 ///      +11*4=44 48(a7) 52(a7)   56(a7)   60(a7)
 
-fast_s8s:
+fast_lrb:
 	move.l	16(a7),d0	| d0: count
 	beq.s	0f
 
@@ -205,7 +204,7 @@ fast_s8s:
 	|| Mix C/D
 	lea	mid_u8+2(pc),a6
 	move.l	a6,d6
-	lea	s8sCD_mix(pc),a6
+	lea	lrbCD_mix(pc),a6
 	bsr.s	mix_2chans
 
 	movem.l (a7)+,d2-d7/a2-a6
@@ -377,7 +376,7 @@ mixAB_beg:
 	|
 	.endr
 mixAB_end:
-	.equiv	MIXAB_SIZE, (mixAB_end-mixAB_beg) / BLKLEN
+	.equiv	mixAB_siz, (mixAB_end-mixAB_beg) / BLKLEN
 
 	|| ----------------------------------------
 	|| check loop macro
@@ -452,14 +451,13 @@ mixAB_mix:
 mixAB_off:
 	.set	i,0
 	.rept	BLKLEN-1
-	.set	i,i+MIXAB_SIZE
+	.set	i,i+mixAB_siz
 	.short	mixAB_beg+i-.
 	.endr
 	.short	2		| jump to next instruction
 0:	rts
 
 
-	.if	0
 /// --------------------------------------------------------
 /// Mix 2 voices (A&B) 8 bit stereo buffer
 /// --------------------------------------------------------
@@ -496,7 +494,7 @@ s7sAB_beg:
 	|
 	.endr
 s7sAB_end:
-	.equiv	S7SAB_SIZE, (s7sAB_end-s7sAB_beg) / BLKLEN
+	.equiv	s7sAB_siz, (s7sAB_end-s7sAB_beg) / BLKLEN
 
 	swap	d7		| d7: count in MSW
 	check_loop d4,A_end(a5),d2,a0,d0,A_lpl(a5),mid_s8
@@ -516,7 +514,7 @@ s7sAB_mix:
 s7sAB_off:
 	.set	i,0
 	.rept	BLKLEN-1
-	.set	i,i+S7SAB_SIZE
+	.set	i,i+s7sAB_siz
 	.short	s7sAB_beg+i-.
 	.endr
 	.short	2		| jump to next instruction
@@ -550,7 +548,7 @@ s7sCD_beg:
 	|
 	.endr
 s7sCD_end:
-	.equiv	S7SCD_SIZE, (s7sCD_end-s7sCD_beg) / BLKLEN
+	.equiv	s7sCD_siz, (s7sCD_end-s7sCD_beg) / BLKLEN
 
 	swap	d7		| d7:count in MSW
 	check_loop d4,A_end(a5),d2,a0,d0,A_lpl(a5),mid_s8
@@ -574,14 +572,13 @@ s7sCD_mix:
 s7sCD_off:
 	.set	i,0
 	.rept	BLKLEN-1
-	.set	i,i+S7SCD_SIZE
+	.set	i,i+s7sCD_siz
 	.short	s7sCD_beg+i-.
 	.endr
 	.short	2		| jump to next instruction
 0:	rts
-
-	.endif
 	
+
 /// --------------------------------------------------------
 /// STf/YM PART 2
 /// --------------------------------------------------------
@@ -636,7 +633,7 @@ stfCD_beg:
 	.set	i,i+IRQSIZ
 	.endr
 stfCD_end:
-	.equiv	STFCD_SIZE, (stfCD_end-stfCD_beg) / BLKLEN
+	.equiv	stfCD_siz, (stfCD_end-stfCD_beg) / BLKLEN
 
 	lea	IRQSIZ*BLKLEN(a3),a3
 
@@ -664,7 +661,7 @@ stfCD_mix:
 stfCD_off:
 	.set	i,0
 	.rept	BLKLEN-1
-	.set	i,i+STFCD_SIZE
+	.set	i,i+stfCD_siz
 	.short	stfCD_beg+i-.
 	.endr
 	.short	2		| jump to next instruction
@@ -691,10 +688,10 @@ stfCD_off:
 /// d4/d5 .l int-acu (adr)
 /// d6/d7 .w scratch
 
-steCD_all:
+dnrCD_all:
 	swap	d7		| d7: count in MSW
 	clr.w	d6		| d6: clear MSB
-steCD_beg:
+dnrCD_beg:
 	.rept	BLKLEN
 	|			 21/26
 	| ----------------------+-----+---
@@ -714,32 +711,32 @@ steCD_beg:
 	move.b	(a2,d7.w),(a3)+ | 5/4 | 5/4
 	|
 	.endr
-steCD_end:
+dnrCD_end:
 
-	.equiv	STECD_SIZE, (steCD_end-steCD_beg) / BLKLEN
+	.equiv	dnrCD_siz, (dnrCD_end-dnrCD_beg) / BLKLEN
 
 	|| adr,end,acu,dec,int,lpl
 	check_loop d4,A_end(a5),d2,a0,d0,A_lpl(a5),mid_u8
 	check_loop d5,B_end(a5),d3,a1,d1,B_lpl(a5),mid_u8
 
 	swap	d7		| d7: count in LSW
-steCD_mix:
+dnrCD_mix:
 	sub.w	#BLKLEN*2,d7
-	bpl	steCD_all
+	bpl	dnrCD_all
 
 	bset	#0,d7		| d7#0: set to detect end
 	bne.s	0f
 	move.w	d7,d6		| d6: -1,-3,-5 ...
 	swap	d7		| d7: count in MSW
 	not.w	d6		| d6: 0,2,4 ... and clear d6.w MSB
-	lea	steCD_off(pc,d6.w),a6
+	lea	dnrCD_off(pc,d6.w),a6
 	adda.w	(a6),a6
 	jmp	(a6)
-steCD_off:
+dnrCD_off:
 	.set	i,0
 	.rept	BLKLEN-1
-	.set	i,i+STECD_SIZE
-	.short	steCD_beg+i-.
+	.set	i,i+dnrCD_siz
+	.short	dnrCD_beg+i-.
 	.endr
 	.short	2		| jump to next instruction
 0:	rts
@@ -764,9 +761,9 @@ steCD_off:
 /// d6/d7 .w scratch
 ///
 
-s8sCD_all:
+lrbCD_all:
 	swap	d7		| d7: count in MSW
-s8sCD_beg:
+lrbCD_beg:
 	.rept	BLKLEN
 	|| 		         29/38
 	|| ---------------------+-----+---
@@ -792,18 +789,18 @@ s8sCD_beg:
 	move.w	d6,(a4)+      	| 2/2 |
 	|| 
 	.endr
-s8sCD_end:
+lrbCD_end:
 
-	.equiv	S8SCD_SIZE, (s8sCD_end-s8sCD_beg) / BLKLEN
+	.equiv	lrbCD_siz, (lrbCD_end-lrbCD_beg) / BLKLEN
 
 	|| adr,end,acu,dec,int,lpl
 	check_loop d4,A_end(a5),d2,a0,d0,A_lpl(a5),mid_u8
 	check_loop d5,B_end(a5),d3,a1,d1,B_lpl(a5),mid_u8
 
 	swap	d7		| d7: count in LSW
-s8sCD_mix:
+lrbCD_mix:
 	sub.w	#BLKLEN*2,d7
-	bpl	s8sCD_all
+	bpl	lrbCD_all
 
 	bset	#0,d7		| d7#0: set to detect end
 	bne.s	0f
@@ -811,14 +808,14 @@ s8sCD_mix:
 	move.w	d7,d6		| d6: -1,-3,-5 ...
 	swap	d7		| d7: count in MSW
 	not.w	d6		| d6: 0,2,4 ... and clear d6.w MSB
-	lea	s8sCD_off(pc,d6.w),a6
+	lea	lrbCD_off(pc,d6.w),a6
 	adda.w	(a6),a6
 	jmp	(a6)
-s8sCD_off:
+lrbCD_off:
 	.set	i,0
 	.rept	BLKLEN-1
-	.set	i,i+S8SCD_SIZE
-	.short	s8sCD_beg+i-.
+	.set	i,i+lrbCD_siz
+	.short	lrbCD_beg+i-.
 	.endr
 	.short	2		| jump to next instruction
 0:	rts
@@ -874,7 +871,7 @@ falCD_beg:
 	.endr
 falCD_end:
 
-	.equiv	FALCD_SIZE, (falCD_end-falCD_beg) / BLKLEN
+	.equiv	falCD_siz, (falCD_end-falCD_beg) / BLKLEN
 
 	|| adr,end,acu,dec,int,lpl
 	check_loop d4,A_end(a5),d2,a0,d0,A_lpl(a5),mid_u8
@@ -897,7 +894,7 @@ falCD_mix:
 falCD_off:
 	.set	i,0
 	.rept	BLKLEN-1
-	.set	i,i+FALCD_SIZE
+	.set	i,i+falCD_siz
 	.short	falCD_beg+i-.
 	.endr
 	.short	2		| jump to next instruction

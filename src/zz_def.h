@@ -41,6 +41,9 @@
 
 #ifdef SC68
 # include "sc68_debug.h"
+# ifndef ZZ_STATIC
+#  define ZZ_STATIC
+# endif
 #elif ! defined zz_assert
 # ifdef NDEBUG
 #  define zz_assert(E) zz_void
@@ -86,6 +89,11 @@
 #   define ZZ_EXTERN_C extern
 #  endif
 # endif
+
+/* Used to export otherwise static symbol (m68k symbol table). */
+#ifndef ZZ_STATIC
+# define ZZ_STATIC static
+#endif
 
 /**
  * Message logging (zz_log.c)

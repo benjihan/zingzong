@@ -10,6 +10,7 @@ SECTIONS
   .text 0x10000 :
   {
     stub.o(.text)
+    m68k_*.o(.text)
     player.o(.text)
     zz_*.o(.text)
     dri_*.elf(.text)
@@ -36,7 +37,10 @@ SECTIONS
     .dri.any { }
     .dri.aga { dri_aga.elf(.bss); }
     .dri.stf { dri_stf.elf(.bss); }
-    .dri.ste { dri_ste.elf(.bss); }
+    .dri.hub { dri_hub.elf(.bss); } /* should be empty ! */
+    .dri.lrb { dri_lrb.elf(.bss); }
+    .dri.dnr { dri_dnr.elf(.bss); }
+    .dri.s7s { dri_s7s.elf(.bss); }
     .dri.fal { dri_fal.elf(.bss); }
   }
   dribss_section_len = ABSOLUTE(ALIGN(4) - ADDR(.dri.any));

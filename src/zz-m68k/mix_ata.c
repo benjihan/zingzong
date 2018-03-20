@@ -36,6 +36,15 @@ static void ata_trig(fast_t * restrict K, uint16_t scl)
   }
 }
 
+/**
+ * Allocate free place in the fifo buffer (i1,n1), (i2,n2)
+ *
+ * . Set fifo::ro to the old pointer position
+ * . Get fifo::rp read pointer current position
+ * . Set return buffers
+ * . Increments fifo::wp
+ *
+ */
 static void fifo_play(fifo_t * const F, int16_t n)
 {
   register int16_t i1,n1,i2,n2,rp;
@@ -100,10 +109,10 @@ static void fifo_play(fifo_t * const F, int16_t n)
 void play_ata(ata_t * restrict ata, chan_t * restrict chn, int16_t n)
 {
   /* setup channel mapping */
-  ata->fast[chn->pam].chn = chn; ++ chn;
-  ata->fast[chn->pam].chn = chn; ++ chn;
-  ata->fast[chn->pam].chn = chn; ++ chn;
-  ata->fast[chn->pam].chn = chn;
+  ata->fast[chn->pam^ata->swap].chn = chn; ++ chn;
+  ata->fast[chn->pam^ata->swap].chn = chn; ++ chn;
+  ata->fast[chn->pam^ata->swap].chn = chn; ++ chn;
+  ata->fast[chn->pam^ata->swap].chn = chn;
 
   ata_trig(ata->fast, ata->step);
   fifo_play(&ata->fifo, n);
@@ -112,4 +121,31 @@ void play_ata(ata_t * restrict ata, chan_t * restrict chn, int16_t n)
 void stop_ata(ata_t * ata)
 {
   ata->fifo.pb_stop();
+}
+
+/* Utility functions */
+
+void dma8_setup(void * adr, void * end, uint16_t mode)
+{
+  dma8_stop();
+  dma8_write_ptr(DMA+DMA_ADR, adr);
+  dma8_write_ptr(DMA+DMA_END, end);
+  DMA[DMA_MODE] = mode;
+}
+
+void * dma8_position(void)
+{
+  void * pos = (void*)-1;
+  asm volatile (
+    "   movea.w #0x8900,%%a0   \n"
+    "0:\n"
+    "   move.l  %[pos],%%a1    \n"
+    "   movep.l 7(%%a0),%[pos] \n"
+    "   and.l   %[msk],%[pos]  \n"
+    "   cmp.l   %%a1,%[pos]    \n"
+    "   bne.s   0b             \n\t"
+    : [pos] "+d" (pos)
+    : [msk] "d" (0xFFFFFF)
+    : "cc","a0","a1");
+  return pos;
 }
