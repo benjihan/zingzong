@@ -17,7 +17,7 @@
 #define ALIGN(X)      ((X)&-(MIXALIGN))
 #define ULIGN(X)      ALIGN((X)+MIXALIGN-1)
 #define IS_ALIGN(X)   ((X) == ALIGN(X))
-#define init_spl(P)   init_spl8(P)
+#define init_spl(P)   init_spl(P)
 #define fast_mix(R,N) fast_fal(Tmix,R,M->ata.fast,N)
 #define MIXALIGN      1
 #define FAL_DMA_MODE  (DMA_MODE_16BIT)
@@ -29,8 +29,8 @@ static i16_t    push_fal(core_t * const, void *, i16_t);
 
 mixer_t * mixer_fal(mixer_t * const M)
 {
-  M->name = "stdma16:stereo";
-  M->desc = "Atari ST via stereo 16-bit DMA";
+  M->name = "dma16:blend-stereo";
+  M->desc = "blended stereo 16-bit DMA";
   M->init = init_fal;
   M->free = free_fal;
   M->push = push_fal;
@@ -43,130 +43,354 @@ typedef struct mix_fast_s mix_fast_t;
 typedef struct mix_fal_s mix_fal_t;
 
 struct mix_fal_s {
-  ata_t    ata;                         /* generic atari mixer  */
-  uint16_t dma;                         /* Track/sound DMA mode   */
+  ata_t   ata;                         /* generic atari mixer  */
+  int16_t psc;                         /* sampling rate prescaler */
 };
 
 static mix_fal_t g_fal;                 /* Falcon mixer instance */
-static spl_t    _fifo[FIFOMAX];         /* FIFO buffer */
 static spl_t     Tmix[510];             /* Blending table */
+static spl_t    _fifo[FIFOMAX];         /* FIFO buffer */
 static uint16_t  Tmix_lr8;              /* Tmix current setup */
 
 ZZ_EXTERN_C
 void fast_fal(spl_t * Tmix, spl_t * dest, mix_fast_t * voices, int32_t n);
 
-#if WITH_LOCKSND
-
-static inline
-/* @retval     1 success
- * @retval  -129 already locked
+/* Falcon prescalers (unused ATM)
+ *
+ * Hz = CLK(25.175MHZ/256/(prescaler+1)
+ *
  */
-int32_t Locksnd(void)
+static uint16_t prescalers[12] = {
+  /*STE      1      2      3 */
+  00000, 49170, 32780, 24585,
+  /*  4      5      6      7 */
+  19668, 16390,     0, 12292,
+  /*  8      9     10     11 */
+      0,  9834,     0,  8195,
+};
+
+/*
+  ----------------------------------------------------------------------
+
+  Sound system calls
+
+  ----------------------------------------------------------------------
+
+  Because we are not using frame pointer it can be a bit tricky to use
+  "g" or "m" constraints as it might generate addressing mode
+  referring to a7.
+
+  ----------------------------------------------------------------------
+*/
+
+#define USE_XBIOS 1
+
+static inline int32_t
+xbios_0(int16_t func)
 {
   int32_t ret;
-  asm volatile(
-    "move.w  #0x80,-(%%a7) \n\t"
-    "trap    #14           \n\t"
-    "addq.w  #2,%%a7       \n\t"
-    : [ret] "=d" (ret));
+  asm volatile (
+    "  move.w  %[func],-(%%a7) \n"
+    "  trap    #14             \n"
+    "  move.l  %d0,%[ret]      \n"
+    "  addq.w  #2,%%a7         \n\t"
+    : [ret]  "=d" (ret)
+    : [func] "i"  (func)
+    : "cc","d0");
   return ret;
 }
 
-static inline
-/* @retval     0 success
+static inline int32_t
+xbios_w(int16_t func, int16_t parm)
+{
+  int32_t ret;
+  asm volatile (
+    "  move.w  %[parm],-(%%a7) \n"
+    "  move.w  %[func],-(%%a7) \n"
+    "  trap    #14             \n"
+    "  move.l  %d0,%[ret]      \n"
+    "  addq.w  #4,%%a7         \n\t"
+    : [ret]  "=d" (ret)
+    : [func] "i"  (func),
+      [parm] "ig" (parm)
+    : "cc","d0");
+  return ret;
+}
+
+static inline int32_t
+xbios_ww(int16_t func, int16_t par1, int16_t par2)
+{
+  int32_t ret;
+  asm volatile (
+    "  move.w  %[par2],-(%%a7) \n"
+    "  move.w  %[par1],-(%%a7) \n"
+    "  move.w  %[func],-(%%a7) \n"
+    "  trap    #14             \n"
+    "  move.l  %d0,%[ret]      \n"
+    "  addq.w  #6,%%a7         \n\t"
+    : [ret]  "=d" (ret)
+    : [func] "i"  (func),
+      [par1] "ir" (par1),
+      [par2] "ig" (par2)
+    : "cc","d0");
+  return ret;
+}
+
+#define xbios_decl(TYPE) static inline TYPE
+
+xbios_decl(int32_t)
+/**
+ * Lock sound system for other applications.
+ * @retval    1 success
+ * @retval -129 already locked
+ */
+xbios_locksnd(void)
+{
+#if WITH_LOCKSND
+  return xbios_0(128);
+#else
+  return 1;
+#endif
+}
+
+xbios_decl(int32_t)
+/**
+ * Unlock sound system for use by other applications.
+ * @retval     0 success
  * @retval  -128 not locked
  */
-int32_t Unlocksnd(void)
+xbios_unlocksnd(void)
+{
+#if WITH_LOCKSND
+  return xbios_0(129);
+#else
+  return 0;
+#endif
+}
+
+
+static inline spl_t * dma_read_position(void)
+{
+  spl_t * pos;
+
+#if 1
+  uint16_t ipl = enter_critical();
+  DMA[DMA_CNTL] &= 0x7F;                /* select replay register */
+  pos = dma8_position();                /* read position  */
+  leave_critical(ipl);
+#else
+  void * ptr[2];
+  asm volatile (
+    "  pea     (%[ptr])        \n"
+    "  move.w  #141,-(%%a7)    \n"
+    "  trap    #14             \n"
+    "  addq.w  #6,%%a7         \n"
+    "  move.l  %%d0,%[ret]     \n"
+    "  beq     0f              \n"
+    "  move.l  (%[ptr]),%[ret] \n\t"
+    "0:\n"
+    : [ret] "=d" (pos)
+    : [ptr] "a"  (ptr)
+    : "cc","d0");
+#endif
+  return pos;
+}
+
+xbios_decl(int32_t)
+/**
+ *
+ */
+xbios_devconnect(
+  int16_t src,       /* 0:DMA out 1:DSP out, 2:xtern 3:ADC */
+  int16_t dst,       /* 1:DMA in, 2:DSP in,  4:xtern, 8:DAC */
+  int16_t srcclk,    /* 0:25.175MHz 1:xtern 2:32MHz */
+  int16_t prescale,  /* 0:ste  */
+  int16_t protocol)  /* 0:handshake */
 {
   int32_t ret;
-  asm volatile(
-    "move.w  #0x81,-(%%a7) \n\t"
-    "trap    #14           \n\t"
-    "addq.w  #2,%%a7       \n\t"
-    : [ret] "=d" (ret));
+  asm volatile (
+    "  move.w  %[ptc],-(%%a7) \n"
+    "  move.w  %[sca],-(%%a7) \n"
+    "  move.w  %[clk],-(%%a7) \n"
+    "  move.w  %[dst],-(%%a7) \n"
+    "  move.w  %[src],-(%%a7) \n"
+    "  move.w  #139,-(%%a7)   \n"
+    "  trap    #14            \n"
+    "  move.l  %%d0,%[ret]    \n"
+    "  lea     12(%%a7),%%a7  \n\t"
+    : [ret] "=d" (ret)
+    : [ptc] "i"  (protocol),
+      [sca] "ir" (prescale),
+      [clk] "i"  (srcclk),
+      [dst] "i"  (dst),
+      [src] "i"  (src)
+    : "cc","d0");
   return ret;
 }
 
-#else /* WITH_LOCKSND */
-
-#define Locksnd() 1
-#define Unlocksnd()
-
-#endif /* WITH_LOCKSND */
-
-#if 0
-/* Falcon prescalers (unused ATM) */
-static uint16_t prescale[16] = {
-  0 /*STe*/, 49170, 32880, 24585, 19668, 16390,
-  0/*14049*/, 12292, 0/*10927 */, 9834, 0/*8940*/,
-  8195, 0/*7565*/, 0/*7024*/, 0/*6556*/, 0/*6146*/
-};
+xbios_decl(void)
+/**
+ * Set record/playback buffer buffer.
+ * @param  reg  0:playback 1:recording
+ * @param  beg  start address
+ * @param  end  end address
+ * @retval 0 on success
+ */
+dma_set_buffer(void * beg, void * end)
+{
+#if ! USE_XBIOS
+  dma8_write_ptr(DMA+DMA_ADR, beg);
+  dma8_write_ptr(DMA+DMA_END, end);
+#else
+  asm volatile (
+    "  move.l  %[end],-(%%a7) \n"
+    "  move.l  %[beg],-(%%a7) \n"
+    "  clr.w   -(%%a7)        \n"
+    "  move.w  #131,-(%%a7)   \n"
+    "  trap    #14            \n"
+    "  lea     12(%%a7),%%a7  \n\t"
+    :
+    : [reg] "i"  (0),
+      [beg] "r"  (beg),
+      [end] "g"  (end)
+    : "cc","d0");
 #endif
+}
+
+
+xbios_decl(int32_t)
+/**
+ * Select record/playback mode.
+ * @param  mode 0:2x8bit 1:2x16bit 2:1x8bit
+ * @retval 0 on success
+ */
+xbios_setmode(int16_t mode)
+{
+#if ! USE_XBIOS
+  DMAW(DMAW_MODE) = 0x0040;
+  return 0;
+#else
+  return xbios_w(132,mode);
+#endif
+}
+#define dma_16bit_stereo() xbios_setmode(1)
+
+
+
+xbios_decl(int32_t)
+/**
+ *
+ */
+xbios_sndstatus(int16_t reset)
+{
+  return xbios_w(140,reset);
+}
+
+xbios_decl(int32_t)
+/**
+ * Set interrupt at the end of recording/playback.
+ *
+ * @param  src_inter  0:timer-A 1:MFP-interrupt 7
+ * @param  cause      0:No 1:on-end-pb 2:on-end-rec 4:on-end-any
+ * @retval 0 on success
+ */
+xbios_setinterrupt(int16_t src_inter, int16_t cause)
+{
+  return xbios_ww(135,src_inter,cause);
+}
+#define no_audio_interrupt() xbios_setinterrupt(0,0)
+
+xbios_decl(int32_t)
+/**
+ *
+ */
+soundcmd(int16_t mode, int16_t data)
+{
+  return xbios_ww(130,mode,data);
+}
+
+xbios_decl(int32_t)
+/**
+ * Set or read record/playback mode.
+ *
+ * @param  mode -1: Read status
+ *              #0: DMA sound playback
+ *              #1: Loop playback of sound currently playing
+ *              #2: DMA sound recording
+ *              #4: Loop recording of sound currently playing
+ * @return 0 on success or current state
+ */
+xbios_buffoper(int16_t mode)
+{
+  return xbios_w(136,mode);
+}
+#define dma_stop_playback()  xbios_buffoper(0)
+#define dma_loop_playback()  xbios_buffoper(3)
+#define dma_status()         (xbios_buffoper(-1) & 3)
+
+static int16_t dma_running(void)
+{
+  return dma_status() == 3;
+}
+
+static void dma_start(void)
+{
+  dma_set_buffer(_fifo, _fifo+g_fal.ata.fifo.sz);
+  dma_loop_playback();
+}
 
 static int16_t pb_play(void)
 {
   zz_assert( g_fal.ata.fifo.sz == FIFOMAX );
 
-  if ( ! (DMA[DMA_CNTL] & DMA_CNTL_ON) ) {
-    dma_start(_fifo, &_fifo[g_fal.ata.fifo.sz], g_fal.dma);
-    dmsg("DMA cntl:%04hx mode:%04hx/%04hx %p\n",
-         HU(DMAW(DMAW_CNTL)), HU(DMAW(DMAW_MODE)),
-         HU(g_fal.dma), dma_position());
+  if ( ! dma_running() ) {
+    dma_start();
     return 0;
   } else {
-    spl_t * const pos = dma_position();
+    spl_t * const pos = dma_read_position();
     zz_assert( pos >= _fifo );
-    zz_assert( pos <  _fifo+g_fal.ata.fifo.sz );
+    zz_assert( pos < _fifo+g_fal.ata.fifo.sz);
     return ALIGN( pos - _fifo );
   }
 }
 
 static void pb_stop(void)
 {
-  dma_stop();
+  dma_stop_playback();
+//  xbios_sndstatus(1);                   /* Reset */
 }
 
-static void never_inline init_dma(core_t * P)
+static void init_dma(int8_t psc)
 {
-  dma_stop();
+  dma_stop_playback();
+  dma_16bit_stereo();
+  xbios_devconnect(0,8,0,psc,1);
 }
 
 /* Unroll instrument loops (samples stay in u8 format).
  */
-static void never_inline init_spl8(core_t * K)
+static void init_spl(core_t * K)
 {
   vset_unroll(&K->vset,0);
 }
 
 static void never_inline init_mix(uint16_t lr8)
 {
-  int16_t x;
   int32_t v9 = muls(-255,lr8);
-  int16_t w8 = -255 << 7;
+  int16_t w8 = -255 << 7, x;
 
   /* 2 U8 voices added => {0..510} */
   for (x=0; x<510; ++x, v9 += lr8, w8 += 128) {
     int16_t v = v9 >> 1;
     int16_t w = w8 - v;
     Tmix[x] = ((int32_t)w<<16) | (uint16_t) v;
-
-#ifndef NDEBUG
-    dmsg("L/R[%03hx]=%08lx\n",HU(x),LU(Tmix[x]));
-    if (1) {
-      int32_t r;
-      r = (int32_t)v + (int32_t)w;
-      zz_assert( r >= -0x8000 && r <= 0x7FFF );
-    }
-#endif
   }
-
   Tmix_lr8 = lr8;
 }
 
 static i16_t push_fal(core_t * const P, void *pcm, i16_t n)
 {
   mix_fal_t * const M = (mix_fal_t *) P->data;
-
   i16_t ret = n;
   const int16_t bias = 2;     /* last thing we want is to under run */
 
@@ -202,37 +426,42 @@ static zz_err_t init_fal(core_t * const P, u32_t spr)
   if (spr == 0)
     spr = refspr;
 
-  if (spr > ZZ_HQ) {
-    if (spr < 7000)
-      spr = ZZ_LQ;
-    else if (spr < 14000)
-      spr = ZZ_FQ;
-    else if (spr < 28000)
-      spr = ZZ_MQ;
-    else
-      spr = ZZ_HQ;
-  }
+  /* STE      1      2      3
+     00000, 49170, 32780, 24585,
+       4      5     (6)     7
+     19668, 16390, 14049, 12292,
+      (8)     9     (10)   11
+     10927,  9834,  8940,  8195,
+  */
 
   switch (spr) {
-  case ZZ_LQ:                     /* Falcon does not have 6Khz mode */
-  case ZZ_FQ: spr = 12517; M->dma = 1|FAL_DMA_MODE; break;
-  case ZZ_HQ: spr = 50066; M->dma = 3|FAL_DMA_MODE; break;
-  default:    spr = 25033; M->dma = 2|FAL_DMA_MODE; break;
+  case ZZ_LQ: M->psc = 11; /*  8195-Hz */ break;
+  case ZZ_FQ: M->psc =  7; /* 12292-Hz */ break;
+  case ZZ_MQ: M->psc =  4; /* 19668-Hz */ break;
+  case ZZ_HQ: M->psc =  2; /* 32780-Hz */ break;
+  default:
+    for (M->psc=11; M->psc>1; --M->psc)
+      if (prescalers[M->psc] >= spr)
+        break;
   }
+  dmsg("prescaler: %hu-hz -> prescaler[%hu]=%hu-hz\n",
+       HU(spr), HU(M->psc), HU(prescalers[M->psc]));
 
-  P->spr = spr;
+  zz_assert( prescalers[M->psc] );
+
+  P->spr = spr = prescalers[M->psc];
   scale  = ( divu( refspr<<13, spr) + 1 ) >> 1;
 
-  if ( Locksnd() != 1 ) {
+  if ( xbios_locksnd() != 1 ) {
     M = 0;
     ecode = E_MIX;
   } else {
-    init_dma(P);
     init_mix(P->lr8);
     init_spl(P);
     init_ata(FIFOMAX,scale);
-    dmsg("spr:%lu dma:%02hx scale:%lx\n",
-         LU(spr), HU(M->dma), LU(scale));
+    init_dma(M->psc);
+    dmsg("spr:%lu psc:%hu scale:%lx\n",
+         LU(spr), HU(M->psc), LU(scale));
   }
   P->data = M;
   return ecode;
@@ -245,7 +474,7 @@ static void free_fal(core_t * const P)
     if ( M ) {
       zz_assert( M == &g_fal );
       stop_ata(&M->ata);
-      Unlocksnd();
+      xbios_unlocksnd();
     }
     P->data = 0;
   }
