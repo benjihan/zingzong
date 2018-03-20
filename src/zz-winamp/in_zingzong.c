@@ -524,7 +524,7 @@ int play(const char * uri)
   g_mod.outMod->SetVolume(-666);
 
   /* Init info and visualization stuff */
-  g_mod.SetInfo(0, g_play.core.spr/1000, 2, 1);
+  g_mod.SetInfo(g_info.sng.khz, g_play.core.spr/1000, 2, 1);
   g_mod.SAVSAInit(g_maxlatency, g_play.core.spr);
   g_mod.VSASetInfo(g_play.core.spr, 2);
 
