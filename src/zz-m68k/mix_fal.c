@@ -326,7 +326,7 @@ static zz_err_t init_fal(core_t * const P, u32_t spr)
   case ZZ_HQ: M->psc =  2; /* 32780-Hz */ break;
   default:
     for (M->psc=11; M->psc>1; --M->psc)
-      if (prescalers[M->psc] >= spr)
+      if (prescalers[M->psc] >= spr-(spr>>3))
         break;
   }
   dmsg("prescaler: %hu-hz -> prescaler[%hu]=%hu-hz\n",
@@ -341,7 +341,7 @@ static zz_err_t init_fal(core_t * const P, u32_t spr)
     ;
   scale  = ( divu( refspr<<13, spr) + 1 ) >> 1;
 
-  if ( locksnd() ) {
+  if ( ! locksnd() ) {
     M = 0;
     ecode = E_MIX;
   } else {
