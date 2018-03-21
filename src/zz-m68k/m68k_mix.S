@@ -11,7 +11,7 @@
 
 #define BLKLEN	12	// Mix this many PCMs without loop check
 #define IRQSIZ	32	// Size of the STf replay chained timer routine
-	
+
 /// @see mix_ata.h:mix_fast_t
 	.struct 0
 A_end:	.struct .+4		| 00
@@ -35,14 +35,14 @@ A_siz:	.struct .		| 32 20
 
 #ifndef NDEBUG
 	.macro	break
-#ifdef SC68	
+#ifdef SC68
 	clr.l	-(a7)
 	pea	0x5C68DB61
 	trap	#0
 	addq.w	#8,a7
 #else
 	illegal
-#endif	
+#endif
 	.endm
 #else
 # define break
@@ -250,7 +250,7 @@ fast_fal:
 
 	movem.l (a7)+,d2-d7/a2-a6
 0:	rts
-	
+
 
 /// --------------------------------------------------------
 /// a2.l: mixer specific (usually convert table)
@@ -577,7 +577,7 @@ s7sCD_off:
 	.endr
 	.short	2		| jump to next instruction
 0:	rts
-	
+
 
 /// --------------------------------------------------------
 /// STf/YM PART 2
@@ -765,7 +765,7 @@ lrbCD_all:
 	swap	d7		| d7: count in MSW
 lrbCD_beg:
 	.rept	BLKLEN
-	|| 		         29/38
+	||			 29/38
 	|| ---------------------+-----+---
 	move.l	d4,a6		| 1/2 | 7/10
 	add.w	a0,d2		| 1/2 |
@@ -783,11 +783,11 @@ lrbCD_beg:
 	add.w	d6,d6		| 1/2 | d6= ???? | 2(d+c)
 	move.w	(a3,d6.w),d6	| 4/4 | d6= ???? | (c+d)*L : (c+d)*R
 	|| ---------------------+-----+---
-	move.w	(a4),d7	      	| 2/2 | 9/10
-	add.w	d7,d7	      	| 1/2 | d7= ???? | 4(a+b)
-	add.w	(a2,d7.w),d6 	| 4/4 | d6= (a+b)*L+(c+d)*R : (a+b)*R+(c+d)*L
-	move.w	d6,(a4)+      	| 2/2 |
-	|| 
+	move.w	(a4),d7		| 2/2 | 9/10
+	add.w	d7,d7		| 1/2 | d7= ???? | 4(a+b)
+	add.w	(a2,d7.w),d6	| 4/4 | d6= (a+b)*L+(c+d)*R : (a+b)*R+(c+d)*L
+	move.w	d6,(a4)+	| 2/2 |
+	||
 	.endr
 lrbCD_end:
 
@@ -820,7 +820,7 @@ lrbCD_off:
 	.short	2		| jump to next instruction
 0:	rts
 
-	
+
 
 /// --------------------------------------------------------
 /// Falcon 16bit DMA blended stereo
@@ -846,7 +846,10 @@ falCD_all:
 	swap	d7		| d7: count in MSW
 falCD_beg:
 	.rept	BLKLEN
-	|| 		          x/36
+
+	.if	1
+
+	||			  x/36
 	|| ---------------------+-----+---
 	move.l	d4,a6		| x/2 | x/10
 	add.w	a0,d2		| x/2 |
@@ -867,7 +870,33 @@ falCD_beg:
 	move.w	(a3)+,d7	| x/2 | d7= ???? | a+b
 	add.l	0(a2,d7.w*4),d6	| x/4 | d6= L(a+b)+R(c+d) | R(a+b)+L(c+d)
 	move.l	d6,(a4)+	| x/2 |
-	|| 
+
+	.else
+
+	clr.w	d7		|     | *** CAN BE DONE OUTSIDE THE LOOP
+	move.w	(a3)+,d6	|     |
+	swap	d6		|     |
+
+	move.l	d4,a6		| x/2 | x/10
+	add.w	a0,d2		| x/2 |
+	addx.l	d0,d4		| x/2 |
+	move.b	(a6),d7		| x/2 | d7= cnt | c
+
+	move.l	d5,a6		| x/2 | x/8
+	add.w	a1,d3		| x/2 |
+	addx.l	d1,d5		| x/2 |
+	clr.w	d6		| x/2 |
+	move.b	(a6),d6		| x/2 | d6= ???? | d
+
+	add.w	d7,d6
+
+	lsl.l	#7,d6
+	eor.l	#0x80008000,d6
+	move.l	d6,(a4)+	| x/2 |
+
+	.endif
+
+	||
 	.endr
 falCD_end:
 

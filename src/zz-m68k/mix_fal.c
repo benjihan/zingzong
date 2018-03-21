@@ -7,6 +7,7 @@
 
 #include "../zz_private.h"
 #include "mix_ata.h"
+#include "zz_tos.h"
 
 #define WITH_LOCKSND 0
 
@@ -66,7 +67,7 @@ static uint16_t prescalers[12] = {
   /*  4      5      6      7 */
   19668, 16390,     0, 12292,
   /*  8      9     10     11 */
-      0,  9834,     0,  8195,
+  0,  9834,     0,  8195,
 };
 
 /*
@@ -83,260 +84,141 @@ static uint16_t prescalers[12] = {
   ----------------------------------------------------------------------
 */
 
-#define USE_XBIOS 1
-
-static inline int32_t
-xbios_0(int16_t func)
-{
-  int32_t ret;
-  asm volatile (
-    "  move.w  %[func],-(%%a7) \n"
-    "  trap    #14             \n"
-    "  move.l  %d0,%[ret]      \n"
-    "  addq.w  #2,%%a7         \n\t"
-    : [ret]  "=d" (ret)
-    : [func] "i"  (func)
-    : "cc","d0");
-  return ret;
-}
-
-static inline int32_t
-xbios_w(int16_t func, int16_t parm)
-{
-  int32_t ret;
-  asm volatile (
-    "  move.w  %[parm],-(%%a7) \n"
-    "  move.w  %[func],-(%%a7) \n"
-    "  trap    #14             \n"
-    "  move.l  %d0,%[ret]      \n"
-    "  addq.w  #4,%%a7         \n\t"
-    : [ret]  "=d" (ret)
-    : [func] "i"  (func),
-      [parm] "ig" (parm)
-    : "cc","d0");
-  return ret;
-}
-
-static inline int32_t
-xbios_ww(int16_t func, int16_t par1, int16_t par2)
-{
-  int32_t ret;
-  asm volatile (
-    "  move.w  %[par2],-(%%a7) \n"
-    "  move.w  %[par1],-(%%a7) \n"
-    "  move.w  %[func],-(%%a7) \n"
-    "  trap    #14             \n"
-    "  move.l  %d0,%[ret]      \n"
-    "  addq.w  #6,%%a7         \n\t"
-    : [ret]  "=d" (ret)
-    : [func] "i"  (func),
-      [par1] "ir" (par1),
-      [par2] "ig" (par2)
-    : "cc","d0");
-  return ret;
-}
-
-#define xbios_decl(TYPE) static inline TYPE
-
-xbios_decl(int32_t)
-/**
- * Lock sound system for other applications.
- * @retval    1 success
- * @retval -129 already locked
- */
-xbios_locksnd(void)
+static inline int16_t locksnd()
 {
 #if WITH_LOCKSND
-  return xbios_0(128);
+  return xbios_sndlock() == 1;
 #else
   return 1;
 #endif
 }
 
-xbios_decl(int32_t)
-/**
- * Unlock sound system for use by other applications.
- * @retval     0 success
- * @retval  -128 not locked
- */
-xbios_unlocksnd(void)
+static inline int16_t unlocksnd()
 {
 #if WITH_LOCKSND
-  return xbios_0(129);
+  return xbios_unsndlock() == 0;
 #else
-  return 0;
+  return 1;
 #endif
 }
-
 
 static inline spl_t * dma_read_position(void)
 {
+#ifdef USE_XBIOS
+  return xbios_playptr();
+#else
   spl_t * pos;
-
-#if 1
-  uint16_t ipl = enter_critical();
-  DMA[DMA_CNTL] &= 0x7F;                /* select replay register */
-  pos = dma8_position();                /* read position  */
+  int ipl = enter_critical();
+  DMAB(DMA_CNTL) &= 0x7F;                /* select playback register */
+  pos = dma8_position();
   leave_critical(ipl);
-#else
-  void * ptr[2];
-  asm volatile (
-    "  pea     (%[ptr])        \n"
-    "  move.w  #141,-(%%a7)    \n"
-    "  trap    #14             \n"
-    "  addq.w  #6,%%a7         \n"
-    "  move.l  %%d0,%[ret]     \n"
-    "  beq     0f              \n"
-    "  move.l  (%[ptr]),%[ret] \n\t"
-    "0:\n"
-    : [ret] "=d" (pos)
-    : [ptr] "a"  (ptr)
-    : "cc","d0");
-#endif
   return pos;
-}
-
-xbios_decl(int32_t)
-/**
- *
- */
-xbios_devconnect(
-  int16_t src,       /* 0:DMA out 1:DSP out, 2:xtern 3:ADC */
-  int16_t dst,       /* 1:DMA in, 2:DSP in,  4:xtern, 8:DAC */
-  int16_t srcclk,    /* 0:25.175MHz 1:xtern 2:32MHz */
-  int16_t prescale,  /* 0:ste  */
-  int16_t protocol)  /* 0:handshake */
-{
-  int32_t ret;
-  asm volatile (
-    "  move.w  %[ptc],-(%%a7) \n"
-    "  move.w  %[sca],-(%%a7) \n"
-    "  move.w  %[clk],-(%%a7) \n"
-    "  move.w  %[dst],-(%%a7) \n"
-    "  move.w  %[src],-(%%a7) \n"
-    "  move.w  #139,-(%%a7)   \n"
-    "  trap    #14            \n"
-    "  move.l  %%d0,%[ret]    \n"
-    "  lea     12(%%a7),%%a7  \n\t"
-    : [ret] "=d" (ret)
-    : [ptc] "i"  (protocol),
-      [sca] "ir" (prescale),
-      [clk] "i"  (srcclk),
-      [dst] "i"  (dst),
-      [src] "i"  (src)
-    : "cc","d0");
-  return ret;
-}
-
-xbios_decl(void)
-/**
- * Set record/playback buffer buffer.
- * @param  reg  0:playback 1:recording
- * @param  beg  start address
- * @param  end  end address
- * @retval 0 on success
- */
-dma_set_buffer(void * beg, void * end)
-{
-#if ! USE_XBIOS
-  dma8_write_ptr(DMA+DMA_ADR, beg);
-  dma8_write_ptr(DMA+DMA_END, end);
-#else
-  asm volatile (
-    "  move.l  %[end],-(%%a7) \n"
-    "  move.l  %[beg],-(%%a7) \n"
-    "  clr.w   -(%%a7)        \n"
-    "  move.w  #131,-(%%a7)   \n"
-    "  trap    #14            \n"
-    "  lea     12(%%a7),%%a7  \n\t"
-    :
-    : [reg] "i"  (0),
-      [beg] "r"  (beg),
-      [end] "g"  (end)
-    : "cc","d0");
 #endif
 }
-
-
-xbios_decl(int32_t)
-/**
- * Select record/playback mode.
- * @param  mode 0:2x8bit 1:2x16bit 2:1x8bit
- * @retval 0 on success
- */
-xbios_setmode(int16_t mode)
-{
-#if ! USE_XBIOS
-  DMAW(DMAW_MODE) = 0x0040;
-  return 0;
-#else
-  return xbios_w(132,mode);
-#endif
-}
-#define dma_16bit_stereo() xbios_setmode(1)
-
-
-
-xbios_decl(int32_t)
-/**
- *
- */
-xbios_sndstatus(int16_t reset)
-{
-  return xbios_w(140,reset);
-}
-
-xbios_decl(int32_t)
-/**
- * Set interrupt at the end of recording/playback.
- *
- * @param  src_inter  0:timer-A 1:MFP-interrupt 7
- * @param  cause      0:No 1:on-end-pb 2:on-end-rec 4:on-end-any
- * @retval 0 on success
- */
-xbios_setinterrupt(int16_t src_inter, int16_t cause)
-{
-  return xbios_ww(135,src_inter,cause);
-}
-#define no_audio_interrupt() xbios_setinterrupt(0,0)
-
-xbios_decl(int32_t)
-/**
- *
- */
-soundcmd(int16_t mode, int16_t data)
-{
-  return xbios_ww(130,mode,data);
-}
-
-xbios_decl(int32_t)
-/**
- * Set or read record/playback mode.
- *
- * @param  mode -1: Read status
- *              #0: DMA sound playback
- *              #1: Loop playback of sound currently playing
- *              #2: DMA sound recording
- *              #4: Loop recording of sound currently playing
- * @return 0 on success or current state
- */
-xbios_buffoper(int16_t mode)
-{
-  return xbios_w(136,mode);
-}
-#define dma_stop_playback()  xbios_buffoper(0)
-#define dma_loop_playback()  xbios_buffoper(3)
-#define dma_status()         (xbios_buffoper(-1) & 3)
 
 static int16_t dma_running(void)
 {
-  return dma_status() == 3;
+#ifdef USE_XBIOS
+  return (xbios_buffoper(-1) & 3) == 3;
+#else
+  return (DMAB(DMA_CNTL) & 3) == 3;
+#endif
 }
 
 static void dma_start(void)
 {
-  dma_set_buffer(_fifo, _fifo+g_fal.ata.fifo.sz);
-  dma_loop_playback();
+#ifdef USE_XBIOS
+  xbios_buffoper( xbios_buffoper(-1) | 3 );
+#else
+  DMAB(DMA_CNTL) |= 3;
+#endif
+}
+
+static void never_inline dma_stop(void)
+{
+#ifdef USE_XBIOS
+  xbios_buffoper( xbios_buffoper(-1) & 0xC );
+#else
+  DMAB(DMA_CNTL) &= ~3;
+#endif
+}
+
+static int never_inline dma_setup(uint16_t psc)
+{
+#ifdef USE_XBIOS
+  /* Stop playback */
+  dma_stop();
+
+  /* Reinitialized DAC/ADC */
+  xbios_sndstatus(1);
+
+  /* 1 playback track, don't care about recording */
+  xbios_settracks(0,-1);
+
+  /* Monitor track #1 */
+  // xbios_setmontracks(0);
+  /* 16 Bit stereo */
+  xbios_setmode(1);
+
+  /* playback buffer */
+  xbios_setbuffer(0, _fifo, _fifo+FIFOMAX);
+
+  /* Disable timer-A interrupt */
+  xbios_setinterrupt(0,0);
+
+  /* Disable gpio-7 interrupt */
+  xbios_setinterrupt(1,0);
+
+  /* Disconnect DSP */
+  xbios_dsptristate(0,0);
+
+  if ( (uint8_t)psc == 0 )
+    xbios_soundcmd(6, psc>>8); /* set STE compatible sampling rate. */
+
+  /* Connect source DMA to DAC output at given sampling rate w/o
+   * handshake */
+  xbios_devconnect(0,8,0,(uint8_t)psc,1);
+#else
+  int16_t ipl = enter_critical();
+
+  /* Stop playback */
+  dma_stop();
+
+  DMAB(0x00) = 0;                       /* no buffer interrupts */
+  DMAB(0x01) &= 0x7C;                   /* off/select play register */
+
+  dma8_write_ptr(DMA+0x03,_fifo);         /* start address  */
+  dma8_write_ptr(DMA+0x0F,_fifo+FIFOMAX); /* end address */
+
+  DMAB(0x20) = 0x00;                     /* DAC to track #0, play 1 track*/
+  DMAB(0x21) = 0x40|(psc>>8);            /* 16-bit stereo + STe Hz */
+
+#if 0
+  /* Crossbar Source Controller */
+  DMAW(0x30) = 0
+    | ( (0x0) << 12 )                   /* disconnect A/D convertor */
+    | ( (0x0) <<  8 )                   /* xternal input */
+    | ( (0x0) <<  4 )                   /* DSP xmit */
+    | ( (0x0) <<  0 )                   /* DMA playback: On */
+    ;
+
+  /* Crossbar Destination Controller */
+  DMAW(0x32) = 0
+    | ( (0x0) << 12 )               /* disconnect D/A convertor */
+    | ( (0x0) <<  8 )               /* xternal output: DMA playback */
+    | ( (0x0) <<  4 )               /* DSP Record */
+    | ( (0x0) <<  0 )               /* DMA Record */
+    ;
+
+  DMAB(0x34) = psc;                     /* External clock divided */
+  DMAB(0x35) = psc;                     /* Internal Sync divider */
+#endif
+
+  leave_critical(ipl);
+  xbios_devconnect(0,8,0,(uint8_t)psc,1);
+
+#endif
+  return 0;
 }
 
 static int16_t pb_play(void)
@@ -356,15 +238,12 @@ static int16_t pb_play(void)
 
 static void pb_stop(void)
 {
-  dma_stop_playback();
-//  xbios_sndstatus(1);                   /* Reset */
+  dma_stop();
 }
 
-static void init_dma(int8_t psc)
+static void init_dma(uint16_t psc)
 {
-  dma_stop_playback();
-  dma_16bit_stereo();
-  xbios_devconnect(0,8,0,psc,1);
+  dma_setup(psc);
 }
 
 /* Unroll instrument loops (samples stay in u8 format).
@@ -428,13 +307,19 @@ static zz_err_t init_fal(core_t * const P, u32_t spr)
 
   /* STE      1      2      3
      00000, 49170, 32780, 24585,
-       4      5     (6)     7
+     4      5     (6)     7
      19668, 16390, 14049, 12292,
-      (8)     9     (10)   11
+     (8)     9     (10)   11
      10927,  9834,  8940,  8195,
   */
 
   switch (spr) {
+    /* STe compatible. */
+  case 50066:  M->psc = 3 << 8; break;
+  case 25033:  M->psc = 2 << 8; break;
+  case 12516:
+  case 12017:  M->psc = 1 << 8; break;
+
   case ZZ_LQ: M->psc = 11; /*  8195-Hz */ break;
   case ZZ_FQ: M->psc =  7; /* 12292-Hz */ break;
   case ZZ_MQ: M->psc =  4; /* 19668-Hz */ break;
@@ -447,12 +332,16 @@ static zz_err_t init_fal(core_t * const P, u32_t spr)
   dmsg("prescaler: %hu-hz -> prescaler[%hu]=%hu-hz\n",
        HU(spr), HU(M->psc), HU(prescalers[M->psc]));
 
-  zz_assert( prescalers[M->psc] );
+  zz_assert( M->psc );
+  zz_assert( M->psc >= 256 || prescalers[M->psc] );
 
-  P->spr = spr = prescalers[M->psc];
+  P->spr = spr = (uint8_t) M->psc
+    ? prescalers[(uint8_t) M->psc]
+    : 50066 >> (3^(M->psc>>8))
+    ;
   scale  = ( divu( refspr<<13, spr) + 1 ) >> 1;
 
-  if ( xbios_locksnd() != 1 ) {
+  if ( locksnd() ) {
     M = 0;
     ecode = E_MIX;
   } else {
@@ -474,7 +363,7 @@ static void free_fal(core_t * const P)
     if ( M ) {
       zz_assert( M == &g_fal );
       stop_ata(&M->ata);
-      xbios_unlocksnd();
+      unlocksnd();
     }
     P->data = 0;
   }
