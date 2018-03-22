@@ -314,20 +314,29 @@ static zz_err_t init_fal(core_t * const P, u32_t spr)
   */
 
   switch (spr) {
-    /* STe compatible. */
+    /* STe compatible modes. */
   case 50066:  M->psc = 3 << 8; break;
   case 25033:  M->psc = 2 << 8; break;
-  case 12516:
   case 12017:  M->psc = 1 << 8; break;
 
   case ZZ_LQ: M->psc = 11; /*  8195-Hz */ break;
   case ZZ_FQ: M->psc =  7; /* 12292-Hz */ break;
   case ZZ_MQ: M->psc =  4; /* 19668-Hz */ break;
   case ZZ_HQ: M->psc =  2; /* 32780-Hz */ break;
-  default:
+  default: {
+    const uint16_t maxspr = spr+(spr>>3), minspr = spr-(spr>>3);
     for (M->psc=11; M->psc>1; --M->psc)
-      if (prescalers[M->psc] >= spr-(spr>>3))
+      if (prescalers[M->psc] >= minspr) {
+        int16_t psc = M->psc;
+        while ( --psc > 1 ) {
+          if (!prescalers[psc]) continue;
+          if (prescalers[psc] <= maxspr)
+            M->psc = psc;
+          break;
+        }
         break;
+      }
+  }
   }
   dmsg("prescaler: %hu-hz -> prescaler[%hu]=%hu-hz\n",
        HU(spr), HU(M->psc), HU(prescalers[M->psc]));
