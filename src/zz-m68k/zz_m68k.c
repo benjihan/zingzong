@@ -8,6 +8,8 @@
 #include "../zz_private.h"
 #include "zz_m68k.h"
 
+#define AMIGA_DETECTION 0
+
 #ifndef mixer_STE
 #define mixer_STE mixer_ste_hub
 #endif
@@ -28,10 +30,10 @@ enum {
   SND_DSP_56K   = 8
 };
 
-/* Amiga DMACON register */
-#define DMACON (*(volatile uint16_t *)0xDFF096)
+#if AMIGA_DETECTION
 
-;  /* STe auto-detect mixer to use */
+/* Amiga DMACON register */
+#define DMACON (*(volatile uint16_t *)0xDFF096);
 
 static void __attribute__((interrupt)) bus_error(void)
 {
@@ -42,11 +44,13 @@ static void __attribute__((interrupt)) bus_error(void)
    * interrupt will exit with RTE restoring SR and PC
    */
   asm volatile (
-    "  move.l %d1,%a7  \n"
     "  move.w %d0,%sr  \n"
+    "  move.l %d1,%a7  \n"
     "  jmp    (%a0)    \n\t"
     );
 }
+
+#endif
 
 /* #pragma GCC diagnostic ignored "-Wmultichar" */
 
@@ -71,7 +75,10 @@ int isalpha(int c)
 static
 uint8_t guess_hardware(void)
 {
-  uint8_t id = MIXER_LAST, aga;
+  uint8_t id = MIXER_LAST;
+  uint8_t aga = 0;
+
+#if AMIGA_DETECTION
   volatile intptr_t bus_vector/* , adr_vector */;
 
   /* Save vectors & Install handlers*/
@@ -83,9 +90,12 @@ uint8_t guess_hardware(void)
    * - Save SR,SP,PC in d0,d1,a0
    * - Access Amiga Hardware -> BUS error or not
    * - Set flag (only if no BUS error)
+   *
+   * GB: Does not work with all Atari machine configuration. Sometime
+   *     it's possible for $dff096 to be in valid memory range
+   *     (e.g. Falcon 14MB)
    */
   asm volatile (
-    "  sf.b   %[flag]    \n"
     "  move.w %%sr,%%d0  \n"
     "  move.l %%a7,%%d1  \n"
     "  lea    1f,%%a0    \n"
@@ -98,6 +108,7 @@ uint8_t guess_hardware(void)
 
   /* Restore vectors */
   2[(volatile uint32_t *)0] = bus_vector;
+#endif
 
   if (aga)
     id = MIXER_AGA;

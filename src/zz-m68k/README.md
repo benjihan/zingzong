@@ -60,13 +60,13 @@
  for one of zingzong-m68k internal driver as described in the table
  below.
 
- |  Value |           Driver         |             Remarks           |
- |--------|--------------------------|-------------------------------|
- |   `0`  |  Auto detect             | Amiga 1st then "_SND" cookie. |
- |   `1`  |  Amiga/Paula             | Must be loaded in chipmem.    |
- |   `2`  |  STf (PSG+Timer-A)       | System friendly (hopefully).  |
- |   `3`  |  STe (8bit DMA)          | Support mono and stereo       |
- |   `4`  |  Falcon (2x16bit-DMA)    | CPU only. Blended stereo.     |
+ |  Value |           Driver         |             Remarks            |
+ |--------|--------------------------|--------------------------------|
+ |   `0`  |  Auto detect             | Use "_SND" cookie (Atari only) |
+ |   `1`  |  Amiga/Paula             | Must be loaded in chipmem.     |
+ |   `2`  |  STf (PSG+Timer-A)       | System friendly (hopefully).   |
+ |   `3`  |  STe (8-bit DMA)         | Support mono and stereo        |
+ |   `4`  |  Falcon (2x16-bit-DMA)   | CPU only. Blended stereo.      |
 
 #### Sampling rate (long spr)
 
