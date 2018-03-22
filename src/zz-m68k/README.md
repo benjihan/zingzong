@@ -12,42 +12,42 @@
 
 ### zingzong.bin stub
 
-    +$00|  bra.w  zingzong_init  ;; Initialize player and song
-    +$04|  bra.w  zingzong_kill  ;; Stop player
-    +$08|  bra.w  zingzong_play  ;; Run at tick rate (usually 200hz)
-    +$0c|  bra.w  zingzong_mute  ;; Get/Set muted/ignored channels
-    +$10|  bra.w  zingzong_cmap  ;; Get/Set channel mapping and blending
-    +$14|  bra.w  zingzong_vers  ;; Get version string
-    +$18|  bra.w  zingzong_stat  ;; Get current status (0=OK)
-    +$1c|  bra.w  zingzong_samp  ;; Get effective sampling rate
-    +$20|  bra.w  zingzong_driv  ;; Get internal dri_t struct
-    +$24|  bra.w  zingzong_core  ;; Get internal core_t struct
+	+$00|  bra.w  zingzong_init  ;; Initialize player and song
+	+$04|  bra.w  zingzong_kill  ;; Stop player
+	+$08|  bra.w  zingzong_play  ;; Run at tick rate (usually 200hz)
+	+$0c|  bra.w  zingzong_mute  ;; Get/Set muted/ignored channels
+	+$10|  bra.w  zingzong_cmap  ;; Get/Set channel mapping and blending
+	+$14|  bra.w  zingzong_vers  ;; Get version string
+	+$18|  bra.w  zingzong_stat  ;; Get current status (0=OK)
+	+$1c|  bra.w  zingzong_samp  ;; Get effective sampling rate
+	+$20|  bra.w  zingzong_driv  ;; Get internal dri_t struct
+	+$24|  bra.w  zingzong_core  ;; Get internal core_t struct
 
 
 ### Prototypes
 
-    typedef struct {
-        byte * ptr;   /* pointer to file data (if 0 use bin_t::dat[]) */
-        long   max;   /* maximum size available in the buffer */
-        long   len;   /* actual file size */
-        byte   dat[]; /* optional data buffer */
-    } bin_t;
+	typedef struct {
+		byte * ptr;   /* pointer to file data (if 0 use bin_t::dat[]) */
+		long   max;   /* maximum size available in the buffer */
+		long   len;   /* actual file size */
+		byte   dat[]; /* optional data buffer */
+	} bin_t;
 
-    long  zingzong_init(bin_t * song, bin_t * vset, long dri, long spr);
-    void  zingzong_kill(void);
-    void  zingzong_play(void);
-    byte  zingzong_mute(byte clr, byte set);
-    long  zingzong_cmap(byte map, word lr8);
-    char* zingzong_vers(void);
-    byte  zingzong_stat(void);
-    long  zingzong_samp(void);
-    void* zingzong_driv(void);
-    void* zingzong_core(void);
+	long  zingzong_init(bin_t * song, bin_t * vset, long dri, long spr);
+	void  zingzong_kill(void);
+	void  zingzong_play(void);
+	byte  zingzong_mute(byte clr, byte set);
+	long  zingzong_cmap(byte map, word lr8);
+	char* zingzong_vers(void);
+	byte  zingzong_stat(void);
+	long  zingzong_samp(void);
+	void* zingzong_driv(void);
+	void* zingzong_core(void);
 
 
 ### Detailed information
 
-    long  zingzong_init(bin_t * song, bin_t * vset, long dri, long spr);
+	long  zingzong_init(bin_t * song, bin_t * vset, long dri, long spr);
 
 #### Return value
 
@@ -100,23 +100,30 @@
  The STe driver comes with 3 distinct flavors. The flavor is selected
  during the init (`zingzong_init()`) depending on the left/right
  blending factor (see zingzong_cmap()')
- 
+
  |   `lr8`   | STe driver flavor               |
  |-----------|---------------------------------|
  |   `128`   | Mono with boosted dynamic range |
  | `0`/`256` | Stereo with full separation     |
  |  Others   | Blended Stereo (default)        |
- 
+
 
  * Falcon / DMA-16bit driver
 
- The current driver does not use the extra sampling rate available to
- the Falcon. Plus the falcon does not have a 6.2Khz mode. The ZZ_LQ
- mode fallback to 12.5khz.
+ The Falcon driver is always playing in 16-bit stereo mode with CPU
+ mixing. It fully supports channel mapping and blending.
+
+ |   Rate   | Remark  |   Rate   | Remark  |   Rate   | Remark  |
+ |----------|---------|----------|---------|----------|---------|
+ |  8195 hz | `ZZ_LQ` |  9834 hz |         | 12292 hz | `ZZ_FQ` |
+ | 12517 hz | STe     | 16390 hz |         | 19668 hz |         |
+ | 24585 hz | `ZZ_MQ` | 25033 hz | STe     | 32780 hz | `ZZ_HQ` |
+ | 49170 hz |         | 50066 hz | STe     |          |         |
+
 
 --------------------------------------------------------------------------
 
-    byte  zingzong_mute(byte clr, byte set);
+	byte  zingzong_mute(byte clr, byte set);
 
   * bits `#4-7` represent muted channels A to D respectively.
   * bits `#0-3` represent ignored channels A to D respectively.
@@ -140,14 +147,14 @@ control byte.
 
 #### Examples
 
-     zingzong_mute(0,0);      /* Read the current status */
-     zingzong_mute(15,0);     /* Ignore all */
-     zingzong_mute(0,255);    /* Play all */
-     zingzong_mute(255,val);  /* Set the status to `val` */
+	 zingzong_mute(0,0);      /* Read the current status */
+	 zingzong_mute(15,0);     /* Ignore all */
+	 zingzong_mute(0,255);    /* Play all */
+	 zingzong_mute(255,val);  /* Set the status to `val` */
 
 --------------------------------------------------------------------------
 
-    long  zingzong_cmap(byte map, word lr8);
+	long  zingzong_cmap(byte map, word lr8);
 
 #### Return value
 
@@ -198,7 +205,7 @@ parameter unchanged)
   * The channel mapping/blending only makes sens for stereo drivers.
   * Mapping should be supported by all stereo drivers.
   * Blending might not be fully supported by stereo drivers. However
-    reversing the mapping using blending should always be supported.
+	reversing the mapping using blending should always be supported.
 
 --------------------------------------------------------------------------
 

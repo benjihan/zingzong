@@ -56,18 +56,18 @@ static uint16_t  Tmix_lr8;              /* Tmix current setup */
 ZZ_EXTERN_C
 void fast_fal(spl_t * Tmix, spl_t * dest, mix_fast_t * voices, int32_t n);
 
-/* Falcon prescalers (unused ATM)
+/* Falcon sampling rates:
  *
- * Hz = CLK(25.175MHZ/256/(prescaler+1)
- *
+ * Hz = CLK(25.175MHZ/256/(psc+1)
+ * or STE compatible Hz = 50066 >> (3-(psc>>8))
  */
-static uint16_t prescalers[12] = {
-  /*STE      1      2      3 */
-  00000, 49170, 32780, 24585,
-  /*  4      5      6      7 */
-  19668, 16390,     0, 12292,
-  /*  8      9     10     11 */
-  0,  9834,     0,  8195,
+static const struct {
+  uint16_t spr, psc;
+} prescalers[] = {
+  {  8195, 0x00B }, {  9834, 0x009 }, { 12292, 0x007 },
+  { 12517, 0x100 }, { 16390, 0x005 }, { 19668, 0x004 },
+  { 24585, 0x003 }, { 25033, 0x200 }, { 32780, 0x002 },
+  { 49170, 0x001 }, { 50066, 0x300 },
 };
 
 /*
@@ -305,49 +305,28 @@ static zz_err_t init_fal(core_t * const P, u32_t spr)
   if (spr == 0)
     spr = refspr;
 
-  /* STE      1      2      3
-     00000, 49170, 32780, 24585,
-     4      5     (6)     7
-     19668, 16390, 14049, 12292,
-     (8)     9     (10)   11
-     10927,  9834,  8940,  8195,
-  */
-
   switch (spr) {
-    /* STe compatible modes. */
-  case 50066:  M->psc = 3 << 8; break;
-  case 25033:  M->psc = 2 << 8; break;
-  case 12017:  M->psc = 1 << 8; break;
-
-  case ZZ_LQ: M->psc = 11; /*  8195-Hz */ break;
-  case ZZ_FQ: M->psc =  7; /* 12292-Hz */ break;
-  case ZZ_MQ: M->psc =  4; /* 19668-Hz */ break;
-  case ZZ_HQ: M->psc =  2; /* 32780-Hz */ break;
-  default: {
-    const uint16_t maxspr = spr+(spr>>3), minspr = spr-(spr>>3);
-    for (M->psc=11; M->psc>1; --M->psc)
-      if (prescalers[M->psc] >= minspr) {
-        int16_t psc = M->psc;
-        while ( --psc > 1 ) {
-          if (!prescalers[psc]) continue;
-          if (prescalers[psc] <= maxspr)
-            M->psc = psc;
-          break;
-        }
-        break;
-      }
+  case ZZ_LQ: spr =  8195; break;
+  case ZZ_FQ: spr = 12292; break;
+  case ZZ_MQ: spr = 24585; break;
+  case ZZ_HQ: spr = 32780; break;
   }
+
+  if (1) {
+    const int16_t maxi = sizeof(prescalers) / sizeof(*prescalers) - 1;
+    const uint16_t sprmax = spr+(spr>>3), sprmin = spr-(spr>>3);
+    int16_t i;
+
+    for ( i=0; i<maxi; ++i ) {
+      if ( prescalers[i].spr == spr ) break;
+      if ( prescalers[i].spr < sprmin ) continue;
+      i += ( prescalers[i+1].spr <= sprmax );
+      break;
+    }
+    M->psc = prescalers[i].psc;
+    P->spr = spr = prescalers[i].spr;
   }
-  dmsg("prescaler: %hu-hz -> prescaler[%hu]=%hu-hz\n",
-       HU(spr), HU(M->psc), HU(prescalers[M->psc]));
 
-  zz_assert( M->psc );
-  zz_assert( M->psc >= 256 || prescalers[M->psc] );
-
-  P->spr = spr = (uint8_t) M->psc
-    ? prescalers[(uint8_t) M->psc]
-    : 50066 >> (3^(M->psc>>8))
-    ;
   scale  = ( divu( refspr<<13, spr) + 1 ) >> 1;
 
   if ( ! locksnd() ) {
