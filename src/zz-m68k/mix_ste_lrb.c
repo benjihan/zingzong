@@ -169,7 +169,7 @@ init_ste_lrb(core_t * const P, u32_t spr)
       spr = ZZ_LQ;
     else if (spr < 14000)
       spr = ZZ_FQ;
-    else if (spr < 28000)
+    else if (spr < 35000)
       spr = ZZ_MQ;
     else
       spr = ZZ_HQ;
@@ -178,7 +178,7 @@ init_ste_lrb(core_t * const P, u32_t spr)
   switch (spr) {
   case ZZ_LQ: spr =  6258; M->dma = 0; break;
   case ZZ_FQ: spr = 12517; M->dma = 1; break;
-  case ZZ_HQ: spr = 50066; M->dma = 3; break;
+  case ZZ_HQ: /* spr = 50066; M->dma = 3; break; */
   default:    spr = 25033; M->dma = 2; break;
   }
 

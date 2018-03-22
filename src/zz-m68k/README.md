@@ -91,8 +91,9 @@
  |---------|----------|-----------------------|
  | `ZZ_FQ` | 12517 hz | 7000-13999            |
  | `ZZ_LQ` |  6258 hz | < 7000                |
- | `ZZ_MQ` | 25033 hz | 14000-27999           |
- | `ZZ_HQ` | 50066 hz | >=28000               |
+ | `ZZ_MQ` | 25033 hz | 14000-34999           |
+ | `ZZ_HQ` | 25033 hz | 14000-34999           |
+ |         | 50066 hz | >=35000               |
 
  Keep in mind that the 8mhz CPU is not enough to use the 50khz
  sampling rate.
