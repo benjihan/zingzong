@@ -9,9 +9,9 @@
 #include "zz_private.h"
 #include <ctype.h>
 
-/* An extension of qts file. */
+/* An extension of qts file + my own extension. */
 static int is_valid_tck(const uint16_t tck) {
-  return tck == 0 || (tck >= RATE_MIN && tck <= RATE_MAX);
+  return !tck || (tck >= RATE_MIN && tck <= RATE_MAX);
 }
 
 /* {4..20} as defined as by the original replay routine. */
@@ -64,14 +64,14 @@ song_init_header(song_t * song, const void *_hd)
        HU(song->rate), HU(song->khz),
        HU(song->barm), HU(song->tempo), HU(song->sigm), HU(song->sigd));
 
-  ecode = E_SNG & -!( is_valid_tck(tck) &&
-                      is_valid_khz(khz) &&
-                      is_valid_bar(bar) &&
-                      is_valid_spd(spd) &&
+  ecode = E_SNG & -!( is_valid_tck(song->rate)  &&
+                      is_valid_khz(song->khz)   &&
+                      is_valid_bar(song->barm)  &&
+                      is_valid_spd(song->tempo) &&
                       is_valid_sig(song->sigm,song->sigd) );
   if (ecode != E_OK)
     emsg("invalid song header\n");
-  return ecode;
+   return ecode;
 }
 
 static inline
@@ -142,7 +142,7 @@ song_init(song_t * song)
        k<4 && off<size;
        off += 12)
   {
-    sequ_t *       seq = (sequ_t *)(song->bin->ptr+off-11);
+    sequ_t * const seq = (sequ_t *)(song->bin->ptr+off-11);
     u16_t    const cmd = U16(seq->cmd);
     u16_t    const len = U16(seq->len);
     u32_t    const stp = U32(seq->stp);

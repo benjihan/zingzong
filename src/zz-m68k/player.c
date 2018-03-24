@@ -22,12 +22,12 @@ mixer_t *zz_mixer_get(zz_u8_t * const);
 typedef struct m68kplay m68k_t;
 
 struct m68kplay {
-  core_t   core;
-  uint16_t ppt;
-  zz_u8_t  dri;
-  /* mixer_t *mix; */
-  void    *set;
   volatile int8_t ready;
+  zz_u8_t  dri;
+  void    *set;
+  uint16_t ppt;
+  uint16_t rate;
+  core_t   core;
 };
 
 ZZ_STATIC m68k_t play;
@@ -97,6 +97,21 @@ long player_blend(uint8_t cmap, uint16_t blend)
   return zz_core_blend(play.ready ? &play.core : 0, cmap, blend);
 }
 
+long player_rate(uint16_t rate)
+{
+  if (rate) {
+    if (rate < RATE_MIN)
+      rate = RATE_MIN;
+    else if (rate > RATE_MAX)
+      rate = RATE_MAX;
+    play.rate = rate;
+    play.ppt  = divu(play.core.spr+(rate>>1),rate);
+    dmsg("rate:%huhz spr:%luhz ppt:%hu\n",
+         HU(rate), LU(play.core.spr), HU(play.ppt));
+  }
+  return play.rate;
+}
+
 long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
 {
   mixer_t * mixer = 0;
@@ -152,13 +167,16 @@ long player_init(bin_t * song, bin_t * vset, uint32_t dri, uint32_t spr)
   err = err
     || zz_core_init(&play.core, mixer, spr)
     ;
-
   zz_assert( ! play.core.code );
-  play.ppt = divu(play.core.spr+199,200);
 
-  dmsg("init: mixer#%hu:%s code=%hx ppt=%hu spr:%hu\n",
+  if (!play.rate)
+    play.rate = 200;
+  player_rate(play.core.song.rate ? play.core.song.rate : play.rate);
+
+  dmsg("init: mixer#%hu:%s code:%hx tic:%hu ppt:%hu spr:%hu\n",
        HU(dri),play.core.mixer->name,
-       HU(play.core.code), HU(play.ppt), HU(play.core.spr));
+       HU(play.core.code),
+       HU(play.rate), HU(play.ppt), HU(play.core.spr));
 
   zz_assert( ! play.core.code );
   zz_assert( ! err );
@@ -172,8 +190,9 @@ void player_play(void)
   if (play.ready) {
     i16_t ret = zz_core_play(&play.core, (void*)-1, play.ppt);
     play.ready = ret > 0;
-    dmsg("tick#%lu / pcm:%hi / code:%hu\n",
-         LU(play.core.tick), HI(ret), HU(play.core.code));
+    if (!play.ready)
+      dmsg("tick#%lu / pcm:%hi / code:%hu\n",
+           LU(play.core.tick), HI(ret), HU(play.core.code));
     zz_assert( ret == play.ppt );
     zz_assert( !play.core.code );
   }

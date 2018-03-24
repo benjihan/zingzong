@@ -21,7 +21,8 @@
 	+$18|  bra.w  zingzong_stat  ;; Get current status (0=OK)
 	+$1c|  bra.w  zingzong_samp  ;; Get effective sampling rate
 	+$20|  bra.w  zingzong_driv  ;; Get internal dri_t struct
-	+$24|  bra.w  zingzong_core  ;; Get internal core_t struct
+	+$24|  bra.w  zingzong_rate  ;; Get/Set player tick rate
+	+$28|  bra.w  zingzong_core  ;; Get internal core_t struct
 
 
 ### Prototypes
@@ -42,6 +43,7 @@
 	byte  zingzong_stat(void);
 	long  zingzong_samp(void);
 	void* zingzong_driv(void);
+	long  zingzong_rate(word rate);
 	void* zingzong_core(void);
 
 

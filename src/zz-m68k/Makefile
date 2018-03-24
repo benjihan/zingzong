@@ -315,7 +315,7 @@ song.dep: $(SONGFILE) $(VSETFILE)
 
 %.sc68: %_sc68.s test.bin
 	$(call M,ASM,$@)
-	$(VASMBIN) $@ $<
+	$(VASMBIN) $@ $< -DRATE=$(or $(RATE),200)
 
 %.sndh: %_sndh.s zingzong.bin zingzong.sym song_dat
 	$(call M,ASM,$@)

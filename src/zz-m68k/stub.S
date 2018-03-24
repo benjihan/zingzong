@@ -21,6 +21,7 @@ zingzong_vers:	bra.w	zz_core_version	// -> d0.l: version string
 zingzong_stat:	bra.w	player_status	// -> d0.l: error-code (0=OK)
 zingzong_samp:	bra.w	player_sampling // -> d0.l: sampling rate (in hz)
 zingzong_driv:	bra.w	player_driver	// -> d0.l: driver (mixer_t *)
+zingzong_rate:	bra.w   player_rate	// -> d0.l: song tick rate
 zingzong_core:	bra.w	player_core	// -> d0.l: internal zz_core_t
 
 	.global zingzong
@@ -33,4 +34,5 @@ zingzong_core:	bra.w	player_core	// -> d0.l: internal zz_core_t
 	.global zingzong_stat
 	.global zingzong_samp
 	.global zingzong_driv
+	.global zingzong_rate
 	.global zingzong_core

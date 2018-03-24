@@ -419,30 +419,53 @@ static inline u32_t always_inline c_divu32(u32_t n, u16_t d)
 
 #endif /* __m68k__ */
 
-/* GB: could probably use httons(). */
+/* Peek/Poke Motorola bigendian word and longword. */
+
 #ifndef U16
-# if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-static inline u16_t host_u16(const uint8_t * const v)
+static inline u16_t always_inline host_u16(const uint8_t * const v)
 { return *(const uint16_t *)v; }
+static inline u16_t always_inline byte_u16(const uint8_t * const v)
+{ return ((u16_t)v[0]<<8) | v[1]; }
+# if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 #  define U16(v) host_u16((v))
 # else
-static inline u16_t byte_u16(const uint8_t * const v) {
-  return ((u16_t)v[0]<<8) | v[1];
-}
 #  define U16(v) byte_u16((v))
 # endif
 #endif
 
-/* GB: could probably use httonl(). */
 #ifndef U32
-# if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-static inline u32_t host_u32(const uint8_t * const v)
+static inline u32_t always_inline host_u32(const uint8_t * const v)
 { return *(const uint32_t *)v; }
+static inline u32_t always_inline byte_u32(const uint8_t * const v)
+{ return ((u32_t)U16(v)<<16) | U16(v+2); }
+# if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 #  define U32(v) host_u32((v))
 # else
-static inline u32_t byte_u32(const u8_t * const v)
-{ return ((u32_t)U16(v)<<16) | U16(v+2); }
 #  define U32(v) byte_u32((v))
+# endif
+#endif
+
+#ifndef SET_U16
+static inline void always_inline poke_u16(uint8_t * const a, u16_t v)
+{ *(uint16_t *)a = v; }
+static inline void always_inline poke_b16(uint8_t * const a, u16_t v)
+{ a[0] = v>>8; a[1] = v; }
+# if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#  define SET_U16(a,v) poke_u16((a),(v))
+# else
+#  define SET_U16(a,v) poke_b16((a),(v))
+# endif
+#endif
+
+#ifndef SET_U32
+static inline void always_inline poke_u32(uint8_t * const a, u32_t v)
+{ *(uint32_t *)a = v; }
+static inline void always_inline poke_b32(uint8_t * const a, u32_t v)
+{ a[0] = v>>24; a[1] = v>>16; a[2] = v>>8; a[3] = v; }
+# if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#  define SET_U32(a,v) poke_u32((a),(v))
+# else
+#  define SET_U32(a,v) poke_b32((a),(v))
 # endif
 #endif
 

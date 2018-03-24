@@ -2,7 +2,7 @@
 #
 # ----------------------------------------------------------------------
 #
-# GNU/Makefile for zinzong - library and cli
+# GNU/Makefile for zinzong - cli
 #
 # by Benjamin Gerard AKA Ben/OVR
 #
@@ -259,10 +259,6 @@ include $(topdir)/src/make.dist
 #  Install / Uninstall
 # ----------------------------------------------------------------------
 
-ifndef bin_targets
-bin_targets = $(targets)
-endif
-
 ifndef prefix
 PREFIX = $(error 'prefix' must be set to install)
 else
@@ -282,51 +278,56 @@ libdir   = $(exec_dir)/lib
 mandir  = $(DATADIR)/man
 man1dir = $(mandir)/man1
 man1ext = .1
-docdir  = $(DATADIR)/$(PACKAGE)-$(VERSION)
-INSTALL = install $(INSTALL_OPT)
+docdir  = $(DATADIR)/doc/$(PACKAGE)-$(VERSION)
+INSTALL = install $(INSTALL_OPT) -t "$(install_dir)"
 
-INSTALL_EXEC   = \
-mkdir -p -- "$(DESTDIR)$(1)" && \
-$(INSTALL) -t "$(DESTDIR)$(1)" $(foreach f,$(2),"$(f)")
-UNINSTALL_EXEC = rm -f -- $(foreach f,$(2),"$(DESTDIR)$(1)/$(f)")
-INSTALL_MAN    = \
-mkdir -p -- "$(DESTDIR)$(1)" && \
-sed -e 's/@VERSION@/$(VERSION)/' "$(2)"\
- >"$(DESTDIR)$(1)/$(patsubst %.1,%,$(notdir $2))$(man1ext)"
+install_dir = $(error install_dir must be defined)
+INSTALL_OPT = -m644
 
-INSTALL_DOC    = \
-mkdir -p -- "$(DESTDIR)$(1)" && \
-$(INSTALL) -t "$(DESTDIR)$(1)" $(foreach f,$(2),"$(f)")
+bin_targets = $(targets)
+doc_targets = $(topdir)/README.md
+man_targets = $(srcdir)/man/zingzong.1
 
-install-strip: INSTALL_OPT = --strip-program=$(STRIP) -s
+install-strip: INSTALL_STRIP = --strip-program=$(STRIP) -s
 install-strip: install
+
 install: install-exec install-data 
 	@echo "$(PACKAGE) $(VERSION) should be installed"
 
-install-exec: $(bin_targets)
-	@$(call INSTALL_EXEC,$(bindir),$^)
+install-bin uninstall-bin: install_dir = $(DESTDIR)$(bindir)
+install-bin: INSTALL_OPT = -m755 $(INSTALL_STRIP)
+install-bin: $(bin_targets)
+	@mkdir -p -- "$(install_dir)"
+	$(INSTALL) $^
 
+install-exec uninstall-exec: install-bin
 install-data: install-man install-doc
 
-install-man: $(srcdir)/man/zingzong.1
-	@$(call INSTALL_MAN,$(man1dir),$<)
+install-man uninstall-man: install_dir = $(DESTDIR)$(man1dir)
+install-doc uninstall-doc: install_dir = $(DESTDIR)$(docdir)
 
-install-doc: INSTALL_OPT = --mode=644
-install-doc: $(topdir)/README.md
-	@$(call INSTALL_DOC,$(docdir),$<)
+install-man: $(man_targets)
+	@mkdir -p -- "$(install_dir)"
+	$(foreach F,$^,	sed -e 's/@VERSION@/$(VERSION)/' "$(F)" \
+	>"$(install_dir)/$(notdir $(F))")
+
+install-doc: $(doc_targets)
+	@mkdir -p -- "$(install_dir)"
+	$(INSTALL) $< 
 
 .PHONY: install-strip install install-exec
 .PHONY: install-data install-man install-doc
 
-uninstall-exec:
-	@$(call UNINSTALL_EXEC,$(bindir),$(bin_targets))
+# ----------------------------------------------------------------------
 
+uninstall-exec: uninstall-bin
 uninstall-data: uninstall-man uninstall-doc
-uninstall-man: ; @rm -f -- $(DESTDIR)$(man1dir)/zingzong$(man1ext)
-uninstall-doc: ; @rm -f -- $(DESTDIR)$(docdir)/README.md
+uninstall-bin: ; @cd "$(install_dir)" && rm -f -- $(notdir $(bin_targets))
+uninstall-man: ; @cd "$(install_dir)" && rm -f -- $(notdir $(man_targets))
+uninstall-doc: ; @rm -rf -- $(install_dir)
 
 uninstall: uninstall-exec uninstall-data
-	@echo "$(PACKAGE) $(VERSION) should be uninstalled"
+	@echo "$(PACKAGE) $(VERSION) should have been uninstalled"
 
 .PHONY: uninstall uninstall-exec uninstall-data uninstall-man uninstall-doc
 
