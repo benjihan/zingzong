@@ -18,8 +18,12 @@ else
     else
 	which git >/dev/null
 	tagname=$(git tag -l 'v[0-9]*' --sort=-v:refname | head -n1)
-	test "x$tagname" != x
-	tweaks=$(git rev-list --count HEAD ^$tagname)
+	if [ "$tagname" ]; then
+	    tweaks=$(git rev-list --count HEAD ^${tagname})
+	else
+	    tweaks=$(git rev-list --count HEAD)
+	    tagname='v0.0'
+	fi
 	if [ "${tweaks}" = 0 ]; then
 	    tweaks=''
 	else
