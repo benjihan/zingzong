@@ -134,9 +134,9 @@
  If a bit is set the corresponding channel is muted or ignored.
 
  Muted channels are not sent to the mixer. More exactly they are
- forced into stopped state. Muted channels still have the command
- sequence parsed normally and may for instance generate an error. In
- the contrary ignored channels that are completely bypassed.
+ forced into a stopped state. Muted channels still have their command
+ sequence parsed normally and may for instance generate an
+ error. Ignored channels are completely bypassed.
 
 #### Parameters
 
