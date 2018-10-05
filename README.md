@@ -8,7 +8,7 @@ computers. It features a 4 digital channel sample sequencer and DSP
 software rather rare at this time. It has been programmed by *Illusions
 Programmers* Rob Povey and Kevin Cowtan.
 
-You can find some more info and resource about Quartet at
+You can find some more info and resources about Quartet at
 [Amiga Source Preservation](https://amigasourcepres.gitlab.io/page/q/quartet/)
 
 

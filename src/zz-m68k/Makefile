@@ -1,4 +1,4 @@
-#! /usr/bin/make -f 
+#! /usr/bin/make -f
 #
 # ----------------------------------------------------------------------
 #
@@ -39,7 +39,8 @@ endif
 #  Tools
 # ----------------------------------------------------------------------
 
-CC      = m68k-sc68-elf-gcc	# GB: any m68k-elf gcc should do
+# GB: any m68k elf capable  gcc should do
+CC      = m68k-sc68-elf-gcc
 AS      = $(CC:gcc=as)
 LD      = $(CC:gcc=ld)
 NM      = $(CC:gcc=nm)
@@ -157,6 +158,23 @@ ASFLAGS  = $(call comma-list,-Wa $(zz_ASFLAGS))
 
 all: $(targets)
 .PHONY: all
+
+define more-help
+	$(call Mline)
+	$(call Minfo, test-tos,         Build TOS test programs)
+	$(call Minfo, zingzong player,  Build binary player)
+	$(call Minfo, drivers,          Build drivers)
+	$(call Minfo, bindist,          Build distrib zip archive)
+endef
+
+define more-tools
+	$(call Mline)
+	$(call Mtool,VASMMOT, Devpac-like assembler)
+	$(call Mtool,AS,      Assembler)
+	$(call Mtool,OBJCOPY, Binary transform tool)
+	$(call Mtool,NM,      List symbols)
+endef
+
 
 zz_core.o: override CPPFLAGS += $(PACKAGE_CPPFLAGS)
 zz_fast.o: JUMP_TABLE = jump-tables
@@ -325,8 +343,8 @@ song.dep: $(SONGFILE) $(VSETFILE)
 #  TOS test files
 # ----------------------------------------------------------------------
 
-test_tos: $(patsubst %,test_%.tos,def stf ste fal)
-PHONY: test_tos
+test-tos: $(patsubst %,test_%.tos,def stf ste fal)
+PHONY: test-tos
 
 TOS_FLAGS = -DMID=$(MID) -DZZSYMB=1
 ifdef SPR
@@ -373,8 +391,10 @@ test_%.tos: test_tos.s zingzong.bin zingzong.sym song_dat
 #  Includes
 # ----------------------------------------------------------------------
 
+include $(topdir)/src/make.info
 include $(topdir)/src/make.clean
 include $(topdir)/src/make.depend
+
 ifdef MAKERULES
 include $(MAKERULES)
 endif

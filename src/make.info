@@ -1,0 +1,52 @@
+# -*- makefile-gmake -*-
+#
+# ----------------------------------------------------------------------
+# @file    make.info
+# @author  Benjamin Gerard AKA Ben/OVR
+# @date    2017-08-27
+# @brief   Print help and info
+# ----------------------------------------------------------------------
+#
+
+ignore_dep += info tools help
+
+Mtool =@printf '%21s %-10s %14s "%s"\n' \
+ '$(strip $2)' '[$(strip $1)]' '($(origin $(strip $1)))' \
+ '$(strip $($(strip $1)))'
+
+Mvar  = @printf '%21s %-10s %14s Variable\n' '$(strip $2)' \
+ '[$(strip $1)]' '($(origin $(strip $1)))'
+
+Minfo = @printf '%16s : %s\n' '$(strip $1)' '$(strip $2)'
+Mline = @echo
+Mbox  = @t='$(strip $1)'; printf '\n%s\n%s\n%s\n\n' \
+ " +-$${t//?/-}-+" " | $$t |" " +-$${t//?/-}-+"
+
+tools:;	$(call Mbox,  Tools for $(PACKAGE) $(VERSION))
+	$(call Mtool, topdir,   Top source directory)
+	$(call Mtool, srcdir,   Source directory)
+	$(call Mline)
+	$(call Mtool, CC,       C compiler)
+	$(call Mtool, LD,       Linker)
+	$(call Mline)
+	$(call Mvar,  CFLAGS,   C compiler flags)
+	$(call Mvar,  CPPFLAGS, C preprocessor flags)
+	$(call Mvar,  LDFLAGS,  Linker flags)
+	$(call Mline)
+	$(call Mvar,  NODEPS,   Ignore dependencies)
+	$(call Mvar,  DEBUG,    Debug build)
+	$(call Mvar,  V,        Verbose build)
+	$(more-tools)
+
+help:;	$(call Mbox,  Help for $(PACKAGE) $(VERSION))
+	$(call Minfo, help info, Print this message)
+	$(call Minfo, tools,     Print build info *TRY THAT*)
+	$(call Mline)
+	$(call Minfo, all,       Default target)
+	$(call Minfo, clean,     Clean build dir)
+	$(call Minfo, depend,    Prebuild dependencies)
+	$(more-help)
+
+info: help
+
+.PHONY: info help tools

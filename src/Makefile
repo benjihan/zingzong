@@ -236,16 +236,15 @@ clean_files += $(zz_lib) $(zz_exe)
 
 dist_top_lst = LICENSE README.md vcversion.sh
 dist_src_lst = README.md Makefile $(sources) zz_fast.c $(headers)	\
-make.clean make.depend make.dist
+make.clean make.depend make.dist make.info
 dist_rsc_lst = zingzong.rc resource.h zingzong.ico
 dist_amp_lst = README.md Makefile dialogs.c in_zingzong.c	\
 in_zingzong.h in_zingzong.nsi
 dist_68k_lst = README.md Makefile mksymb m68k_mem.S m68k_mix.S		\
 m68k_muldiv.h mix_aga.c mix_ata.c mix_ata.h mix_fal.c mix_ste_dnr.c	\
-mix_ste_hub.c mix_ste_lrb.c mix_ste_s7s.c mix_stf.c mix_test.c		\
-player.c sc68.x sc68_debug.h sc68_start.S song.S stub.S test_sc68.s	\
-test_sndh.s test_tos.s vset.S ym10_pack.h zz_m68k.c zz_m68k.h		\
-zz_tos.h zingzong.x
+mix_ste_hub.c mix_ste_lrb.c mix_ste_s7s.c mix_stf.c player.c sc68.x	\
+sc68_debug.h sc68_start.S song.S stub.S test_sc68.s test_sndh.s		\
+test_tos.s vset.S ym10_pack.h zz_m68k.c zz_m68k.h zz_tos.h zingzong.x
 
 dist_lst = $(sort \
  $(addprefix ./,$(dist_top_lst)) \
@@ -332,12 +331,27 @@ uninstall: uninstall-exec uninstall-data
 
 .PHONY: uninstall uninstall-exec uninstall-data uninstall-man uninstall-doc
 
+define more-tools
+endef
+
+define more-help
+	$(call Mline)
+	$(call Minfo,install, Install all)
+	$(call Minfo,install-strip, Install and strip programs)
+	$(call Minfo,uninstall, Uninstall all)
+	$(call Mline)
+	$(call Minfo,distrib, Make distribution archive)
+	$(call Minfo,distcheck, Make distribution archive and test it)
+endef
+
 # ----------------------------------------------------------------------
 #  Includes
 # ----------------------------------------------------------------------
 
+include $(topdir)/src/make.info
 include $(topdir)/src/make.clean
 include $(topdir)/src/make.depend
+
 ifdef MAKERULES
 include $(MAKERULES)
 endif
