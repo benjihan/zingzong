@@ -117,14 +117,15 @@ uint8_t guess_hardware(void)
     uint8_t snd = SND_YM2149;
 
     _SND = 0;
-    while (cookie = *jar++, cookie) {
-      uint32_t value = *jar++;
-      if (cookie == FCC('_','S','N','D')/* '_SND' */) {
-        snd = value;
-        _SND = value;
-        break;
+    if (jar)
+      while (cookie = *jar++, cookie) {
+        uint32_t value = *jar++;
+        if (cookie == FCC('_','S','N','D')/* '_SND' */) {
+          snd = value;
+          _SND = value;
+          break;
+        }
       }
-    }
 
     /* Ignoring DSP for now, hopefully we'll add a nice DSP mixer
      * later. */
