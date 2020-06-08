@@ -1,6 +1,6 @@
 /**
  * @file   zingzong.c
- * @data   2017-06-06
+ * @date   2017-06-06
  * @author Benjamin Gerard
  * @brief  a simple Microdeal quartet music player.
  *
