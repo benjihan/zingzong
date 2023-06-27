@@ -1,8 +1,8 @@
 /**
- * @file    m68k_mem.s
+ * @file    m68k_mem.S
  * @author  Benjamin Gerard AKA Ben/OVR
  * @date    2017-09
- * @brief   m68K assembler routines mem family functions
+ * @brief   m68K assembler routines mem family functions.
  *
  */
 
@@ -13,9 +13,9 @@
 	.global m68k_memcmp,m68k_memset,m68k_memcpy,m68k_memxla
 
 /// --------------------------------------------------------
-///		      a0      a1     d1/d0
+///                             a0      a1     d1/d0
 /// int m68k_memcmp(astr.l, bstr.l, cnt.l)
-///		    4(a7)   8(a7)   12(a7)
+///                           4(a7)   8(a7)   12(a7)
 
 m68k_memcmp:
 	move.l	12(a7),d0
@@ -50,9 +50,9 @@ m68k_memcmp:
 	rts
 
 /// --------------------------------------------------------
-///			a0     d1     d0
+///                                    a0     d1     d0
 /// void * m68k_memset(dst.l, val.l, cnt.l)
-///		       4(a7)  8(a7)  12(a7)
+///                              4(a7)  8(a7)  12(a7)
 
 m68k_memset:
 	move.l	12(a7),d0	| d0.l: cnt
@@ -117,9 +117,9 @@ m68k_memset:
 
 
 /// --------------------------------------------------------
-///			a0     a1     d0
+///                                    a0     a1     d0
 /// void * m68k_memcpy(dst.l, val.l, cnt.l)
-///		       4(a7)  8(a7)  12(a7)
+///                              4(a7)  8(a7)  12(a7)
 
 m68k_memcpy:
 	move.l	12(a7),d0	| d0.l: cnt
@@ -298,9 +298,9 @@ slow_fcpy:
 	rts
 
 /// --------------------------------------------------------
-///		      a0      a1     d1/d0
+///                             a0      a1     d1/d0
 /// int m68k_memxla(astr.l, bstr.l, tbl.l, cnt.l)
-///		    4(a7)   8(a7)   12(a7) 16(a7)
+///                           4(a7)   8(a7)   12(a7) 16(a7)
 
 m68k_memxla:
 	move.l	16(a7),d0
@@ -344,14 +344,22 @@ m68k_bxla:
 	|| ----------------------------------------
 m68k_fxla:
 	subq.l	#1,d0
-	swap    d0
-2:      swap    d0
-1:      move.b  (a1)+,d1
-	move.b  0(a2,d1.w),(a0)+
-	dbf     d0,1b
-	swap    d0
-	dbf     d0,2b
+	swap	d0
+2:	swap	   d0
+1:	move.b	(a1)+,d1
+	move.b	0(a2,d1.w),(a0)+
+	dbf	d0,1b
+	swap	d0
+	dbf	d0,2b
 
-	move.l  (a7)+,a2
-0:      move.l  4(a7),d0
+	move.l	(a7)+,a2
+0:	move.l	4(a7),d0
 	rts
+/*
+Local Variables:
+mode: asm
+indent-tabs-mode: t
+tab-width: 8
+comment-column: 32
+End:
+*/

@@ -1,5 +1,5 @@
 /**
- * @file    m68k_mix.s
+ * @file    m68k_mix.S
  * @author  Benjmain Gerard AKA Ben/OVR
  * @date    2017-09
  * @brief   m68K assembler routines for 4 voices mixing.
@@ -144,7 +144,7 @@ fast_s7s:
 	|| 10 regs (d0/d1/a0/a1 not saved by m68k ABI)
 	movem.l d2-d7/a2-a6,-(a7)
 
-	|| Arguments		|     (44)     (48)
+	|| Arguments		|     (44)	  (48)
 	movem.l 48(a7),a4-a5	| a4: dest, a5:voices
 	move.l	d0,d7		|
 	add.w	d7,d7		| d7: count*2
@@ -340,11 +340,11 @@ mix_2chans:
 /// --------------------------------------------------------
 /// Mix 2 voices (A&B) into the intermediate buffer.
 /// --------------------------------------------------------
-/// a2	  .l Unused
-/// a3	  .l unused
-/// a4	  .l intermediate buffer
-/// a5	  .l voices
-/// a6	  .l scratch
+/// a2         .l Unused
+/// a3         .l unused
+/// a4         .l intermediate buffer
+/// a5         .l voices
+/// a6         .l scratch
 /// ----- -- -----------------------------------------------
 /// a0/a1 .w dec-stp
 /// d2/d3 .w dec-acu
@@ -522,7 +522,7 @@ s7sAB_off:
 
 
 ||| GB: This can be optimize with automatic stack alignment using a7
-|||     as destination pointer while running in usermode.
+|||	as destination pointer while running in usermode.
 |||
 ||| 2*BLKLEN offset is a cheap trick to prevent gas to optimize 0(an)
 ||| breaking the code tower.
@@ -931,3 +931,12 @@ falCD_off:
 
 mid_s8: .word 0x0000
 mid_u8: .word 0x8080
+
+/*
+Local Variables:
+mode: asm
+indent-tabs-mode: t
+tab-width: 8
+comment-column: 32
+End:
+*/
