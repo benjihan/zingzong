@@ -82,7 +82,7 @@ from struct import unpack, pack
 from math import log, gcd
 from getopt import gnu_getopt as getopt, error as GetOptError
 from fractions import Fraction
-from os.path import splitext
+from os.path import splitext, split
 
 # ----------------------------------------------------------------------------
 #  Globales
@@ -965,7 +965,7 @@ def main(argc, argv):
             new_mode = "check"
         elif opt in [ '-f', '--fix' ]:
             new_mode = "fix"
-          
+
         elif opt in [ '-u', '--unroll' ]:
             try:
                 opt_unroll = int(arg)
@@ -993,10 +993,10 @@ def main(argc, argv):
 
     # "QUARTET" (.4q) file ?
     f = open(path,'rb')
-    hd = f.read(4)
-    if hd == b'QUAR' or hd + f.read(4) == b"QUARTET\0":
-        print(hd)
-        if len(hd) == 4:
+    hd = f.read(8)
+    if hd[:4] == b'QUAR':
+
+        if hd != b"QUARTET\0":
             # .quar file
             # 00 'QUAR'
             # 04 offset from start to voice-set
@@ -1008,10 +1008,10 @@ def main(argc, argv):
             voff, nbsong = unpack(">2L",hd[4:12])
             soff = unpack(">%dL"%nbsong, hd[12:12+4*nbsong])
 
-            mesg("'QUAR' file detected: set=%u songs:%u" % (voff, nbsong))
+            mesg("'SC68QUAR (.quar)' file detected: set=%u songs:%u" % (voff, nbsong))
 
             # Sort chunks by offset ( CHK-#, ( OFFSET, LENGTH ) )
-            sort_chunks= sorted([ (0,(voff,None)), (-1,(len(hd),None)) ] +
+            sort_chunks= sorted([ (0,(voff,None)), (-1,(len(hd),-1)) ] +
                                 [ (i+1,(off,None)) for i,off in  enumerate(soff) ],
                                 key=lambda x: x[1][0])
             assert sort_chunks[-1][0] == -1
@@ -1031,7 +1031,7 @@ def main(argc, argv):
             # .4q file
             qid = hd
             qsng, qset, qinf = unpack(">3L",f.read(12))
-            mesg("QUARTET detected: set=%u song=%u info=%u" %
+            mesg("QUARTET (.4q) detected: set=%u song=%u info=%u" %
                  (qset, qsng, qinf))
             vsetpath = songpath = infopath = path
             songdata = f.read(qsng)
@@ -1044,7 +1044,7 @@ def main(argc, argv):
                  (rem,repr(path)))
 
         if opt_mode == 'demux':
-            base = splitext(path)[0]
+            base = split(path)[1]
 
             if songdata:
                 if type(songdata) is list:
