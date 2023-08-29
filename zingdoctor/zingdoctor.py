@@ -991,18 +991,53 @@ def main(argc, argv):
 
     dmsg("Input file: %s" % repr(path))
 
-    # "QUARTET" (,4q) file ?
+    # "QUARTET" (.4q) file ?
     f = open(path,'rb')
-    hd = f.read(8)
-    if hd == b"QUARTET\0":
-        qid = hd
-        qsng, qset, qinf = unpack(">3L",f.read(12))
-        mesg("QUARTET detected: set=%u song=%u info=%u" %
-             (qset, qsng, qinf))
-        vsetpath = songpath = infopath = path
-        songdata = f.read(qsng)
-        vsetdata = f.read(qset)
-        infodata = f.read(qinf)
+    hd = f.read(4)
+    if hd == b'QUAR' or hd + f.read(4) == b"QUARTET\0":
+        print(hd)
+        if len(hd) == 4:
+            # .quar file
+            # 00 'QUAR'
+            # 04 offset from start to voice-set
+            # 08 number of songs
+            # 0C 1st song, offset from start
+            # 10 2nd song, ...
+
+            hd += f.read()
+            voff, nbsong = unpack(">2L",hd[4:12])
+            soff = unpack(">%dL"%nbsong, hd[12:12+4*nbsong])
+
+            mesg("'QUAR' file detected: set=%u songs:%u" % (voff, nbsong))
+
+            # Sort chunks by offset ( CHK-#, ( OFFSET, LENGTH ) )
+            sort_chunks= sorted([ (0,(voff,None)), (-1,(len(hd),None)) ] +
+                                [ (i+1,(off,None)) for i,off in  enumerate(soff) ],
+                                key=lambda x: x[1][0])
+            assert sort_chunks[-1][0] == -1
+            # Compute lengths
+            for i in range(len(sort_chunks)-1):
+                k,(o,l) = sort_chunks[i]
+                assert l is None
+                l = sort_chunks[i+1][1][0] - o
+                sort_chunks[i] = ( k, ( o , l ) )
+            del sort_chunks[-1]
+            chunks = dict( sort_chunks )
+            vsetpath = songpath = infopath = path
+            vsetdata = hd[ chunks[0][0] : chunks[0][0]+chunks[0][1] ]
+            songdata = [ hd[ chunks[i][0] : chunks[i][0]+chunks[i][1] ]
+                         for i in range(1,nbsong+1) ]
+        else:
+            # .4q file
+            qid = hd
+            qsng, qset, qinf = unpack(">3L",f.read(12))
+            mesg("QUARTET detected: set=%u song=%u info=%u" %
+                 (qset, qsng, qinf))
+            vsetpath = songpath = infopath = path
+            songdata = f.read(qsng)
+            vsetdata = f.read(qset)
+            infodata = f.read(qinf)
+
         rem = len(f.read())
         if rem:
             wmsg("%u unexpected garbage at end of %s" %
@@ -1012,10 +1047,17 @@ def main(argc, argv):
             base = splitext(path)[0]
 
             if songdata:
-                name = base+'.4v'
-                with open(name,'wb') as wp:
-                    print('saving song into %s (%u bytes)'
-                          % (repr(name), wp.write(songdata)))
+                if type(songdata) is list:
+                    name_f = lambda n: base+'-%02u'%n+'.4v'
+                else:
+                    name_f = lambda n: base+'.4v'
+                    songdata = [ songdata ]
+
+                for i,sd in enumerate(songdata):
+                    name = name_f(i+1)
+                    with open(name,'wb') as wp:
+                        print('saving song into %s (%u bytes)'
+                              % (repr(name), wp.write(sd)))
 
             if vsetdata:
                 name = base+'.set'
@@ -1027,22 +1069,25 @@ def main(argc, argv):
                 # GB: ultimately it would be better to convert from
                 #     AtariST charset to UTF-8 using python codecs
                 #     class.
-                name = base+'.txt' 
+                name = base+'.txt'
                 with open(name,'wb') as wp:
                     print('saving info into %s (%u bytes)'
                           % (repr(name), wp.write(infodata)))
 
             return 0
-            
     else:
         vsetdata = hd+f.read()
         vsetpath = path
 
-
     vset = Vset(vsetdata,vsetpath)
+
     if songdata:
-        song = Song(songdata,songpath)
-        mesg(str(song))
+        if type(songdata) is not list:
+            songdata = [ songdata ]
+
+        for sd in songdata:
+            song = Song(sd,songpath)
+            mesg(str(song))
 
 
     return int(bool(vset.modified))
