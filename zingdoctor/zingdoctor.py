@@ -388,10 +388,10 @@ class Song:
                        self.chan[j].tic // self.spd,
                        gcd ( self.chan[i].tic//self.spd,
                              self.chan[j].tic//self.spd ) )
-            
 
 
-        
+
+
         for chn in self.chan:
             if chn.tic and self.tic % chn.tic:
                 wmsg('song duration '
@@ -399,7 +399,7 @@ class Song:
                      + ' not a multiple of channel duration'
                      + '\n>> ' + str(chn))
 
-                
+
     def Parse(self, buf):
         l = len(buf)
         if l < 16+4*12:
@@ -438,7 +438,7 @@ class Song:
             if not chn.seq or chr(chn.seq[-1].c) != 'F':
                 wmsg('closing channel %c' % chn.tag)
                 chn.seq.append(Seq((ord('F'),0,0,0)))
-                
+
         # if k != 4:
         #     raise Song.Err('invalid song (incomplete sequence %c)'%chr(65+k))
 
@@ -876,9 +876,9 @@ class Vset:
 # Atari charset codec
 #
 ######################################################################
-        
 
-atari_to_unicode=[        
+
+atari_to_unicode=[
     0x00c7,0x00fc,0x00e9,0x00e2,0x00e4,0x00e0,0x00e5,0x00e7,
     0x00ea,0x00eb,0x00e8,0x00ef,0x00ee,0x00ec,0x00c4,0x00c5,
     0x00c9,0x00e6,0x00c6,0x00f4,0x00f6,0x00f2,0x00fb,0x00f9,
@@ -1075,6 +1075,8 @@ def main(argc, argv):
                           % (repr(name), wp.write(infodata)))
 
             return 0
+    elif hd[:4].upper() == b'ICE!':
+        raise Error("Input file is ICE! packed");
     else:
         vsetdata = hd+f.read()
         vsetpath = path
