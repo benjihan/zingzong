@@ -1044,7 +1044,7 @@ def main(argc, argv):
                  (rem,repr(path)))
 
         if opt_mode == 'demux':
-            base = split(path)[1]
+            base = splitext(split(path)[1])[0]
 
             if songdata:
                 if type(songdata) is list:
