@@ -9,7 +9,7 @@
 #include "zz_private.h"
 
 #ifdef NO_VFS
-# error  zz_vfs.c should not be compiled with NO_VFS defined
+# error	 zz_vfs.c should not be compiled with NO_VFS defined
 #endif
 
 
@@ -31,7 +31,7 @@ static zz_vfs_dri_t drivers[DRIVER_MAX];
 # else
 static void
 vfs_emsg(const char * dri, int err, const char * fct,
-         const char * alt, const char * obj)
+	 const char * alt, const char * obj)
 {
   const char* msg = alt ? alt : "failed";
 
@@ -41,10 +41,10 @@ vfs_emsg(const char * dri, int err, const char * fct,
 #endif
   if (!obj)
     emsg("VFS(%s): %s: (%d) %s\n",
-         dri, fct, err, msg);
+	 dri, fct, err, msg);
   else
     emsg("VFS(%s): %s: (%d) %s -- %s\n",
-         dri, fct, err, msg, obj);
+	 dri, fct, err, msg, obj);
 }
 #endif
 
@@ -64,16 +64,16 @@ vfs_register(zz_vfs_dri_t dri)
   int i = E_ERR;
 
   if (dri) {
-    i = vfs_find(dri);              /* looking for this driver slot */
-    if (i < 0)                      /* not found ? */
-      i = vfs_find(0);              /* looking for a free slot */
+    i = vfs_find(dri);		    /* looking for this driver slot */
+    if (i < 0)			    /* not found ? */
+      i = vfs_find(0);		    /* looking for a free slot */
     if (i >= 0) {
       if (dri->reg(dri) >= 0) {
-        drivers[i] = dri;
-        i = E_OK;
+	drivers[i] = dri;
+	i = E_OK;
       }
       else
-        i = E_ERR;
+	i = E_ERR;
     }
     if (i != E_OK )
       (void) vfs_emsg(dri->name,0,"register",0,0);
@@ -87,16 +87,16 @@ vfs_unregister(zz_vfs_dri_t dri)
   int i = E_ERR;
 
   if (dri) {
-    i = vfs_find(dri);              /* looking for this driver slot */
-    if (i >= 0) {                   /* found ? */
+    i = vfs_find(dri);		    /* looking for this driver slot */
+    if (i >= 0) {		    /* found ? */
       int res = drivers[i]->unreg(dri);
       if (!res) {
-        drivers[i] = 0;
-        i = E_OK;
+	drivers[i] = 0;
+	i = E_OK;
       }
       else if (res < 0) {
-        (void) vfs_emsg(dri->name,0,"unregister",0,0);
-        i = E_ERR;
+	(void) vfs_emsg(dri->name,0,"unregister",0,0);
+	i = E_ERR;
       }
     }
   }
@@ -190,7 +190,7 @@ vfs_read_exact(vfs_t vfs, void * ptr, zz_u32_t size)
     return E_OK;
 
   if (size == ZZ_EOF || !ptr)
-    vfs = 0;                      /* to trigger an error just below */
+    vfs = 0;			  /* to trigger an error just below */
   VFS_OR_ARG(vfs);
 
   n = vfs->dri->read(vfs,ptr,size);
@@ -200,7 +200,7 @@ vfs_read_exact(vfs_t vfs, void * ptr, zz_u32_t size)
   }
   else if (n != size) {
     emsg("%s: read too short by %lu\n",
-         vfs->dri->uri(vfs), LU(size-n));
+	 vfs->dri->uri(vfs), LU(size-n));
     ecode = E_INP;
   }
   else ecode = E_OK;
@@ -233,12 +233,12 @@ vfs_seek(vfs_t vfs, zz_u32_t pos, zz_u8_t set)
 }
 
 /* GB: I wrote this function that simulates a seek forward by reading
-       and discarding when possible. It's completely *UNTESTED* and
-       could be improved (for example seek_cur does not need to tell()
-       nor size().
+   and discarding when possible. It's completely *UNTESTED* and
+   could be improved (for example seek_cur does not need to tell()
+   nor size().
 
    GB: Backward seeks could be implemented to an extend using a
-       push-back buffer.
+   push-back buffer.
 */
 static zz_err_t
 vfs_seek_simul(vfs_t vfs, zz_u32_t pos, zz_u8_t set)
@@ -259,7 +259,7 @@ vfs_seek_simul(vfs_t vfs, zz_u32_t pos, zz_u8_t set)
   case ZZ_SEEK_CUR: pos = tell + pos; break;
   default:
     vfs_emsg(vfs->dri->name, vfs->err = ZZ_EINVAL,
-             "seek", "invalid whence", vfs_uri(vfs));
+	     "seek", "invalid whence", vfs_uri(vfs));
     return E_666;
   }
   dmsg("seek-sim[%s]: goto=%lu offset=%+li\n",
@@ -267,7 +267,7 @@ vfs_seek_simul(vfs_t vfs, zz_u32_t pos, zz_u8_t set)
 
   if (pos < tell || pos > size) {
     dmsg("seek-sim[%s] simulation impossible (%lu/%lu/%lu)\n",
-         vfs->dri->name, LU(pos), LU(tell), LU(size));
+	 vfs->dri->name, LU(pos), LU(tell), LU(size));
     if (!vfs->err) vfs->err = ZZ_EIO;
     return E_INP;
   }
@@ -285,7 +285,7 @@ vfs_seek_simul(vfs_t vfs, zz_u32_t pos, zz_u8_t set)
   }
 
   dmsg("seek[%s]: tell=%lu\n",
-         vfs->dri->name, LU(vfs->dri->tell(vfs)));
+       vfs->dri->name, LU(vfs->dri->tell(vfs)));
 
   zz_assert( tell == pos );
   zz_assert( pos == vfs->dri->tell(vfs) );
@@ -304,16 +304,36 @@ zz_err_t
 vfs_open_uri(vfs_t * pvfs, const char * uri)
 {
   zz_err_t ecode = E_ARG;
-  vfs_t vfs = 0;
+  vfs_t vfs = 0, ice = 0;
   if (likely(pvfs && uri)) {
     ecode = E_MEM;
     vfs = vfs_new(uri,0);
     if (likely(vfs)) {
       ecode = vfs_open(vfs);
       if (E_OK != ecode) {
-        vfs_del(&vfs);
-        zz_assert(vfs == 0);
-        vfs = 0;
+	vfs_del(&vfs);
+	zz_assert(vfs == 0);
+      }
+      else if (ice = vfs_new("ice://", vfs, 0), !ice) {
+	/* Something got wrong while depacking ... */
+	ecode = E_SYS;
+	vfs_del(&vfs);
+      }
+      else if (ice != vfs) {
+	/* ICE! depacked, we can now destroy vfs */
+	vfs_del(&vfs);		/* close and destroy vfa */
+	vfs = ice;		/* continue w/ ICE! vfs */
+	ecode = vfs_open(vfs);	/* never fails */
+	zz_assert(ecode == ZZ_OK);
+      }
+      /* We have to rewind vfs. Now that can be a problem.
+       * Alternatively we can try re-open it, but it's not much better.
+       * Ideally we need a push-back buffer.
+       */
+      else if (ecode = vfs_seek(vfs, 0, ZZ_SEEK_SET), ecode != E_OK) {
+	vfs_close(vfs);
+	if (ecode = vfs_open(vfs), E_OK != ecode)
+	  vfs_del(&vfs);
       }
     }
     *pvfs = vfs;

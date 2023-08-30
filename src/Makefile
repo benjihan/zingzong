@@ -217,7 +217,7 @@ zz_zzz_obj = $(zz_zzz_src:.c=.o)
 
 mix := $(addprefix mix_,none lerp qerp soxr srate help test)
 out := out_ao out_raw
-vfs := vfs_file
+vfs := vfs_file vfs_ice
 cor := zz_init zz_core
 pla := zz_play zz_log
 zzz := $(addprefix zz_,load bin mem str vfs mixers)

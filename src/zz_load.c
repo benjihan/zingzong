@@ -120,11 +120,11 @@ vset_guess(zz_play_t P, const char * songuri)
   int idx, next_idx, method, next_method;
 
   enum {
-    e_type_ok = 1,                    /* have extension  */
-    e_type_4v = 2,                    /* .4v */
-    e_type_qt = 4,                    /* .qts or .qta */
-    e_type_lc = 8,                    /* has lowercase char */
-    e_type_uc = 16,                   /* has uppercase char */
+    e_type_ok = 1,		      /* have extension  */
+    e_type_4v = 2,		      /* .4v */
+    e_type_qt = 4,		      /* .qts or .qta */
+    e_type_lc = 8,		      /* has lowercase char */
+    e_type_uc = 16,		      /* has uppercase char */
   } e_type = 0;
 
   /* $$$ IMPROVE ME.
@@ -151,7 +151,7 @@ vset_guess(zz_play_t P, const char * songuri)
     zz_assert ( ! P->vseturi );
   }
 
-  nud = basename((char*)songuri);       /* cast for mingw */
+  nud = basename((char*)songuri);	/* cast for mingw */
   /* GB: we should be going with gnu_basename(). If anyother version
    *     of basename() is used it has to keep the return value inside
    *     songuri[]. for some reason even gnu_basename() sometime
@@ -165,13 +165,13 @@ vset_guess(zz_play_t P, const char * songuri)
   zz_assert( nud >= songuri && nud <= songuri+songlen );
   if ( ! (nud >= songuri && nud <= songuri+songlen ) )
     return E_666;
-  inud = nud-songuri;                /* index of basename in songuri[] */
+  inud = nud-songuri;		     /* index of basename in songuri[] */
   dot  = fileext(nud);
-  idot = !*dot ? 0 : dot-songuri;       /* index of '.' in songuri[] */
+  idot = !*dot ? 0 : dot-songuri;	/* index of '.' in songuri[] */
 
   dmsg("extension len: %d\n",songlen-idot);
   if (songlen-idot > 4)
-    idot = 0;                           /* ignore long extension */
+    idot = 0;				/* ignore long extension */
 
   if (idot) {
     e_type = e_type_ok;
@@ -194,7 +194,7 @@ vset_guess(zz_play_t P, const char * songuri)
   for (idx=0, method=1; method ; method=next_method, idx=next_idx) {
     char * const s = P->vseturi->ptr;
 
-    *s = 0;                                   /* no candidat */
+    *s = 0;				      /* no candidat */
     tr = (e_type & e_type_uc) ? lc_to_uc : 0; /* translation */
 
     /* next method (state-init => run-state) */
@@ -227,10 +227,10 @@ vset_guess(zz_play_t P, const char * songuri)
     case 1:
       /* No extension ? ignore this method */
       if (!idot) {
-        dmsg("skipping method #%hu because no extension\n", HU(method));
-        ++next_method;
-        zz_assert(next_method==3);
-        break;
+	dmsg("skipping method #%hu because no extension\n", HU(method));
+	++next_method;
+	zz_assert(next_method==3);
+	break;
       }
 
     case 2: {
@@ -244,23 +244,23 @@ vset_guess(zz_play_t P, const char * songuri)
 
       i = idot;
       if ( ( idx & 2 ) ) {
-        /* Try to remove the song number suffix. */
-        if (i > inud+1 && isdigit(s[i-1])) {
-          --i;
-          i -= (i > inud+1 && isdigit(s[i-1]));
-          i -= (i > inud+1 && strchr(num_sep,s[i-1]));
-        } else {
-          /* No song number suffix. Skip regardless of case
+	/* Try to remove the song number suffix. */
+	if (i > inud+1 && isdigit(s[i-1])) {
+	  --i;
+	  i -= (i > inud+1 && isdigit(s[i-1]));
+	  i -= (i > inud+1 && strchr(num_sep,s[i-1]));
+	} else {
+	  /* No song number suffix. Skip regardless of case
            * sensitivity. */
-          next_idx = idx+2;
-          *s = 0;
-          break;
-        }
+	  next_idx = idx+2;
+	  *s = 0;
+	  break;
+	}
       }
 
       /* Copy the new extension with case transformation. */
       for (s[i++] = s[idot]; !!(c = *suf_ext++); ++i)
-        s[i] = c - (islower(c) ? tr : 0);
+	s[i] = c - (islower(c) ? tr : 0);
       s[i] = 0;
       zz_assert(i < P->vseturi->max);
     } break;
@@ -268,32 +268,32 @@ vset_guess(zz_play_t P, const char * songuri)
       /* 3&4: Append extension. */
     case 3:
       if (e_type & (e_type_4v|e_type_qt)) {
-        dmsg("skipping method #%hu because have known extension\n", HU(method));
-        ++next_method;
-        zz_assert( next_method == 5 );
-        break;
+	dmsg("skipping method #%hu because have known extension\n", HU(method));
+	++next_method;
+	zz_assert( next_method == 5 );
+	break;
       }
     case 4:
       if (idx >= 4) {
-        ++next_method;
-        zz_assert( next_method == 5 );
-        break;
+	++next_method;
+	zz_assert( next_method == 5 );
+	break;
       }
       suf_ext = !(e_type & e_type_4v) ^ (idx >= 2) ? "smp" : "set";
       zz_memcpy(s, songuri, songlen);
       s[songlen] = '.';
       for (i=0; (c=suf_ext[i]); ++i)
-        s[songlen+i+1] = c - ( islower(c) ? tr : 0 );
+	s[songlen+i+1] = c - ( islower(c) ? tr : 0 );
       s[songlen+i+1] = 0;
       break;
 
       /* 5&6: prefixed extension (Amiga like) */
     case 5:
       if (e_type & (e_type_4v|e_type_qt)) {
-        dmsg("skipping method #%hu because have known extension\n", HU(method));
-        ++next_method;
-        zz_assert( next_method == 7 );
-        break;
+	dmsg("skipping method #%hu because have known extension\n", HU(method));
+	++next_method;
+	zz_assert( next_method == 7 );
+	break;
       }
     case 6:
       if (idx >= 6) { ++next_method; zz_assert( next_method == 7 ); break; }
@@ -307,7 +307,7 @@ vset_guess(zz_play_t P, const char * songuri)
       zz_memcpy(s, songuri, inud);
       zz_memcpy(s+inud+3, songuri+inud+i, songlen-inud-i+1);
       for (i=0; (c=suf_ext[i]); ++i)
-        s[inud+i] = c - ( islower(c) ? tr : 0 );
+	s[inud+i] = c - ( islower(c) ? tr : 0 );
       break;
 
     default:
@@ -321,7 +321,7 @@ vset_guess(zz_play_t P, const char * songuri)
       suf_ext = vnames[(idx>>1)&1];
       zz_memcpy(s,songuri,inud);
       for (i=0; (c = suf_ext[i]); ++i)
-        s[inud+i] = c - (islower(c) ? tr : 0);
+	s[inud+i] = c - (islower(c) ? tr : 0);
       s[inud+i] = 0;
     } break;
 
@@ -329,9 +329,9 @@ vset_guess(zz_play_t P, const char * songuri)
 
     if (*s) {
       dmsg("method: #%hi:%hu, next: #%hi:%hu tr:%02hx\n",
-           HI(method), HU(idx), HI(next_method), HU(next_idx), HU(tr));
+	   HI(method), HU(idx), HI(next_method), HU(next_idx), HU(tr));
       if (E_OK == try_vset_load(&P->core.vset, s))
-        return E_OK;
+	return E_OK;
     }
   }
 
@@ -462,51 +462,51 @@ q4_load(vfs_t vfs, q4_t *q4)
   /* Info (ignoring errors) */
   if (q4->info && q4->infosz > 0) {
     if (E_OK ==
-        bin_load(&q4->info->bin,vfs,q4->infosz, q4->infosz+2,INFO_MAX_SIZE)
-        && q4->info->bin->len > 1 && *q4->info->bin->ptr)
+	bin_load(&q4->info->bin,vfs,q4->infosz, q4->infosz+2,INFO_MAX_SIZE)
+	&& q4->info->bin->len > 1 && *q4->info->bin->ptr)
     {
       /* Atari to UTF-8 conversion */
       static const uint16_t atari_to_unicode[128] = {
-        0x00c7,0x00fc,0x00e9,0x00e2,0x00e4,0x00e0,0x00e5,0x00e7,
-        0x00ea,0x00eb,0x00e8,0x00ef,0x00ee,0x00ec,0x00c4,0x00c5,
-        0x00c9,0x00e6,0x00c6,0x00f4,0x00f6,0x00f2,0x00fb,0x00f9,
-        0x00ff,0x00d6,0x00dc,0x00a2,0x00a3,0x00a5,0x00df,0x0192,
-        0x00e1,0x00ed,0x00f3,0x00fa,0x00f1,0x00d1,0x00aa,0x00ba,
-        0x00bf,0x2310,0x00ac,0x00bd,0x00bc,0x00a1,0x00ab,0x00bb,
-        0x00e3,0x00f5,0x00d8,0x00f8,0x0153,0x0152,0x00c0,0x00c3,
-        0x00d5,0x00a8,0x00b4,0x2020,0x00b6,0x00a9,0x00ae,0x2122,
-        0x0133,0x0132,0x05d0,0x05d1,0x05d2,0x05d3,0x05d4,0x05d5,
-        0x05d6,0x05d7,0x05d8,0x05d9,0x05db,0x05dc,0x05de,0x05e0,
-        0x05e1,0x05e2,0x05e4,0x05e6,0x05e7,0x05e8,0x05e9,0x05ea,
-        0x05df,0x05da,0x05dd,0x05e3,0x05e5,0x00a7,0x2227,0x221e,
-        0x03b1,0x03b2,0x0393,0x03c0,0x03a3,0x03c3,0x00b5,0x03c4,
-        0x03a6,0x0398,0x03a9,0x03b4,0x222e,0x03c6,0x2208,0x2229,
-        0x2261,0x00b1,0x2265,0x2264,0x2320,0x2321,0x00f7,0x2248,
-        0x00b0,0x2219,0x00b7,0x221a,0x207f,0x00b2,0x00b3,0x00af
+	0x00c7,0x00fc,0x00e9,0x00e2,0x00e4,0x00e0,0x00e5,0x00e7,
+	0x00ea,0x00eb,0x00e8,0x00ef,0x00ee,0x00ec,0x00c4,0x00c5,
+	0x00c9,0x00e6,0x00c6,0x00f4,0x00f6,0x00f2,0x00fb,0x00f9,
+	0x00ff,0x00d6,0x00dc,0x00a2,0x00a3,0x00a5,0x00df,0x0192,
+	0x00e1,0x00ed,0x00f3,0x00fa,0x00f1,0x00d1,0x00aa,0x00ba,
+	0x00bf,0x2310,0x00ac,0x00bd,0x00bc,0x00a1,0x00ab,0x00bb,
+	0x00e3,0x00f5,0x00d8,0x00f8,0x0153,0x0152,0x00c0,0x00c3,
+	0x00d5,0x00a8,0x00b4,0x2020,0x00b6,0x00a9,0x00ae,0x2122,
+	0x0133,0x0132,0x05d0,0x05d1,0x05d2,0x05d3,0x05d4,0x05d5,
+	0x05d6,0x05d7,0x05d8,0x05d9,0x05db,0x05dc,0x05de,0x05e0,
+	0x05e1,0x05e2,0x05e4,0x05e6,0x05e7,0x05e8,0x05e9,0x05ea,
+	0x05df,0x05da,0x05dd,0x05e3,0x05e5,0x00a7,0x2227,0x221e,
+	0x03b1,0x03b2,0x0393,0x03c0,0x03a3,0x03c3,0x00b5,0x03c4,
+	0x03a6,0x0398,0x03a9,0x03b4,0x222e,0x03c6,0x2208,0x2229,
+	0x2261,0x00b1,0x2265,0x2264,0x2320,0x2321,0x00f7,0x2248,
+	0x00b0,0x2219,0x00b7,0x221a,0x207f,0x00b2,0x00b3,0x00af
       };
       int i,j,len = q4->info->bin->len;
       char * comment, * s = (char*) q4->info->bin->ptr;
 
       for (i=0; i<len && s[i]; ++i)
-        ;
+	;
 
       j = q4->info->bin->max;
       for (s[--j] = 0; i>0 && j>=i; ) {
-        const uint8_t c = s[--i];
-        uint16_t u = c < 128 ? c : atari_to_unicode[c&127];
+	const uint8_t c = s[--i];
+	uint16_t u = c < 128 ? c : atari_to_unicode[c&127];
 
-        if (u < 0x80) {
-          if (u != '\r')
-            s[--j] = u;
-        } else if (u < 0x800 && j >= 2 ) {
-          s[--j] = 0x80 | (u & 63);
-          s[--j] = 0xC0 | (u >> 6);
-        } else if ( j >= 3) {
-          s[--j] = 0x80 | (u & 63);
-          s[--j] = 0x80 | ((u >> 6) & 63);
-          s[--j] = 0xE0 | (u >> 12);
-        }
-        zz_assert(j >= i);
+	if (u < 0x80) {
+	  if (u != '\r')
+	    s[--j] = u;
+	} else if (u < 0x800 && j >= 2 ) {
+	  s[--j] = 0x80 | (u & 63);
+	  s[--j] = 0xC0 | (u >> 6);
+	} else if ( j >= 3) {
+	  s[--j] = 0x80 | (u & 63);
+	  s[--j] = 0x80 | ((u >> 6) & 63);
+	  s[--j] = 0xE0 | (u >> 12);
+	}
+	zz_assert(j >= i);
       }
       comment = (char *)q4->info->bin->ptr+j;
 
@@ -517,77 +517,77 @@ q4_load(vfs_t vfs, q4_t *q4)
       dmsg("== COMMENT: ===\n");
 
       while (s != NULL) {
-        char * line = mystrsep(&s, '\n');
+	char * line = mystrsep(&s, '\n');
 
-        if (!line) break;
+	if (!line) break;
 
-        dmsg("[%s]\n",line);
+	dmsg("[%s]\n",line);
 
-        /* assume 1st line is always the title. */
-        if (!q4->info->title) {
-          q4->info->title = trimstr(line);
-          continue;
-        }
+	/* assume 1st line is always the title. */
+	if (!q4->info->title) {
+	  q4->info->title = trimstr(line);
+	  continue;
+	}
 
-        /* continuing previous line ? */
-        if (q4->info->artist && !*q4->info->artist) {
-          q4->info->artist = trimstr(line);
-          if (!*q4->info->artist) q4->info->artist = 0;
-          continue;
-        }
-        if (q4->info->album && !*q4->info->album) {
-          q4->info->album = trimstr(line);
-          if (!*q4->info->album) q4->info->album = 0;
-          continue;
-        }
-        if (q4->info->ripper && !*q4->info->ripper) {
-          q4->info->ripper = trimstr(line);
-          if (!*q4->info->ripper) q4->info->ripper = 0;
-          continue;
-        }
+	/* continuing previous line ? */
+	if (q4->info->artist && !*q4->info->artist) {
+	  q4->info->artist = trimstr(line);
+	  if (!*q4->info->artist) q4->info->artist = 0;
+	  continue;
+	}
+	if (q4->info->album && !*q4->info->album) {
+	  q4->info->album = trimstr(line);
+	  if (!*q4->info->album) q4->info->album = 0;
+	  continue;
+	}
+	if (q4->info->ripper && !*q4->info->ripper) {
+	  q4->info->ripper = trimstr(line);
+	  if (!*q4->info->ripper) q4->info->ripper = 0;
+	  continue;
+	}
 
-        while ( isspace(*line) ) ++line;
-        if (!*line) continue;
+	while ( isspace(*line) ) ++line;
+	if (!*line) continue;
 
-        if (!q4->info->artist) {
-          if (!strncasecmp(line,"Artist:",7)) {
-            q4->info->artist = trimstr(line + 7);
-            continue;
-          }
-          if (!strncasecmp(line,"Composed by",11) ||
-              !strncasecmp(line,"Arranged by",11) ||
-              !strncasecmp(line,"Written by",10)) {
-            line += 10 + (tolower(line[6]) == 'e');
-            q4->info->artist = trimstr(line + (*line == ':'));
-            continue;
-          }
-        }
+	if (!q4->info->artist) {
+	  if (!strncasecmp(line,"Artist:",7)) {
+	    q4->info->artist = trimstr(line + 7);
+	    continue;
+	  }
+	  if (!strncasecmp(line,"Composed by",11) ||
+	      !strncasecmp(line,"Arranged by",11) ||
+	      !strncasecmp(line,"Written by",10)) {
+	    line += 10 + (tolower(line[6]) == 'e');
+	    q4->info->artist = trimstr(line + (*line == ':'));
+	    continue;
+	  }
+	}
 
-        if (!q4->info->ripper) {
-          if (!strncasecmp(line,"Ripper:",7)) {
-            q4->info->ripper = trimstr(line + 7);
-            continue;
-          }
-          if (!strncasecmp(line,"Hacked by",9) ||
-              !strncasecmp(line,"Ripped by",9) ||
-              !strncasecmp(line,"Rippd by",8) ) {
-            line += 8 + (tolower(line[4]) == 'e');
-            q4->info->ripper = trimstr(line + (*line == ':'));
-            continue;
-          }
-        }
+	if (!q4->info->ripper) {
+	  if (!strncasecmp(line,"Ripper:",7)) {
+	    q4->info->ripper = trimstr(line + 7);
+	    continue;
+	  }
+	  if (!strncasecmp(line,"Hacked by",9) ||
+	      !strncasecmp(line,"Ripped by",9) ||
+	      !strncasecmp(line,"Rippd by",8) ) {
+	    line += 8 + (tolower(line[4]) == 'e');
+	    q4->info->ripper = trimstr(line + (*line == ':'));
+	    continue;
+	  }
+	}
 
-        if (!q4->info->album) {
-          if (!strncasecmp(line,"Album:",7)) {
-            q4->info->album = trimstr(line + 7);
-            continue;
-          }
-          if (!strncasecmp(line,"Coming from",11)) {
-            line += 11;
-            q4->info->album = trimstr(line + (*line == ':'));
-            continue;
-          }
-        }
+	if (!q4->info->album) {
+	  if (!strncasecmp(line,"Album:",7)) {
+	    q4->info->album = trimstr(line + 7);
+	    continue;
+	  }
+	  if (!strncasecmp(line,"Coming from",11)) {
+	    line += 11;
+	    q4->info->album = trimstr(line + (*line == ':'));
+	    continue;
+	  }
+	}
 
       }
 
@@ -639,7 +639,7 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
 
       ecode = vfs_read_exact(inp, hd+16, 4);
       if (E_OK != ecode)
-        break;
+	break;
 
       format = ZZ_FORMAT_4Q;
       ecode = E_SYS;
@@ -650,7 +650,7 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
       ecode = E_MEM;
       P->songuri = zz_strset(P->songuri, songuri);
       if (!P->songuri)
-        break;
+	break;
 
       P->vseturi = zz_strdup(P->songuri);
       P->infouri = zz_strdup(P->songuri);
@@ -661,7 +661,7 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
       q4.vsetsz = U32(hd+12);
 
       dmsg("QUARTET header [sng:%lu set:%lu inf:%lu]\n",
-           LU(q4.songsz), LU(q4.vsetsz), LU(q4.infosz));
+	   LU(q4.songsz), LU(q4.vsetsz), LU(q4.infosz));
       ecode = q4_load(inp,&q4);
       vfs_del(&inp);
       break;
@@ -685,17 +685,17 @@ zz_load(play_t * P, const char * songuri, const char * vseturi, zz_u8_t * pfmt)
       ecode = vset_guess(P, songuri);
     else {
       if (*vseturi) {
-        ecode = vset_load(&P->core.vset,vseturi);
-        if (ecode)
-          break;
-        ecode = E_MEM;
-        P->vseturi = zz_strset(P->vseturi,vseturi);
-        if (unlikely(!P->vseturi))
-          break;
-        ecode = E_OK;
+	ecode = vset_load(&P->core.vset,vseturi);
+	if (ecode)
+	  break;
+	ecode = E_MEM;
+	P->vseturi = zz_strset(P->vseturi,vseturi);
+	if (unlikely(!P->vseturi))
+	  break;
+	ecode = E_OK;
       } else {
-        dmsg("skipped voice set as requested\n");
-        zz_assert( ecode == E_OK);
+	dmsg("skipped voice set as requested\n");
+	zz_assert( ecode == E_OK);
       }
     }
 

@@ -42,7 +42,7 @@ static const char bugreport[] = \
 # include "config.h"
 #else
 # define _DEFAULT_SOURCE
-# define _GNU_SOURCE                    /* for GNU basename() */
+# define _GNU_SOURCE			/* for GNU basename() */
 #endif
 
 #define ZZ_DBG_PREFIX "(cli) "
@@ -66,7 +66,7 @@ static const char bugreport[] = \
 
 #ifdef WIN32
 #ifdef __MINGW32__
-# include <libgen.h>     /* no GNU version of basename() with mingw */
+# include <libgen.h>	 /* no GNU version of basename() with mingw */
 #endif
 #include <io.h>
 #include <fcntl.h>
@@ -79,7 +79,12 @@ typedef uint_fast32_t uint_t;
  * ---------------------------------------------------------------------- */
 
 ZZ_EXTERN_C
-zz_vfs_dri_t zz_file_vfs(void);         /* vfs_file.c */
+zz_vfs_dri_t zz_file_vfs(void);		/* vfs_file.c */
+
+#ifndef NO_ICE
+ZZ_EXTERN_C
+zz_vfs_dri_t zz_ice_vfs(void);	       /* vfs_ice.c */
+#endif
 
 static char me[] = "zingzong";
 
@@ -103,8 +108,8 @@ static char * opt_length, * opt_output;
  * ----------------------------------------------------------------------
  */
 
-static int8_t newline = 1;              /* newline tracker */
-ZZ_EXTERN_C int8_t can_use_std;            /* out_raw.c */
+static int8_t newline = 1;		/* newline tracker */
+ZZ_EXTERN_C int8_t can_use_std;		   /* out_raw.c */
 
 /* Very lazy and very wrong way to handle that. It won't work as soon
  * as stdout ans stderr are not the same file (or tty).
@@ -119,10 +124,10 @@ static void set_newline(const char * fmt)
 static FILE * log_file(int log)
 {
   int8_t fd = 1 + ( log <= ZZ_LOG_WRN ); /* preferred channel */
-  if ( ! (fd & can_use_std) ) fd ^= 3;   /* alternate channel */
+  if ( ! (fd & can_use_std) ) fd ^= 3;	 /* alternate channel */
   return  (fd & can_use_std)
     ? fd == 1 ? stdout : stderr
-    : 0                                 /* should not happen anyway */
+    : 0					/* should not happen anyway */
     ;
 }
 
@@ -190,7 +195,7 @@ static void print_usage(int level)
   else
     for (i=0; i == zz_mixer_info(i,&name,&desc); ++i) {
       printf("%6s `%s' %s %s.\n",
-             i?"":" R :=", name,"............."+strlen(name),desc);
+	     i?"":" R :=", name,"............."+strlen(name),desc);
     }
 
   puts(
@@ -389,7 +394,7 @@ static int time_parse(uint_t * pms, char * time)
   char *s = time;
 
   if (!*s) {
-    s = "?";                            /* trigger an error */
+    s = "?";				/* trigger an error */
     goto done;
   }
 
@@ -411,12 +416,12 @@ static int time_parse(uint_t * pms, char * time)
       ms += v * 1000u;
       v = mystrtoul(&s,10);
       if (v == (uint_t)-1)
-        s = "?";
+	s = "?";
       else if (v) {
-        while (v > 1000) v /= 10u;
-        while (v <  100) v *= 10u;
-        zz_assert(v >= 0 && v < 1000u);
-        ms += v;
+	while (v > 1000) v /= 10u;
+	while (v <  100) v *= 10u;
+	zz_assert(v >= 0 && v < 1000u);
+	ms += v;
       }
       goto done;
 
@@ -446,7 +451,7 @@ done:
   }
   dmsg("parse_time: \"%s\" => %lu-ms\n",
        time, LU(ms));
-  *pms    = ms;
+  *pms	  = ms;
   return ZZ_OK;
 }
 
@@ -455,7 +460,7 @@ done:
  * @retcal -1 on error
  */
 static int uint_arg(char * arg, const char * name,
-                    uint_t min, uint_t max, int base)
+		    uint_t min, uint_t max, int base)
 {
   uint_t v;
   char * s = arg;
@@ -552,7 +557,7 @@ static int find_mixer(char * arg, char ** pend)
 
     res = modecmp(name, arg, pend);
     dmsg("testing mixer#%i(%i) => (%i) \"%s\" == \"%s\"\n",
-         i, id, res, name, arg);
+	 i, id, res, name, arg);
 
     if (res == 1) {
       /* prefect match */
@@ -563,17 +568,17 @@ static int find_mixer(char * arg, char ** pend)
       /* partial match */
       dmsg("partial match: %i \"%s\" == \"%s\"\n",f,name,arg);
       if (f != -1)
-        break;
+	break;
       f = i;
     }
   }
 
   if (f < 0)
-    f = 0;                              /* not found */
+    f = 0;				/* not found */
   else if (i != ZZ_MIXER_DEF)
-    f = -(f+1);                         /* ambiguous */
+    f = -(f+1);				/* ambiguous */
   else
-    f = f+1;                            /* found */
+    f = f+1;				/* found */
 
   return f;
 }
@@ -583,7 +588,7 @@ static int find_mixer(char * arg, char ** pend)
  * Parse -r,--rate=[M:Q,]Hz.
  */
 static int uint_spr(char * const arg, const char * name,
-                    int * prate, int * pmixer)
+		    int * prate, int * pmixer)
 {
   int rate = SPR_DEF;
   char * end = arg;
@@ -593,7 +598,7 @@ static int uint_spr(char * const arg, const char * name,
     dmsg("find mixer in \"%s\" -> %i \"%s\"\n", arg, f, end);
     if (f <= 0) {
       emsg("%s sampling method -- %s=%s\n",
-           !f?"invalid":"ambiguous", name, arg);
+	   !f?"invalid":"ambiguous", name, arg);
     } else {
       dmsg("set mixer id --  %i\n", f-1);
       *pmixer = f-1;
@@ -688,22 +693,22 @@ int main(int argc, char *argv[])
 {
   static char sopts[] = "hV" WAVOPT "cno:" "r:t:l:m:i:b:";
   static struct option lopts[] = {
-    { "help",    0, 0, 'h' },
-    { "usage",   0, 0, 'h' },
+    { "help",	 0, 0, 'h' },
+    { "usage",	 0, 0, 'h' },
     { "version", 0, 0, 'V' },
     /**/
 #ifndef NO_AO
-    { "wav",     0, 0, 'w' },
+    { "wav",	 0, 0, 'w' },
 #endif
-    { "output",  1, 0, 'o' },
-    { "stdout",  0, 0, 'c' },
-    { "null",    0, 0, 'n' },
-    { "tick=",   1, 0, 't' },
-    { "rate=",   1, 0, 'r' },
+    { "output",	 1, 0, 'o' },
+    { "stdout",	 0, 0, 'c' },
+    { "null",	 0, 0, 'n' },
+    { "tick=",	 1, 0, 't' },
+    { "rate=",	 1, 0, 'r' },
     { "length=", 1, 0, 'l' },
-    { "mute=",   1, 0, 'm' },
+    { "mute=",	 1, 0, 'm' },
     { "ignore=", 1, 0, 'i' },
-    { "blend=",  1, 0, 'b' },
+    { "blend=",	 1, 0, 'b' },
     { 0 }
   };
   int c, ecode=ZZ_ERR, ecode2;
@@ -734,40 +739,40 @@ int main(int argc, char *argv[])
     case 'l': opt_length = optarg; break;
     case 'r':
       if (-1 == uint_spr(optarg, "rate", &opt_splrate, &opt_mixerid))
-        RETURN (ZZ_EARG);
+	RETURN (ZZ_EARG);
       break;
     case 't':
       if (-1 == (opt_tickrate = uint_arg(optarg,"tick",RATE_MIN,RATE_MAX,0)))
-        RETURN (ZZ_EARG);
+	RETURN (ZZ_EARG);
       break;
     case 'm':
       if (-1 == (opt_mute = uint_mute(optarg,"mute")))
-        RETURN (ZZ_EARG);
+	RETURN (ZZ_EARG);
       break;
     case 'i':
       if (-1 == (opt_ignore = uint_mute(optarg,"ignore")))
-        RETURN (ZZ_EARG);
+	RETURN (ZZ_EARG);
       break;
     case 'b':
       if (-1 == (opt_blend = uint_blend(optarg,"blend", &opt_cmap)))
-        RETURN (ZZ_EARG);
+	RETURN (ZZ_EARG);
       break;
     case 0: break;
     case '?':
       if (!opterr) {
-        if (optopt) {
-          if (isgraph(optopt))
-            emsg("unknown option -- `%c'\n",optopt);
-          else
-            emsg("unknown option -- `\\x%02X'\n",optopt);
-        } else if (optind-1 > 0 && optind-1 < argc) {
-          emsg("unknown option -- `%s'\n", argv[optind-1]+2);
-        }
+	if (optopt) {
+	  if (isgraph(optopt))
+	    emsg("unknown option -- `%c'\n",optopt);
+	  else
+	    emsg("unknown option -- `\\x%02X'\n",optopt);
+	} else if (optind-1 > 0 && optind-1 < argc) {
+	  emsg("unknown option -- `%s'\n", argv[optind-1]+2);
+	}
       }
       RETURN (ZZ_EARG);
     default:
       emsg("unexpected option -- `%c' (%d)\n",
-           isgraph(c)?c:'.', c);
+	   isgraph(c)?c:'.', c);
       zz_assert(!"should not happen");
       RETURN (ZZ_666);
     }
@@ -804,6 +809,12 @@ int main(int argc, char *argv[])
   if (ecode)
     goto error_exit;
 
+#ifndef NO_ICE
+  ecode = zz_vfs_add(zz_ice_vfs());
+  if (ecode)
+    goto error_exit;
+#endif
+
   ecode = zz_new(&P);
   if (ecode)
     goto error_exit;
@@ -814,7 +825,7 @@ int main(int argc, char *argv[])
     goto error_exit;
   optind -= vseturi && format >= ZZ_FORMAT_BUNDLE;
   if (optind < argc)
-    RETURN(too_many_arguments());       /* or we could just warn */
+    RETURN(too_many_arguments());	/* or we could just warn */
 
   /* ----------------------------------------
    *  Output
@@ -873,26 +884,26 @@ int main(int argc, char *argv[])
       goto error_exit;
 
     dmsg("info: rate:%hu spr:%lu ms:%lu\n",
-         HU(info.len.rate), LU(info.mix.spr), LU(info.len.ms));
+	 HU(info.len.rate), LU(info.mix.spr), LU(info.len.ms));
 
     dmsg("Output via %s to \"%s\"\n", out->name, out->uri);
     imsg("Zing that zong\n"
-         " with the \"%s\" mixer at %luhz\n"
-         " for %s @%huhz\n"
-         " via \"%s\" at %luhz\n"
-         " blending L to %i%% of channels A+%c\n"
-         "vset: \"%s\" (%hukHz)\n"
-         "song: \"%s\" (%hukHz)\n\n"
-         ,
-         info.mix.name, LU(info.mix.spr),
-         max_ms == 0
-         ? "infinity"
-         : timestr( max_ms == ZZ_EOF ? info.len.ms: max_ms),
-         HU(info.len.rate),
-         out->uri, LU(out->hz),
-         ((256-opt_blend)*100) >> 8, 'B'+opt_cmap,
-         basename((char*)info.set.uri), HU(info.set.khz),
-         basename((char*)info.sng.uri), HU(info.sng.khz )
+	 " with the \"%s\" mixer at %luhz\n"
+	 " for %s @%huhz\n"
+	 " via \"%s\" at %luhz\n"
+	 " blending L to %i%% of channels A+%c\n"
+	 "vset: \"%s\" (%hukHz)\n"
+	 "song: \"%s\" (%hukHz)\n\n"
+	 ,
+	 info.mix.name, LU(info.mix.spr),
+	 max_ms == 0
+	 ? "infinity"
+	 : timestr( max_ms == ZZ_EOF ? info.len.ms: max_ms),
+	 HU(info.len.rate),
+	 out->uri, LU(out->hz),
+	 ((256-opt_blend)*100) >> 8, 'B'+opt_cmap,
+	 basename((char*)info.set.uri), HU(info.set.khz),
+	 basename((char*)info.sng.uri), HU(info.sng.khz )
       );
 
     if (*info.tag.artist)
@@ -910,29 +921,29 @@ int main(int argc, char *argv[])
 
       n = zz_play(P,pcm,n);
       if (n < 0) {
-        ecode = -n;
-        break;
+	ecode = -n;
+	break;
       }
       if (!n)
-        break;
+	break;
 
       n <<= 2;
       if (n != out->write(out,pcm,n))
-        ecode = ZZ_EOUT;
+	ecode = ZZ_EOUT;
       else {
-        zz_u32_t pos = zz_position(P) / 1000u;
-        if (pos != sec) {
-          sec = pos;
-          imsg("\n |> %02u:%02u\r"+newline,
-               sec / 60u, sec % 60u );
-          newline = 1;
-        }
+	zz_u32_t pos = zz_position(P) / 1000u;
+	if (pos != sec) {
+	  sec = pos;
+	  imsg("\n |> %02u:%02u\r"+newline,
+	       sec / 60u, sec % 60u );
+	  newline = 1;
+	}
       }
     } while (!ecode);
 
     if (ecode) {
       emsg("(%hu) prematured end (ms:%lu) -- %s\n",
-           HU(ecode), LU(zz_position(P)), songuri);
+	   HU(ecode), LU(zz_position(P)), songuri);
     }
   }
 
