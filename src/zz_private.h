@@ -14,7 +14,7 @@
 # include "config.h"
 #else
 # define _DEFAULT_SOURCE
-# define _GNU_SOURCE                    /* for GNU basename() */
+# define _GNU_SOURCE			/* for GNU basename() */
 # define _BSD_SOURCE
 #endif
 
@@ -54,20 +54,20 @@
 
 # include <stdio.h>
 # include <ctype.h>
-# include <string.h>                     /* memset, basename */
+# include <string.h>			 /* memset, basename */
 
 #ifdef __MINGW32__
-# include <libgen.h>     /* no GNU version of basename() with mingw */
+# include <libgen.h>	 /* no GNU version of basename() with mingw */
 #endif
 
 # include <errno.h>
-# define ZZ_EIO    EIO
+# define ZZ_EIO	   EIO
 # define ZZ_EINVAL EINVAL
 # define ZZ_ENODEV ENODEV
 
 #else
 
-# define ZZ_EIO    5
+# define ZZ_EIO	   5
 # define ZZ_EINVAL 22
 # define ZZ_ENODEV 19
 
@@ -107,7 +107,7 @@
 
 #ifndef never_inline
 # if defined(__GNUC__) || defined(__clang__)
-#  define never_inline  __attribute__((noinline))
+#  define never_inline	__attribute__((noinline))
 # elif defined _MSC_VER
 #  define never_inline __declspec(noinline)
 # else
@@ -116,13 +116,13 @@
 #endif
 
 #ifndef FP
-# define FP 15                          /* mixer step precision */
+# define FP 15				/* mixer step precision */
 #endif
 
-#define VSET_EXTRA    4096         /* extra space for unrolling */
-#define VSET_MAX_SIZE (1<<19)      /* arbitrary .set max size */
-#define SONG_MAX_SIZE 0xFFF0       /* not so arbitrary .4v max size */
-#define INFO_MAX_SIZE 2048         /* arbitrary .4q info max size */
+#define VSET_EXTRA    4096	   /* extra space for unrolling */
+#define VSET_MAX_SIZE (1<<19)	   /* arbitrary .set max size */
+#define SONG_MAX_SIZE 0xFFF0	   /* not so arbitrary .4v max size */
+#define INFO_MAX_SIZE 2048	   /* arbitrary .4q info max size */
 
 /* The size of the loop stack in the singsong.prg program is *67*.
  * The maximum depth encountered so far in a Quartet module is *6*.
@@ -156,23 +156,23 @@ typedef zz_u32_t       u32_t;
 typedef zz_i32_t       i32_t;
 typedef zz_u16_t       u16_t;
 typedef zz_i16_t       i16_t;
-typedef zz_u8_t        u8_t;
-typedef zz_i8_t        i8_t;
+typedef zz_u8_t	       u8_t;
+typedef zz_i8_t	       i8_t;
 typedef unsigned int   uint_t;
 
-typedef struct bin_s   bin_t;     /**< binary data container.     */
-typedef struct q4_s    q4_t;      /**< 4q header.                 */
-typedef struct info_s  info_t;    /**< song info.                 */
-typedef struct vset_s  vset_t;    /**< voice set (.set file).     */
-typedef struct inst_s  inst_t;    /**< instrument.                */
-typedef struct song_s  song_t;    /**< song (.4v file).           */
-typedef struct sequ_s  sequ_t;    /**< sequence definition.       */
-typedef struct core_s  core_t;    /**< core player.               */
-typedef struct play_s  play_t;    /**< high level player.         */
-typedef struct chan_s  chan_t;    /**< one channel.               */
-typedef struct note_s  note_t;    /**< channel step (pitch) info. */
-typedef struct mixer_s mixer_t;   /**< channel mixer.             */
-typedef struct songhd songhd_t;   /**< .4v file header.           */
+typedef struct bin_s   bin_t;	  /**< binary data container.     */
+typedef struct q4_s    q4_t;	  /**< 4q header.                 */
+typedef struct info_s  info_t;	  /**< song info.                 */
+typedef struct vset_s  vset_t;	  /**< voice set (.set file).     */
+typedef struct inst_s  inst_t;	  /**< instrument.                */
+typedef struct song_s  song_t;	  /**< song (.4v file).           */
+typedef struct sequ_s  sequ_t;	  /**< sequence definition.       */
+typedef struct core_s  core_t;	  /**< core player.               */
+typedef struct play_s  play_t;	  /**< high level player.         */
+typedef struct chan_s  chan_t;	  /**< one channel.               */
+typedef struct note_s  note_t;	  /**< channel step (pitch) info. */
+typedef struct mixer_s mixer_t;	  /**< channel mixer.             */
+typedef struct songhd songhd_t;	  /**< .4v file header.           */
 
 typedef struct vfs_s * vfs_t;
 typedef struct zz_vfs_dri_s vfs_dri_t;
@@ -190,84 +190,84 @@ struct str_s {
    * Pointer to the actual string.
    * @notice  ALWAYS FIRST
    */
-  char * ptr;                /**< buf: dynamic else: static.        */
-  u16_t  ref;                /**< number of reference.              */
-  u16_t  max;                /**< 0: const static else buffer size. */
-  u16_t  len;                /**< 0: ndef else len+1.               */
+  char * ptr;		     /**< buf: dynamic else: static.        */
+  u16_t	 ref;		     /**< number of reference.              */
+  u16_t	 max;		     /**< 0: const static else buffer size. */
+  u16_t	 len;		     /**< 0: ndef else len+1.               */
   /**
    * buffer when dynamic.
    * @notice  ALWAYS LAST
    */
-  char   buf[4];
+  char	 buf[4];
 };
 
 struct bin_s {
-  uint8_t *ptr;                      /**< pointer to data (_buf).   */
-  u32_t    max;                      /**< maximum allocated string. */
-  u32_t    len;                      /**< length including.         */
-  uint8_t _buf[1];                   /**< buffer (always last).     */
+  uint8_t *ptr;			     /**< pointer to data (_buf).   */
+  u32_t	   max;			     /**< maximum allocated string. */
+  u32_t	   len;			     /**< length including.         */
+  uint8_t _buf[1];		     /**< buffer (always last).     */
 };
 
 /** Prepared instrument (sample). */
 struct inst_s {
-  u16_t    len;              /**< size in bytes.                    */
-  u16_t    lpl;              /**< loop length in bytes.             */
-  u32_t    end;              /**< unrolled end.                     */
-  uint8_t *pcm;              /**< sample address.                   */
+  u16_t	   len;		     /**< size in bytes.                    */
+  u16_t	   lpl;		     /**< loop length in bytes.             */
+  u32_t	   end;		     /**< unrolled end.                     */
+  uint8_t *pcm;		     /**< sample address.                   */
 };
 
 struct memb_s {
-  bin_t  *bin;               /**< data container.                   */
+  bin_t	 *bin;		     /**< data container.                   */
 };
 
 /** Prepared instrument set. */
 struct vset_s {
-  bin_t *bin;                /**< voiceset data container.          */
+  bin_t *bin;		     /**< voiceset data container.          */
   /* */
-  uint8_t khz;               /**< sampling rate from .set.          */
-  uint8_t nbi;               /**< number of instrument [1..20].     */
-  uint8_t nul;               /**< value of middle point PCM.        */
-  uint8_t one;               /**< value of positive max PCM.        */
-  u32_t  unroll;             /**< unrolled amount.                  */
-  u32_t  iref;               /**< mask of instrument referenced.    */
-  inst_t inst[20];           /**< instrument definitions.           */
+  uint8_t khz;		     /**< sampling rate from .set.          */
+  uint8_t nbi;		     /**< number of instrument [1..20].     */
+  uint8_t nul;		     /**< value of middle point PCM.        */
+  uint8_t one;		     /**< value of positive max PCM.        */
+  u32_t	 unroll;	     /**< unrolled amount.                  */
+  u32_t	 iref;		     /**< mask of instrument referenced.    */
+  inst_t inst[20];	     /**< instrument definitions.           */
 };
 
 /** Prepared song. */
 struct song_s {
-  bin_t  *bin;               /**< song data container.              */
+  bin_t	 *bin;		     /**< song data container.              */
   /* */
-  uint8_t rate;              /**< tick rate (0: unspecified).       */
-  uint8_t khz;               /**< header sampling rate (kHz).       */
-  uint8_t barm;              /**< header bar measure.               */
-  uint8_t tempo;             /**< header tempo.                     */
-  uint8_t sigm;              /**< header signature numerator.       */
-  uint8_t sigd;              /**< header signature denominator.     */
-  u32_t   iuse;              /**< mask of instrument really used.   */
-  u32_t   iref;              /**< mask of instrument referened.     */
-  u32_t   stepmin;           /**< estimated minimal note been used. */
-  u32_t   stepmax;           /**< estimated maximal note been used. */
-  u32_t   ticks;             /**< estimated song length in ticks.   */
-  sequ_t *seq[4];            /**< pointers to channel sequences.    */
-  uint8_t istep[20];         /**< max step per instrument.          */
+  uint8_t rate;		     /**< tick rate (0: unspecified).       */
+  uint8_t khz;		     /**< header sampling rate (kHz).       */
+  uint8_t barm;		     /**< header bar measure.               */
+  uint8_t tempo;	     /**< header tempo.                     */
+  uint8_t sigm;		     /**< header signature numerator.       */
+  uint8_t sigd;		     /**< header signature denominator.     */
+  u32_t	  iuse;		     /**< mask of instrument really used.   */
+  u32_t	  iref;		     /**< mask of instrument referened.     */
+  u32_t	  stepmin;	     /**< estimated minimal note been used. */
+  u32_t	  stepmax;	     /**< estimated maximal note been used. */
+  u32_t	  ticks;	     /**< estimated song length in ticks.   */
+  sequ_t *seq[4];	     /**< pointers to channel sequences.    */
+  uint8_t istep[20];	     /**< max step per instrument.          */
 };
 
 /** Song meta info. */
 struct info_s {
-  bin_t *bin;                /**< info data container.              */
+  bin_t *bin;		     /**< info data container.              */
   /* */
-  char  *album;              /**< decoded album.                    */
-  char  *title;              /**< decoded title.                    */
-  char  *artist;             /**< decoded artist.                   */
-  char  *ripper;             /**< decoded ripper.                   */
+  char	*album;		     /**< decoded album.                    */
+  char	*title;		     /**< decoded title.                    */
+  char	*artist;	     /**< decoded artist.                   */
+  char	*ripper;	     /**< decoded ripper.                   */
 };
 
 /** Played note. */
 struct note_s {
-  i32_t   cur;               /**< current note.                     */
-  i32_t   aim;               /**< current note slide goal.          */
-  i32_t   stp;               /**< note slide speed (step).          */
-  inst_t *ins;               /**< Current instrument.               */
+  i32_t	  cur;		     /**< current note.                     */
+  i32_t	  aim;		     /**< current note slide goal.          */
+  i32_t	  stp;		     /**< note slide speed (step).          */
+  inst_t *ins;		     /**< Current instrument.               */
 };
 
 
@@ -288,44 +288,44 @@ struct q4_s {
  * Played channel.
  */
 struct chan_s {
-  sequ_t  *seq;                       /**< sequence address.        */
-  sequ_t  *cur;                       /**< next sequence.           */
-  inst_t  *ins;                       /**< instrument (zz_fast)     */
+  sequ_t  *seq;			      /**< sequence address.        */
+  sequ_t  *cur;			      /**< next sequence.           */
+  inst_t  *ins;			      /**< instrument (zz_fast)     */
 
-  uint8_t num;                      /**< channel number [0..3].     */
-  uint8_t pam;                      /**< map to [0..3],             */
-  uint8_t msk;                      /**< {0x11,0x22,0x44,0x88}.     */
-  uint8_t trig;                     /**< see TRIG_* enum.           */
-  uint8_t curi;                     /**< current instrument number. */
+  uint8_t num;			    /**< channel number [0..3].     */
+  uint8_t pam;			    /**< map to [0..3],             */
+  uint8_t msk;			    /**< {0x11,0x22,0x44,0x88}.     */
+  uint8_t trig;			    /**< see TRIG_* enum.           */
+  uint8_t curi;			    /**< current instrument number. */
 
-  u16_t wait;                     /**< number of tick left to wait. */
-  note_t note;                    /**< note (and slide) info.       */
+  u16_t wait;			  /**< number of tick left to wait. */
+  note_t note;			  /**< note (and slide) info.       */
   struct loop_s {
-    u16_t cnt;                          /**< loop count. */
-    u16_t off;                          /**< loop point. */
+    u16_t cnt;				/**< loop count. */
+    u16_t off;				/**< loop point. */
   }
-  *loop_sp,                             /**< loop stack pointer.    */
-  loops[MAX_LOOP];                      /**< loop stack.   */
+  *loop_sp,				/**< loop stack pointer.    */
+  loops[MAX_LOOP];			/**< loop stack.   */
 };
 
 /**
  *  Player core information.
  */
 struct core_s {
-  song_t   song;                /**< Music song (.4v). */
-  vset_t   vset;                /**< Music instrument (.set). */
-  void    *user;                /**< User data. */
-  mixer_t *mixer;               /**< Mixer to use. */
-  void    *data;                /**< Mixer private data. */
-  u32_t    tick;                /**< current tick (0:init 1:first). */
-  u32_t    spr;                 /**< Sampling rate (hz). */
-  u16_t    lr8;                 /**< L/R channels blending. */
-  uint8_t  mute;                /**< #0-3: ignored #4-7: muted. */
-  uint8_t  loop;                /**< #0-3:loop #4-7:tick loop. */
-  uint8_t  code;                /**< Error code. */
-  uint8_t  cmap;                /**< channel mapping (ZZ_MAP_*). */
+  song_t   song;		/**< Music song (.4v). */
+  vset_t   vset;		/**< Music instrument (.set). */
+  void	  *user;		/**< User data. */
+  mixer_t *mixer;		/**< Mixer to use. */
+  void	  *data;		/**< Mixer private data. */
+  u32_t	   tick;		/**< current tick (0:init 1:first). */
+  u32_t	   spr;			/**< Sampling rate (hz). */
+  u16_t	   lr8;			/**< L/R channels blending. */
+  uint8_t  mute;		/**< #0-3: ignored #4-7: muted. */
+  uint8_t  loop;		/**< #0-3:loop #4-7:tick loop. */
+  uint8_t  code;		/**< Error code. */
+  uint8_t  cmap;		/**< channel mapping (ZZ_MAP_*). */
 
-  chan_t   chan[4];             /**< 4 channels info. */
+  chan_t   chan[4];		/**< 4 channels info. */
 };
 
 struct play_s {
@@ -336,29 +336,29 @@ struct play_s {
   volatile u8_t st_idx;
   struct str_s st_strings[4];
 
-  info_t   info;                        /**< Music info. */
+  info_t   info;			/**< Music info. */
   str_t songuri;
   str_t vseturi;
   str_t infouri;
 
-  u32_t ms_pos;          /**< current frame start position (in ms). */
-  u32_t ms_end;          /**< current frame end position (in ms).   */
-  u32_t ms_max;          /**< maximum ms to play.                   */
-  u32_t ms_len;          /**< measured ms length.                   */
+  u32_t ms_pos;		 /**< current frame start position (in ms). */
+  u32_t ms_end;		 /**< current frame end position (in ms).   */
+  u32_t ms_max;		 /**< maximum ms to play.                   */
+  u32_t ms_len;		 /**< measured ms length.                   */
 
-  u16_t    rate;                /**< tick rate (in hz). */
-  u16_t pcm_cnt;                 /**< pcm remaining on this tick.   */
-  u16_t pcm_err;                 /**< pcm error accumulator.        */
-  u16_t pcm_per_tick;            /**< pcm per tick (integer).       */
-  u16_t pcm_err_tick;            /**< pcm per tick (correction).    */
+  u16_t	   rate;		/**< tick rate (in hz). */
+  u16_t pcm_cnt;		 /**< pcm remaining on this tick.   */
+  u16_t pcm_err;		 /**< pcm error accumulator.        */
+  u16_t pcm_per_tick;		 /**< pcm per tick (integer).       */
+  u16_t pcm_err_tick;		 /**< pcm per tick (correction).    */
 
-  u16_t ms_err;                      /**< ms error accumulator.     */
-  u16_t ms_per_tick;                 /**< ms per tick (integer).    */
-  u16_t ms_err_tick;                 /**< ms per tick (correction). */
+  u16_t ms_err;			     /**< ms error accumulator.     */
+  u16_t ms_per_tick;		     /**< ms per tick (integer).    */
+  u16_t ms_err_tick;		     /**< ms per tick (correction). */
 
-  uint8_t done;            /**< non zero when done.  */
-  uint8_t format;          /**< see ZZ_FORMAT_ enum. */
-  uint8_t mixer_id;        /**< mixer identifier.    */
+  uint8_t done;		   /**< non zero when done.  */
+  uint8_t format;	   /**< see ZZ_FORMAT_ enum. */
+  uint8_t mixer_id;	   /**< mixer identifier.    */
 };
 
 /* ---------------------------------------------------------------------- */
@@ -393,7 +393,7 @@ void * m68k_memcpy(void * restrict, const void *, uint32_t);
 
 ZZ_EXTERN_C
 void * m68k_memxla(void * restrict, const void *,
-                   const uint8_t *, uint32_t);
+		   const uint8_t *, uint32_t);
 #define zz_memxla(A,B,C,D) m68k_memxla((A),(B),(C),(D))
 
 #else /* __m68k__ */
@@ -410,12 +410,12 @@ static inline void always_inline c_xdivu(u32_t n, u16_t d, u16_t *q, u16_t *r)
 { *q = n / d; *r = n % d; }
 static inline u32_t always_inline c_divu32(u32_t n, u16_t d)
 { return n / d; }
-# define mulu(a,b)      c_mulu((a),(b))
-# define divu(a,b)      c_divu((a),(b))
-# define modu(a,b)      c_modu((a),(b))
+# define mulu(a,b)	c_mulu((a),(b))
+# define divu(a,b)	c_divu((a),(b))
+# define modu(a,b)	c_modu((a),(b))
 # define xdivu(a,b,q,r) c_xdivu((a),(b),(q),(r))
-# define mulu32(a,b)    c_mulu32((a),(b))
-# define divu32(a,b)    c_divu32((a),(b))
+# define mulu32(a,b)	c_mulu32((a),(b))
+# define divu32(a,b)	c_divu32((a),(b))
 
 #endif /* __m68k__ */
 
@@ -481,17 +481,17 @@ static inline void always_inline poke_b32(uint8_t * const a, u32_t v)
  */
 ZZ_EXTERN_C
 void map_i16_to_i16(int16_t * d,
-                    const i16_t * va, const i16_t * vb,
-                    const i16_t * vc, const i16_t * vd,
-                    const i16_t sc1, const i16_t sc2, int n);
+		    const i16_t * va, const i16_t * vb,
+		    const i16_t * vc, const i16_t * vd,
+		    const i16_t sc1, const i16_t sc2, int n);
 
 #ifndef NO_FLOAT
 
 ZZ_EXTERN_C
 void map_flt_to_i16(int16_t * d,
-                    const float * va, const float * vb,
-                    const float * vc, const float * vd,
-                    const float sc1, const float sc2, const int n);
+		    const float * va, const float * vb,
+		    const float * vc, const float * vd,
+		    const float sc1, const float sc2, const int n);
 
 ZZ_EXTERN_C
 void i8tofl(float * const d, const uint8_t * const s, const int n);
@@ -583,6 +583,9 @@ ZZ_EXTERN_C
 zz_u32_t vfs_size(vfs_t vfs);
 ZZ_EXTERN_C
 zz_err_t vfs_seek(vfs_t vfs, zz_u32_t pos, zz_u8_t set);
+ZZ_EXTERN_C
+zz_err_t vfs_push(vfs_t vfs, const void * b, zz_u8_t n);
+
 /**
  * @}
  */

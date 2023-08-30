@@ -14,11 +14,11 @@
 /**
  * Integer types the platform prefers matching our requirements.
  */
-typedef  int_fast8_t  zz_i8_t;
+typedef	 int_fast8_t  zz_i8_t;
 typedef uint_fast8_t  zz_u8_t;
-typedef  int_fast16_t zz_i16_t;
+typedef	 int_fast16_t zz_i16_t;
 typedef uint_fast16_t zz_u16_t;
-typedef  int_fast32_t zz_i32_t;
+typedef	 int_fast32_t zz_i32_t;
 typedef uint_fast32_t zz_u32_t;
 
 #ifndef ZINGZONG_API
@@ -52,36 +52,36 @@ typedef uint_fast32_t zz_u32_t;
  * Zingzong error codes.
  */
 enum {
-  ZZ_OK,                   /**< (0) No error.                       */
-  ZZ_ERR,                  /**< (1) Unspecified error.              */
-  ZZ_EARG,                 /**< (2) Argument error.                 */
-  ZZ_ESYS,                 /**< (3) System error (I/O, memory ...). */
-  ZZ_EINP,                 /**< (4) Problem with input.             */
-  ZZ_EOUT,                 /**< (5) Problem with output.            */
-  ZZ_ESNG,                 /**< (6) Song error.                     */
-  ZZ_ESET,                 /**< (7) Voice set error                 */
-  ZZ_EPLA,                 /**< (8) Player error.                   */
-  ZZ_EMIX,                 /**< (9) Mixer error.                    */
-  ZZ_666 = 66              /**< Internal error.                     */
+  ZZ_OK,		   /**< (0) No error.                       */
+  ZZ_ERR,		   /**< (1) Unspecified error.              */
+  ZZ_EARG,		   /**< (2) Argument error.                 */
+  ZZ_ESYS,		   /**< (3) System error (I/O, memory ...). */
+  ZZ_EINP,		   /**< (4) Problem with input.             */
+  ZZ_EOUT,		   /**< (5) Problem with output.            */
+  ZZ_ESNG,		   /**< (6) Song error.                     */
+  ZZ_ESET,		   /**< (7) Voice set error                 */
+  ZZ_EPLA,		   /**< (8) Player error.                   */
+  ZZ_EMIX,		   /**< (9) Mixer error.                    */
+  ZZ_666 = 66		   /**< Internal error.                     */
 };
 
 /**
  * Known (but not always supported) Quartet file format.
  */
 enum zz_format_e {
-  ZZ_FORMAT_UNKNOWN,           /**< Not yet determined (must be 0)  */
-  ZZ_FORMAT_4V,                /**< Original Atari ST song.         */
+  ZZ_FORMAT_UNKNOWN,	       /**< Not yet determined (must be 0)  */
+  ZZ_FORMAT_4V,		       /**< Original Atari ST song.         */
   ZZ_FORMAT_BUNDLE = 64,       /**< Next formats are bundles.       */
-  ZZ_FORMAT_4Q,                /**< Single song bundle (MUG UK ?).  */
-  ZZ_FORMAT_QUAR,              /**< Multi song bundle (SC68).       */
+  ZZ_FORMAT_4Q,		       /**< Single song bundle (MUG UK ?).  */
+  ZZ_FORMAT_QUAR,	       /**< Multi song bundle (SC68).       */
 };
 
 /**
  * Mixer identifiers.
  */
 enum {
-  ZZ_MIXER_XTN = 254,          /**< External mixer.                 */
-  ZZ_MIXER_DEF = 255,          /**< Default mixer id.               */
+  ZZ_MIXER_XTN = 254,	       /**< External mixer.                 */
+  ZZ_MIXER_DEF = 255,	       /**< Default mixer id.               */
   ZZ_MIXER_ERR = ZZ_MIXER_DEF  /**< Error (alias for ZZ_MIXER_DEF). */
 };
 
@@ -89,19 +89,19 @@ enum {
  * Stereo channel mapping.
  */
 enum {
-  ZZ_MAP_ABCD,                         /**< (0) Left:A+B Right:C+D. */
-  ZZ_MAP_ACBD,                         /**< (1) Left:A+C Right:B+D. */
-  ZZ_MAP_ADBC,                         /**< (2) Left:A+D Right:B+C. */
+  ZZ_MAP_ABCD,			       /**< (0) Left:A+B Right:C+D. */
+  ZZ_MAP_ACBD,			       /**< (1) Left:A+C Right:B+D. */
+  ZZ_MAP_ADBC,			       /**< (2) Left:A+D Right:B+C. */
 };
 
 /**
  * Sampler quality.
  */
 enum zz_quality_e {
-  ZZ_FQ = 1,                            /**< (1) Fastest quality. */
-  ZZ_LQ,                                /**< (2) Low quality.     */
-  ZZ_MQ,                                /**< (3) Medium quality.  */
-  ZZ_HQ                                 /**< (4) High quality.    */
+  ZZ_FQ = 1,				/**< (1) Fastest quality. */
+  ZZ_LQ,				/**< (2) Low quality.     */
+  ZZ_MQ,				/**< (3) Medium quality.  */
+  ZZ_HQ					/**< (4) High quality.    */
 };
 
 typedef zz_i8_t zz_err_t;
@@ -121,39 +121,39 @@ typedef struct zz_info_s zz_info_t;
 struct zz_info_s {
 
   struct {
-    zz_u8_t      num;               /**< format (@see zz_format_e). */
-    const char * str;               /**< format string.             */
-  } fmt;                            /**< format info.               */
+    zz_u8_t	 num;		    /**< format (@see zz_format_e). */
+    const char * str;		    /**< format string.             */
+  } fmt;			    /**< format info.               */
 
   struct {
-    zz_u16_t     rate;              /**< player tick rate (200hz).  */
-    zz_u32_t     ms;                /**< song duration in ms.       */
-  } len;                            /**< replay info.               */
+    zz_u16_t	 rate;		    /**< player tick rate (200hz).  */
+    zz_u32_t	 ms;		    /**< song duration in ms.       */
+  } len;			    /**< replay info.               */
 
   /** mixer info. */
   struct {
-    zz_u32_t     spr;          /**< sampling rate.                  */
-    zz_u8_t      num;          /**< mixer identifier.               */
-    zz_u8_t      map;          /**< channel mapping (ZZ_MAP_*).     */
-    zz_u16_t     lr8;          /**< 0:normal 128:center 256:invert. */
+    zz_u32_t	 spr;	       /**< sampling rate.                  */
+    zz_u8_t	 num;	       /**< mixer identifier.               */
+    zz_u8_t	 map;	       /**< channel mapping (ZZ_MAP_*).     */
+    zz_u16_t	 lr8;	       /**< 0:normal 128:center 256:invert. */
 
-    const char * name;         /**< mixer name or "".               */
-    const char * desc;         /**< mixer description or "".        */
-  } mix;                       /**< mixer related info.             */
+    const char * name;	       /**< mixer name or "".               */
+    const char * desc;	       /**< mixer description or "".        */
+  } mix;		       /**< mixer related info.             */
 
   struct {
-    const char * uri;               /**< URI or path.               */
-    zz_u32_t     khz;               /**< sampling rate reported.    */
+    const char * uri;		    /**< URI or path.               */
+    zz_u32_t	 khz;		    /**< sampling rate reported.    */
   }
-  set,                              /**< voice set info.            */
-  sng;                              /**< song info.                 */
+  set,				    /**< voice set info.            */
+  sng;				    /**< song info.                 */
 
   struct {
-    const char * album;             /**< album or "".               */
-    const char * title;             /**< title or "".               */
-    const char * artist;            /**< artist or "".              */
-    const char * ripper;            /**< ripper or "".              */
-  } tag;                            /**< meta tags.                 */
+    const char * album;		    /**< album or "".               */
+    const char * title;		    /**< title or "".               */
+    const char * artist;	    /**< artist or "".              */
+    const char * ripper;	    /**< ripper or "".              */
+  } tag;			    /**< meta tags.                 */
 
 };
 
@@ -226,10 +226,10 @@ zz_u32_t zz_core_blend(zz_core_t core, zz_u8_t map, zz_u16_t lr8);
  * Log level (first parameter of zz_log_t function).
  */
 enum zz_log_e {
-  ZZ_LOG_ERR,                           /**< Log error.   */
-  ZZ_LOG_WRN,                           /**< Log warning. */
-  ZZ_LOG_INF,                           /**< Log info.    */
-  ZZ_LOG_DBG                            /**< Log debug.   */
+  ZZ_LOG_ERR,				/**< Log error.   */
+  ZZ_LOG_WRN,				/**< Log warning. */
+  ZZ_LOG_INF,				/**< Log info.    */
+  ZZ_LOG_DBG				/**< Log debug.   */
 };
 
 /**
@@ -307,8 +307,8 @@ ZINGZONG_API
  * @retval ZZ_OK(0) on success
  */
 zz_err_t zz_load(zz_play_t const play,
-                 const char * song, const char * vset,
-                 zz_u8_t * pfmt);
+		 const char * song, const char * vset,
+		 zz_u8_t * pfmt);
 
 ZINGZONG_API
 /**
@@ -411,8 +411,8 @@ zz_u8_t zz_mixer_info(zz_u8_t id, const char **pname, const char **pdesc);
  * Channels re-sampler and mixer interface.
  */
 struct mixer_s {
-  const char * name;                 /**< friendly name and method. */
-  const char * desc;                 /**< mixer brief description.  */
+  const char * name;		     /**< friendly name and method. */
+  const char * desc;		     /**< mixer brief description.  */
 
   /** Init mixer function. */
   zz_err_t (*init)(zz_core_t const, zz_u32_t);
@@ -440,28 +440,31 @@ enum {
  * Virtual filesystem driver.
  */
 struct zz_vfs_dri_s {
-  const char * name;                      /**< friendly name.      */
-  zz_err_t (*reg)(zz_vfs_dri_t);          /**< register driver.    */
-  zz_err_t (*unreg)(zz_vfs_dri_t);        /**< un-register driver. */
-  zz_u16_t (*ismine)(const char *);       /**< is mine.            */
+  const char * name;			  /**< friendly name.      */
+  zz_err_t (*reg)(zz_vfs_dri_t);	  /**< register driver.    */
+  zz_err_t (*unreg)(zz_vfs_dri_t);	  /**< un-register driver. */
+  zz_u16_t (*ismine)(const char *);	  /**< is mine.            */
   zz_vfs_t (*new)(const char *, va_list); /**< create VFS.         */
-  void     (*del)(zz_vfs_t);              /**< destroy VFS.        */
+  void	   (*del)(zz_vfs_t);		  /**< destroy VFS.        */
   const
-  char *   (*uri)(zz_vfs_t);                    /**< get URI.       */
-  zz_err_t (*open)(zz_vfs_t);                   /**< open.          */
-  zz_err_t (*close)(zz_vfs_t);                  /**< close.         */
+  char *   (*uri)(zz_vfs_t);			/**< get URI.       */
+  zz_err_t (*open)(zz_vfs_t);			/**< open.          */
+  zz_err_t (*close)(zz_vfs_t);			/**< close.         */
   zz_u32_t (*read)(zz_vfs_t, void *, zz_u32_t); /**< read.          */
-  zz_u32_t (*tell)(zz_vfs_t);                   /**< get position.  */
-  zz_u32_t (*size)(zz_vfs_t);                   /**< get size.      */
-  zz_err_t (*seek)(zz_vfs_t,zz_u32_t,zz_u8_t);  /**< offset,whence. */
+  zz_u32_t (*tell)(zz_vfs_t);			/**< get position.  */
+  zz_u32_t (*size)(zz_vfs_t);			/**< get size.      */
+  zz_err_t (*seek)(zz_vfs_t,zz_u32_t,zz_u8_t);	/**< offset,whence. */
 };
 
 /**
  * Common (inherited) part to all VFS instance.
  */
 struct vfs_s {
-  zz_vfs_dri_t dri;                  /**< pointer to the VFS driver */
-  int err;                           /**< last error number.        */
+  zz_vfs_dri_t dri;		    /**< pointer to the VFS driver. */
+  int err;			    /**< last error number.         */
+  int pb_pos;			    /**< push-back position.        */
+  int pb_len;			    /**< push-back length.          */
+  uint8_t pb_buf[16];		    /**< push-back buffer.          */
 };
 
 ZINGZONG_API

@@ -1,5 +1,5 @@
 /**
- * @file   zz_log.h
+ * @file   zz_def.h
  * @author Benjamin Gerard AKA Ben/OVR
  * @date   2017-07-30
  * @brief  Convenience defines that should be private.
@@ -14,15 +14,15 @@
  */
 
 #ifndef SPR_MIN
-# define SPR_MIN 4000                   /* sampling rate minimum */
+# define SPR_MIN 4000			/* sampling rate minimum */
 #endif
 
 #ifndef SPR_MAX
-# define SPR_MAX 96000                  /* sampling rate maximum */
+# define SPR_MAX 96000			/* sampling rate maximum */
 #endif
 
 #ifndef SPR_DEF
-# define SPR_DEF 48000                  /* sampling rate default */
+# define SPR_DEF 48000			/* sampling rate default */
 #endif
 
 #define RATE_DEF 200
@@ -66,8 +66,8 @@
 
 #define LU(X) ((unsigned long)(X))    /* printf format shenanigans. */
 #define HU(X) ((unsigned short)(X))   /* printf format shenanigans. */
-#define LI(X) ((long)(X))             /* printf format shenanigans. */
-#define HI(X) ((short)(X))            /* printf format shenanigans. */
+#define LI(X) ((long)(X))	      /* printf format shenanigans. */
+#define HI(X) ((short)(X))	      /* printf format shenanigans. */
 
 #ifdef NO_LOG
 
@@ -208,13 +208,13 @@ ZZ_EXTERN_C zz_u16_t zz_strlen(str_t const str);
  * @{
  */
 
-typedef struct zz_out_s zz_out_t;       /**< output. */
+typedef struct zz_out_s zz_out_t;	/**< output. */
 
 /** Audio output interface. */
 struct zz_out_s {
-  const char * name;                    /**< friendly name.  */
-  const char * uri;                     /**< uri/path. */
-  zz_u32_t     hz;                      /**< sampling rate. */
+  const char * name;			/**< friendly name.  */
+  const char * uri;			/**< uri/path. */
+  zz_u32_t     hz;			/**< sampling rate. */
 
   /** Close and free function. */
   zz_err_t (*close)(zz_out_t *);

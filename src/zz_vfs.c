@@ -145,6 +145,7 @@ vfs_open(vfs_t vfs)
   ecode = vfs->dri->open(vfs);
   if (ecode != E_OK)
     (void) vfs_emsg(vfs->dri->name,vfs->err,"open",0,vfs_uri(vfs));
+  vfs->pb_pos = vfs->pb_len = 0;
   return ecode;
 }
 
@@ -167,7 +168,47 @@ vfs_close(vfs_t vfs)
   ecode = vfs->dri->close(vfs);
   if (E_OK != ecode)
     vfs_emsg(vfs->dri->name,vfs->err,"close", 0, vfs_uri(vfs));
+  vfs->pb_pos = vfs->pb_len = 0;
   return ecode;
+}
+
+zz_err_t
+vfs_push(vfs_t vfs, const void * ptr, zz_u8_t size)
+{
+  zz_err_t ecode = E_INP;
+  VFS_OR_ARG(vfs);
+  if (vfs->pb_len != vfs->pb_pos) {
+    vfs_emsg(vfs->dri->name,vfs->err,"push", "not empty", vfs_uri(vfs));
+  }
+  else if (size > sizeof(vfs->pb_buf)) {
+    vfs_emsg(vfs->dri->name,vfs->err,"push", "overflow", vfs_uri(vfs));
+  }
+  else {
+    zz_memcpy(vfs->pb_buf, ptr, size);
+    vfs->pb_pos = 0;
+    vfs->pb_len = size;
+    ecode = E_OK;
+    dmsg("pushed back %u bytes\n", size);
+  }
+  return ecode;
+}
+
+static zz_u32_t pb_read(zz_vfs_t vfs, void * ptr, zz_u32_t size)
+{
+  uint8_t * const dst = ptr;
+  zz_u32_t cnt, n;
+
+  cnt = 0;
+  while ( vfs->pb_pos < vfs->pb_len ) {
+    dst[cnt++] = vfs->pb_buf[vfs->pb_pos++];
+    if ( cnt == size )
+      return size;
+  }
+
+  n = vfs->dri->read(vfs, dst+cnt, size-cnt);
+  if (n != ZZ_EOF)
+    n += cnt;
+  return n;
 }
 
 zz_u32_t
@@ -177,7 +218,7 @@ vfs_read(zz_vfs_t vfs, void * ptr, zz_u32_t size)
     return size;
   if (!ptr) vfs = 0;
   VFS_OR_EOF(vfs);
-  return vfs->dri->read(vfs,ptr,size);
+  return pb_read(vfs, ptr, size);
 }
 
 zz_err_t
@@ -193,7 +234,7 @@ vfs_read_exact(vfs_t vfs, void * ptr, zz_u32_t size)
     vfs = 0;			  /* to trigger an error just below */
   VFS_OR_ARG(vfs);
 
-  n = vfs->dri->read(vfs,ptr,size);
+  n = pb_read(vfs,ptr,size);
   if (n == ZZ_EOF) {
     vfs_emsg(vfs->dri->name, vfs->err,"read_exact", 0, vfs_uri(vfs));
     ecode = E_INP;
@@ -223,12 +264,20 @@ vfs_seek(vfs_t vfs, zz_u32_t pos, zz_u8_t set)
   zz_err_t ecode = E_INP;
   VFS_OR_ARG(vfs);
 
+  if (vfs->pb_len != vfs->pb_pos) {
+    vfs->err = E_ERR;
+    vfs_emsg(vfs->dri->name, vfs->err,"seek",
+	     "push not empty", vfs_uri(vfs));
+    return E_INP;
+  }
+
   ecode = vfs->dri->seek
     ? vfs->dri->seek(vfs,pos,set)
     : vfs_seek_simul(vfs,pos,set)
     ;
   if (ecode)
     vfs_emsg(vfs->dri->name,vfs->err,"seek","seek error", vfs_uri(vfs));
+
   return ecode;
 }
 
@@ -321,19 +370,10 @@ vfs_open_uri(vfs_t * pvfs, const char * uri)
       }
       else if (ice != vfs) {
 	/* ICE! depacked, we can now destroy vfs */
-	vfs_del(&vfs);		/* close and destroy vfa */
+	vfs_del(&vfs);		/* close and destroy vfs */
 	vfs = ice;		/* continue w/ ICE! vfs */
 	ecode = vfs_open(vfs);	/* never fails */
 	zz_assert(ecode == ZZ_OK);
-      }
-      /* We have to rewind vfs. Now that can be a problem.
-       * Alternatively we can try re-open it, but it's not much better.
-       * Ideally we need a push-back buffer.
-       */
-      else if (ecode = vfs_seek(vfs, 0, ZZ_SEEK_SET), ecode != E_OK) {
-	vfs_close(vfs);
-	if (ecode = vfs_open(vfs), E_OK != ecode)
-	  vfs_del(&vfs);
       }
     }
     *pvfs = vfs;

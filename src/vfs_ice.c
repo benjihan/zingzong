@@ -2,7 +2,7 @@
  * @file   vfs_ice.c
  * @author Benjamin Gerard AKA Ben/OVR
  * @date   2023-08-29
- * @brief  ICE! transparent depacker VFS
+ * @brief  ICE! transparent depacker VFS.
  */
 
 #define ZZ_DBG_PREFIX "(ice) "
@@ -95,8 +95,10 @@ x_new(const char * uri, va_list list)
 
   d_size = ice_depacked_size(hd, &c_size);
   dmsg("file:%i packed:%i depacked:%d\n", f_size, c_size, d_size);
-  if (c_size > f_size || c_size < 14)
+  if (d_size < 0 || c_size > f_size || c_size < 14) {
+    vfs_push(slave, hd, 12);
     goto error;
+  }
 
   /* From this point we assume it's an ICE! packed file. Any error is
    * now fatal. */
@@ -138,7 +140,7 @@ x_close(vfs_t const _vfs)
 {
   vfs_ice_t const fs = (vfs_ice_t) _vfs;
   fs->len = fs->pos = 0;
-  return fs->X.err = ZZ_OK;
+  return ZZ_OK;
 }
 
 static zz_err_t
@@ -146,7 +148,7 @@ x_open(vfs_t const _vfs)
 {
   vfs_ice_t const fs = (vfs_ice_t) _vfs;
   fs->pos = 0;
-  return fs->X.err = ZZ_OK;
+  return ZZ_OK;
 }
 
 static zz_u32_t
@@ -158,7 +160,6 @@ x_read(vfs_t const _vfs, void * ptr, zz_u32_t n)
 
   zz_memcpy(ptr, fs->data+fs->pos, n);
   fs->pos += n;
-  fs->X.err = 0;
   return n;
 }
 
@@ -166,7 +167,6 @@ static zz_u32_t
 x_tell(vfs_t const _vfs)
 {
   vfs_ice_t const fs = (vfs_ice_t) _vfs;
-  fs->X.err = ZZ_OK;
   return fs->pos;
 }
 
@@ -174,7 +174,6 @@ static zz_u32_t
 x_size(vfs_t const _vfs)
 {
   vfs_ice_t const fs = (vfs_ice_t) _vfs;
-  fs->X.err = ZZ_OK;
   return fs->len;
 }
 
@@ -387,7 +386,6 @@ static void normal_bytes(all_regs_t *R)
     R->d1 = get_d0_bits(R, R->d0);
     R->d0 = (R->d0 >> 16) | ~0xFFFF;
     DB_CC((R->d0^R->d1)&0xFFFF, R->d3, nextgb);
-/*   no_more: */
     R->d1 += tab[(20>>2)];
 
  copy_direkt:
@@ -445,11 +443,9 @@ static void strings(all_regs_t *R)
   R->d2 = 3;
 get_length_bit:
   DB_CC(get_1_bit(R)==0, R->d2, get_length_bit);
-/* no_length_bit:        */
-  R->d4 = R->d1 = 0; /* $$$ d4 is not needed here. */
+  R->d4 = R->d1 = 0;
   R->d0 = (R->d0 & ~0xFFFF) | (0xFFFF & (s8)R->a1[ 1 + (s16)R->d2 ]);
   B_CC(R->d0&0x8000, no_Ober);
-/*  get_Ober: */
   R->d1 = get_d0_bits(R, R->d0);
   R->d0 |= 0xFFFF;
 no_Ober:
