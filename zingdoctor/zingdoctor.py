@@ -2,7 +2,7 @@
 #
 # zingdoctor.py -- A quartet file doctor
 #
-# Copyright (c) 2017 Benjamin Gerard AKA Ben/OVR
+# Copyright (c) 2017-2023 Benjamin Gerard AKA Ben^OVR
 #
 # ----------------------------------------------------------------------------
 #
@@ -88,7 +88,7 @@ from os.path import splitext, split
 #  Globales
 # ----------------------------------------------------------------------------
 
-version     = 'zingdoctor 0.9'
+version     = 'zingdoctor 0.9.1'
 opt_verbose = 0
 opt_mode    = None
 opt_unroll  = None
@@ -910,7 +910,7 @@ Usage: zingdoctor.py [OPTIONS] file.4q ...
 Options:
  -h --help --usage ...... Display this message and exit
  -V --version ........... Print version and copyright and exit
- -d --demux ............. Demux .4q file
+ -d --demux ............. Demux .4q or .quar file
  -c --check ............. Only check (default)
  -f --fix ............... Fix error
  -u --unroll=N .......... Add N-bytes of loop unroll buffer"""
@@ -920,7 +920,7 @@ def print_version():
     print("""\
 %s
 
-Copyright (c) 2017 Benjamin Gerard AKA Ben/OVR
+Copyright (c) 2017-2023 Benjamin Gerard AKA Ben^OVR
 Licensed under MIT license""" % version)
 
 
@@ -939,7 +939,7 @@ def main(argc, argv):
         opts, args = getopt(argv, "hV" "vq" "dcf" "u:",
                             [ 'help','usage','version',
                               'verbose','quiet',
-                              'check','fix','denux','unroll='
+                              'check','fix','demux','unroll='
                             ])
     except GetOptError as e:
         raise Error(str(e))
@@ -1008,12 +1008,14 @@ def main(argc, argv):
             voff, nbsong = unpack(">2L",hd[4:12])
             soff = unpack(">%dL"%nbsong, hd[12:12+4*nbsong])
 
-            mesg("'SC68QUAR (.quar)' file detected: set=%u songs:%u" % (voff, nbsong))
+            mesg("'SC68-QUAR (.quar)' file detected: set=%u songs:%u" %
+                 (voff, nbsong))
 
             # Sort chunks by offset ( CHK-#, ( OFFSET, LENGTH ) )
-            sort_chunks= sorted([ (0,(voff,None)), (-1,(len(hd),-1)) ] +
-                                [ (i+1,(off,None)) for i,off in  enumerate(soff) ],
-                                key=lambda x: x[1][0])
+            sort_chunks = \
+                sorted([ (0,(voff,None)), (-1,(len(hd),-1)) ] +
+                       [ (i+1,(off,None)) for i,off in enumerate(soff) ],
+                       key=lambda x: x[1][0])
             assert sort_chunks[-1][0] == -1
             # Compute lengths
             for i in range(len(sort_chunks)-1):
