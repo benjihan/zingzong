@@ -83,37 +83,6 @@ filter-L = $(strip $(filter     $(L_patterns),$1))
 filter-l = $(strip $(filter-out $(L_patterns),$1))
 
 # ----------------------------------------------------------------------
-#  libao (NO_AO=1 to disable)
-# ----------------------------------------------------------------------
-
-ifeq ($(NO_AO),1)
-override undefine AO_CFLAGS
-override undefine AO_LIBS
-else
-ifeq ($(origin AO_CFLAGS)/$(origin AO_LIBS),undefined/undefined)
-
-AO_CFLAGS := $(call pkgconfig,--cflags ao)
-ifeq ($(AO_CFLAGS),n/a)
-$(error pkg-config failed -- ao --cflags)
-endif
-
-AO_LIBS := $(call pkgconfig,--libs ao)
-ifeq ($(AO_LIBS),n/a)
-$(error pkg-config failed -- ao --libs)
-endif
-
-endif
-endif
-
-ifeq ($(AO_LIBS),)
-override gb_CPPFLAGS += -DNO_AO=1
-endif
-
-override gb_CFLAGS  += $(AO_CFLAGS)
-override gb_LDFLAGS += $(call filter-L,$(AO_LIBS))
-override gb_LDLIBS  += $(call filter-l,$(AO_LIBS))
-
-# ----------------------------------------------------------------------
 #  samplerate (NO_SRATE=0 to enable)
 # ----------------------------------------------------------------------
 
@@ -291,7 +260,7 @@ man_targets = $(srcdir)/man/zingzong.1
 install-strip: INSTALL_STRIP = --strip-program=$(STRIP) -s
 install-strip: install
 
-install: install-exec install-data 
+install: install-exec install-data
 	@echo "$(PACKAGE) $(VERSION) should be installed"
 
 install-bin uninstall-bin: install_dir = $(DESTDIR)$(bindir)
@@ -313,7 +282,7 @@ install-man: $(man_targets)
 
 install-doc: $(doc_targets)
 	@mkdir -p -- "$(install_dir)"
-	$(INSTALL) $< 
+	$(INSTALL) $<
 
 .PHONY: install-strip install install-exec
 .PHONY: install-data install-man install-doc
