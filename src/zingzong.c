@@ -1,14 +1,14 @@
 /**
- * @file   zingzong.c
- * @date   2017-06-06
- * @author Benjamin Gerard
- * @brief  a simple Microdeal quartet music player.
+ * @file    zingzong.c
+ * @date    2017-06-06
+ * @author  Benjamin Gerard
+ * @brief   a simple Microdeal quartet music player.
  *
  * ----------------------------------------------------------------------
  *
  * MIT License
  *
- * Copyright (c) 2017-2018 Benjamin Gerard AKA Ben/OVR.
+ * Copyright (c) 2017-2023 Benjamin Gerard AKA Ben/OVR.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -32,7 +32,7 @@
  */
 
 static const char copyright[] = \
-  "Copyright (c) 2017-2018 Benjamin Gerard AKA Ben/OVR";
+  "Copyright (c) 2017-2023 Benjamin Gerard AKA Ben/OVR";
 static const char license[] = \
   "Licensed under MIT license";
 static const char bugreport[] = \

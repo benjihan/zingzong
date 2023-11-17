@@ -1,5 +1,5 @@
 /// @file   sc68_start.s
-/// @author Benjamin Gerard AKA Ben/OVR
+/// @author Benjamin Gerard AKA Ben^OVR
 /// @date   2017-08
 /// @brief  sc68 startup for zingzong
 ///
@@ -17,9 +17,19 @@ sc68_start:
 	bra.w	player_play
 
 0:
-	clr.l	-(a7)		// Sampling/Quality (0:default)
+	lea	sc68_start(pc),a0
+	lea	sc68_start.l,a0
 
-	move.l	d0,-(a7)	// Auto:0, AGA:1 STf:2 STe:3 Falcon:4
+	move.l	#0xAD235535,d7
+	move.l	address(pc),d6
+	cmp.l	d6,d7
+	beq.s	1f
+	illegal
+1:
+	clr.l	-(a7)	// Sampling/Quality (0:default)
+
+	// illegal
+	move.l	d0,-(a7)	   // Auto:0, AGA:1 STf:2 STe:3 Falcon:4
 
 	lea	to_set(pc),a0
 	adda.l	(a0),a0
@@ -34,7 +44,15 @@ sc68_start:
 
 	rts
 
-	.align	4
 	// To be allocated and set by the linker script (sc68.x)
-	.set	to_sng,.+0
-	.set	to_set,.+4
+	.align	4
+	.set	address,.+0
+	.set	to_sng,.+4
+	.set	to_set,.+8
+
+// Local Variables:
+// mode: asm
+// indent-tabs-mode: t
+// tab-width: 10
+// comment-column: 40
+// End:

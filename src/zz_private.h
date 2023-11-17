@@ -1,8 +1,8 @@
 /**
- * @file   zz_private.h
- * @author Benjamin Gerard AKA Ben/OVR
- * @date   2017-07-04
- * @brief  zingzong private definitions.
+ * @file    zz_private.h
+ * @author  Benjamin Gerard AKA Ben^OVR
+ * @date    2017-07-04
+ * @brief   zingzong private definitions.
  */
 
 #ifdef ZZ_PRIVATE_H

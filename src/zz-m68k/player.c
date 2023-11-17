@@ -9,14 +9,9 @@
 #include "../zz_private.h"
 #include "zz_m68k.h"
 
-int song_init_header(zz_song_t const song, const void * hd);
-int song_init(zz_song_t const song);
-int vset_init_header(zz_vset_t const vset, const void * hd);
-int vset_init(zz_vset_t const vset);
-
 zz_err_t zz_core_init(core_t*, mixer_t*, u32_t);
-void     zz_core_kill(core_t *);
-i16_t    zz_core_play(core_t*, void*, const i16_t);
+void	 zz_core_kill(core_t *);
+i16_t	 zz_core_play(core_t*, void*, const i16_t);
 mixer_t *zz_mixer_get(zz_u8_t * const);
 
 typedef struct m68kplay m68k_t;
@@ -24,7 +19,7 @@ typedef struct m68kplay m68k_t;
 struct m68kplay {
   volatile int8_t ready;
   zz_u8_t  dri;
-  void    *set;
+  void	  *set;
   uint16_t ppt;
   uint16_t rate;
   core_t   core;
@@ -107,7 +102,7 @@ long player_rate(uint16_t rate)
     play.rate = rate;
     play.ppt  = divu(play.core.spr+(rate>>1),rate);
     dmsg("rate:%huhz spr:%luhz ppt:%hu\n",
-         HU(rate), LU(play.core.spr), HU(play.ppt));
+	 HU(rate), LU(play.core.spr), HU(play.ppt));
   }
   return play.rate;
 }
@@ -192,7 +187,7 @@ void player_play(void)
     play.ready = ret > 0;
     if (!play.ready)
       dmsg("tick#%lu / pcm:%hi / code:%hu\n",
-           LU(play.core.tick), HI(ret), HU(play.core.code));
+	   LU(play.core.tick), HI(ret), HU(play.core.code));
     zz_assert( ret == play.ppt );
     zz_assert( !play.core.code );
   }

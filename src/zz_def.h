@@ -1,8 +1,8 @@
 /**
- * @file   zz_def.h
- * @author Benjamin Gerard AKA Ben/OVR
- * @date   2017-07-30
- * @brief  Convenience defines that should be private.
+ * @file    zz_def.h
+ * @author  Benjamin Gerard AKA Ben^OVR
+ * @date    2017-07-30
+ * @brief   Convenience defines that should be private.
  */
 
 #ifndef ZZ_DEF_H

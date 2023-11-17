@@ -1,8 +1,8 @@
 /**
- * @file   zz_tos.h
- * @author Benjamin Gerard AKA Ben/OVR
- * @date   2018-01-24
- * @brief  Atari ST/TOS sound system calls
+ * @file    zz_tos.h
+ * @author  Benjamin Gerard AKA Ben^OVR
+ * @date    2018-01-24
+ * @brief   Atari ST/TOS sound system calls
  */
 
 #ifndef ZZ_TOS_H
@@ -179,7 +179,7 @@ xbios_setbuffer(int16_t reg, void * beg, void *end)
     "  lea     12(%%a7),%%a7  \n"
     "  move.l  %%d0,%[ret]    \n\t"
     : [ret] "=g" (ret)
-    : [reg] "i"  (reg),
+    : [reg] "i"	 (reg),
       [beg] "ir" (beg),
       [end] "ig" (end)
     : "cc","d0");
@@ -351,8 +351,8 @@ static inline int32_t
  * @retval 0 on success
  */
 xbios_devconnect(int16_t src, int16_t dst,
-                 int16_t clk, int16_t prescale,
-                 int16_t protocol)
+		 int16_t clk, int16_t prescale,
+		 int16_t protocol)
 {
   int32_t ret;
   asm volatile (
@@ -366,11 +366,11 @@ xbios_devconnect(int16_t src, int16_t dst,
     "  lea     12(%%a7),%%a7  \n"
     "  move.l  %%d0,%[ret]    \n\t"
     : [ret] "=g" (ret)
-    : [ptc] "i"  (protocol),
+    : [ptc] "i"	 (protocol),
       [sca] "ir" (prescale),
-      [clk] "i"  (clk),
-      [dst] "i"  (dst),
-      [src] "i"  (src)
+      [clk] "i"	 (clk),
+      [dst] "i"	 (dst),
+      [src] "i"	 (src)
     : "cc","d0");
   return ret;
 }
@@ -432,7 +432,7 @@ xbios_buffptr(int32_t *ptr)
     "  move.l  %%d0,%[ret]     \n\t"
     "0:\n"
     : [ret] "=g" (ret)
-    : [ptr] "g"  (ptr)
+    : [ptr] "g"	 (ptr)
     : "cc","d0");
   return ret;
 }
@@ -451,7 +451,7 @@ xbios_playptr(void)
     "  move.l  (%[ptr]),%[ret] \n\t"
     "0:\n"
     : [ret] "=g" (pos)
-    : [ptr] "a"  (ptr)
+    : [ptr] "a"	 (ptr)
     : "cc","d0");
   return pos;
 }
@@ -470,7 +470,7 @@ xbios_recordptr(void)
     "  move.l  4(%[ptr]),%[ret] \n\t"
     "0:\n"
     : [ret] "=g" (pos)
-    : [ptr] "a"  (ptr)
+    : [ptr] "a"	 (ptr)
     : "cc","d0");
   return pos;
 }

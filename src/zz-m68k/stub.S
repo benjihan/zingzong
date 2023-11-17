@@ -1,11 +1,8 @@
 /**
  * @file   stub.S
- * @author Benjamin Gerard AKA Ben/OVR
+ * @author Benjamin Gerard AKA Ben^OVR
  * @date   2017-08-03
  * @brief  zingzong player stub.
- *
- * This interface is still in progress however the 3 major functions
- * should not change.
  *
  */
 
@@ -32,10 +29,10 @@ zingzong_core: bra.w player_core	// -> d0.l: internal zz_core_t
 	.global zingzong_cmap
 	.global zingzong_vers
 	.global zingzong_stat
- .global zingzong_samp
- .global zingzong_driv
- .global zingzong_rate
- .global zingzong_core
+	.global zingzong_samp
+	.global zingzong_driv
+	.global zingzong_rate
+	.global zingzong_core
 
 /*
 Local Variables:

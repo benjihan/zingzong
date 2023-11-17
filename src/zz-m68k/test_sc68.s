@@ -1,7 +1,7 @@
 ;;; @file   test_sc68.s
-;;; @author Benjamin Gerard AKA Ben/OVR
+;;; @author Benjamin Gerard AKA Ben^OVR
 ;;; @date   2017-08
-;;; @brief  create a sc68 file
+;;; @brief  Create a sc68 file.
 ;;;
 ;;; ----------------------------------------------------------------------
 
@@ -13,7 +13,7 @@ RATE:	set	200		; replay rate
 START:	set	0		; 0:PCR $10000:sc68 default start address
 	endc
 
-;;; Hardware flags defiition
+;;; Hardware flags definition
 PSG:	set	1		; YM-2149 flag
 STE:	set	2		; STe flag
 AGA:	set	4		; Amiga flag
@@ -180,10 +180,17 @@ sc68:
 	open	zingzong
 
 	album	"Zingzong m68k test"
-	artist	"Ben/OVR"
+	artist	"Ben^OVR"
 	track	"Test AGA","test.bin",AGA,START
 	track	"Test STf",,PSG,START
 	track	"Test STe",,STE,START
 	track	"Test Falcon",,STE,START
 
 	close	zingzong
+
+;;; Local Variables:
+;;; mode: asm
+;;; indent-tabs-mode: t
+;;; tab-width: 10
+;;; comment-column: 40
+;;; End:

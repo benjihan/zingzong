@@ -17,17 +17,16 @@
 void bin_free(bin_t ** pbin) {}
 
 ZZ_STATIC mixer_t mixer;
-ZZ_STATIC uint32_t _SND;                /* '_SND' cookie value */
+ZZ_STATIC uint32_t _SND;		/* '_SND' cookie value */
 
-/* TOS cookie jar */
-#define COOKIEJAR (* (uint32_t **) 0x5A0)
+extern uint32_t * volatile _p_cookies[];
 
 /* _SND cookie bits */
 enum {
-  SND_YM2149    = 1,
-  SND_8BIT_DMA  = 2,
+  SND_YM2149	= 1,
+  SND_8BIT_DMA	= 2,
   SND_16BIT_DMA = 4,
-  SND_DSP_56K   = 8
+  SND_DSP_56K	= 8
 };
 
 #if AMIGA_DETECTION
@@ -72,6 +71,12 @@ int isalpha(int c)
  * _SND cookie to determine which hardware is supported.
  */
 
+/* Define symbol for TOS cookie jar */
+asm (
+  ".global _p_cookie" "\n"
+  ".set _p_cookie,0x5A0" "\n"
+  );
+
 static
 uint8_t guess_hardware(void)
 {
@@ -113,22 +118,25 @@ uint8_t guess_hardware(void)
   if (aga)
     id = MIXER_AGA;
   else {
-    uint32_t * jar = COOKIEJAR, cookie;
     uint8_t snd = SND_YM2149;
-
+    uint32_t * cookie;
     _SND = 0;
-    if (jar)
-      while (cookie = *jar++, cookie) {
-        uint32_t value = *jar++;
-        if (cookie == FCC('_','S','N','D')/* '_SND' */) {
-          snd = value;
-          _SND = value;
-          break;
-        }
+    /* gB: Prevents gcc-13.2.0 to wrongly warn about array bounds and
+     *     force absw address mode.
+     */
+    asm volatile (
+      "\n\t" "move.l 0x5A0.w,%[res]"
+      : [res] "=a" (cookie)
+      );
+    if (cookie) {
+      for ( ; cookie[0]; cookie += 2 ) {
+	if ( cookie[0] == 0x5f534e44 /* '_SND' */) {
+	  _SND = snd = cookie[1];
+	  break;
+	}
       }
-
-    /* Ignoring DSP for now, hopefully we'll add a nice DSP mixer
-     * later. */
+    }
+    /* gB: Ignoring DSP for now.  May be later. */
     if ( snd & SND_16BIT_DMA )
       id = MIXER_FAL;
     else if ( snd & SND_8BIT_DMA )

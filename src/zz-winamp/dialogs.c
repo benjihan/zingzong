@@ -8,7 +8,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2017-2018 Benjamin Gerard AKA Ben/OVR.
+ * Copyright (c) 2017-2023 Benjamin Gerard AKA Ben/OVR.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -75,9 +75,9 @@ void AboutDialog(HINSTANCE hinst, HWND parent)
 {
   INT_PTR res =
     DialogBox(
-      hinst,                            /* hInstance */
-      MAKEINTRESOURCE(IDD_ABOUT),       /* lpTemplate */
-      parent,                           /* hWndParent */
+      hinst,				/* hInstance */
+      MAKEINTRESOURCE(IDD_ABOUT),	/* lpTemplate */
+      parent,				/* hWndParent */
       AboutProc);
   if (res == -1 || (!res && GetLastError())) {
     MessageBoxA(
@@ -111,18 +111,18 @@ static HFONT MyCreateFont(int size, BOOL bold, BOOL italic)
 {
   return
     CreateFontA(
-      size,0,                           /* h,w */
-      0,0,                              /* esc,orientation */
-      bold ? FW_BOLD : FW_MEDIUM,       /* weight */
-      italic,                           /* italic */
-      FALSE,                            /* underline */
-      FALSE,                            /* strike-out */
-      ANSI_CHARSET,                     /* charset */
-      OUT_OUTLINE_PRECIS,               /* precision */
-      CLIP_DEFAULT_PRECIS,              /* clipping */
-      CLEARTYPE_QUALITY,                /* quality */
-      0,                                /* pitch */
-      0             /* "arial" */       /* Font */
+      size,0,				/* h,w */
+      0,0,				/* esc,orientation */
+      bold ? FW_BOLD : FW_MEDIUM,	/* weight */
+      italic,				/* italic */
+      FALSE,				/* underline */
+      FALSE,				/* strike-out */
+      ANSI_CHARSET,			/* charset */
+      OUT_OUTLINE_PRECIS,		/* precision */
+      CLIP_DEFAULT_PRECIS,		/* clipping */
+      CLEARTYPE_QUALITY,		/* quality */
+      0,				/* pitch */
+      0		    /* "arial" */	/* Font */
       );
 }
 
@@ -163,12 +163,12 @@ AboutProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
       return TRUE;
     case IDC_URI:
       /* HINSTANCE */ ShellExecute(
-        0,                              /* parent */
-        "open",                         /* function */
-        "https://github.com/benjihan/zingzong/",
-        0,                              /* parameters */
-        0,                              /* directory */
-        SW_SHOWDEFAULT);
+	0,				/* parent */
+	"open",				/* function */
+	"https://github.com/benjihan/zingzong/",
+	0,				/* parameters */
+	0,				/* directory */
+	SW_SHOWDEFAULT);
       return TRUE;
     }
     break;
@@ -180,52 +180,52 @@ AboutProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
       SIZE sz;
 
       if (!about)
-        break;
+	break;
 
       if (!about->nblines) {
-        char *s;
+	char *s;
 
-        strcpy(about->text, about_text);
+	strcpy(about->text, about_text);
 
-        for (i=0, s=strtok(about->text,"\n");
-             i<ARRAYSIZE(about->line);
-             s=strtok(0,"\n")) {
-          uint8_t f;
-          if (!s) break;
-          if (!*s) continue;
+	for (i=0, s=strtok(about->text,"\n");
+	     i<ARRAYSIZE(about->line);
+	     s=strtok(0,"\n")) {
+	  uint8_t f;
+	  if (!s) break;
+	  if (!*s) continue;
 
-          switch (i) {
-          case 0:  f = 0; break;
-          case 3:  f = 2; break;
-          default: f = 1;
-          }
+	  switch (i) {
+	  case 0:  f = 0; break;
+	  case 3:  f = 2; break;
+	  default: f = 1;
+	  }
 
-          about->line[i].t = s;
-          about->line[i].l = strlen(s);
-          about->line[i].f = f;
+	  about->line[i].t = s;
+	  about->line[i].l = strlen(s);
+	  about->line[i].f = f;
 
-          zz_assert( about->line[i].t );
-          zz_assert( about->line[i].l );
-          zz_assert( about->line[i].f < ARRAYSIZE(about->font) );
+	  zz_assert( about->line[i].t );
+	  zz_assert( about->line[i].l );
+	  zz_assert( about->line[i].f < ARRAYSIZE(about->font) );
 
-          ++i;
-        }
-        about->nblines = !i ? -1 : i;
+	  ++i;
+	}
+	about->nblines = !i ? -1 : i;
       }
 
       for (y=y2=i=0; i<about->nblines; ++i) {
-        HGDIOBJ old =
-          SelectObject(pDIS->hDC,
-                       about->font[ about->line[i].f ]);
+	HGDIOBJ old =
+	  SelectObject(pDIS->hDC,
+		       about->font[ about->line[i].f ]);
 
-        GetTextExtentPoint32(pDIS->hDC,about->line[i].t,about->line[i].l,&sz);
-        y2 = sz.cy >> 1;
-        x = ( pDIS->rcItem.right - pDIS->rcItem.left - sz.cx ) >> 1;
-        TextOutA(pDIS->hDC,
-                 pDIS->rcItem.left+x, pDIS->rcItem.top+y,
-                 about->line[i].t, about->line[i].l);
-        y += sz.cy+y2;
-        SelectObject(pDIS->hDC, old);
+	GetTextExtentPoint32(pDIS->hDC,about->line[i].t,about->line[i].l,&sz);
+	y2 = sz.cy >> 1;
+	x = ( pDIS->rcItem.right - pDIS->rcItem.left - sz.cx ) >> 1;
+	TextOutA(pDIS->hDC,
+		 pDIS->rcItem.left+x, pDIS->rcItem.top+y,
+		 about->line[i].t, about->line[i].l);
+	y += sz.cy+y2;
+	SelectObject(pDIS->hDC, old);
       }
 
     }
@@ -237,8 +237,8 @@ AboutProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
     if (about) {
       int i;
       for (i=0; i<ARRAYSIZE(about->font); ++i)
-        if (about->font[i])
-          DeleteObject(about->font[i]);
+	if (about->font[i])
+	  DeleteObject(about->font[i]);
       zz_free(&about);
     }
     break;
@@ -260,11 +260,11 @@ int ConfigDialog(HINSTANCE hinst, HWND parent, config_t * cfg)
 
   INT_PTR res =
     DialogBoxParamA(
-      hinst,                            /* hInstance */
-      MAKEINTRESOURCE(IDD_CONFIG),      /* lpTemplate */
-      parent,                           /* hWndParent */
-      ConfigProc,                       /* lpDialogFunc */
-      (LPARAM) &tmp);                   /* lpDialogFunc */
+      hinst,				/* hInstance */
+      MAKEINTRESOURCE(IDD_CONFIG),	/* lpTemplate */
+      parent,				/* hWndParent */
+      ConfigProc,			/* lpDialogFunc */
+      (LPARAM) &tmp);			/* lpDialogFunc */
   if (res == 0x1337)
     *cfg = tmp;
 
@@ -301,7 +301,7 @@ static BOOL SetMap(HWND hdlg, DWORD cmap)
 
   for (i=0; i<3; ++i)
     SendDlgItemMessage(hdlg, map_idc[i], BM_SETCHECK,
-                       i==map ? BST_CHECKED : BST_UNCHECKED, 0);
+		       i==map ? BST_CHECKED : BST_UNCHECKED, 0);
 
   tb = GetDlgItem(hdlg, IDC_BLEND);
   SendMessageA(tb, TBM_SETRANGE, 0, MAKELPARAM(0,256));
@@ -318,7 +318,7 @@ static int GetMap(HWND hdlg)
 
   for ( i=0; i<3; ++i )
     if (SendDlgItemMessage(hdlg, map_idc[i], BM_GETCHECK,0,0)
-        == BST_CHECKED) {
+	== BST_CHECKED) {
       cmap = i;
       dmsg("get-cmap: radio #%i\n", i);
       break;
@@ -347,11 +347,11 @@ static int clip_spr(int spr)
 
 static struct { int val;  const char * txt; } sprinfo[] =
 {
-  /* 0 */ {    -1, "User defined (hz)"          },
-  /* 1 */ {     0, "Song defined (4 to 20 kHz)" },
-  /* 2 */ { 44100, "CD quality (44.1 KHz)"      },
-  /* 3 */ { 48000, "DVD quality (48 kHz)"       },
-  /* 4 */ { 96000, "High quality (96 kHz)"      }
+  /* 0 */ {    -1, "User defined (hz)"		},
+  /* 1 */ {	0, "Song defined (4 to 20 kHz)" },
+  /* 2 */ { 44100, "CD quality (44.1 KHz)"	},
+  /* 3 */ { 48000, "DVD quality (48 kHz)"	},
+  /* 4 */ { 96000, "High quality (96 kHz)"	}
 };
 
 #define MAX_SPRINFO (sizeof(sprinfo)/sizeof(sprinfo[0]))
@@ -376,7 +376,7 @@ static BOOL SetSampling(HWND hdlg, int spr)
   SendDlgItemMessage(hdlg, IDC_SPR, CB_RESETCONTENT, 0, 0);
   for (j=0; j<MAX_SPRINFO; ++j)
     SendDlgItemMessage(hdlg, IDC_SPR,
-                       CB_ADDSTRING, 0, (LPARAM) sprinfo[j].txt);
+		       CB_ADDSTRING, 0, (LPARAM) sprinfo[j].txt);
   SendDlgItemMessage(hdlg, IDC_SPR, CB_SETCURSEL, i, 0);
   SetDlgItemInt(hdlg, IDC_SPRVAL, spr ? spr : SPR_DEF, FALSE);
   EnableWindow(GetDlgItem(hdlg, IDC_SPRVAL), !i);
@@ -457,7 +457,7 @@ static int GetDms(HWND hdlg)
 }
 
 extern zz_play_t PlayLock();
-extern void      PlayUnlock();
+extern void	 PlayUnlock();
 
 static INT_PTR CALLBACK
 ConfigProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
@@ -480,8 +480,8 @@ ConfigProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
     case TB_THUMBPOSITION: case TB_THUMBTRACK: {
       zz_play_t play = PlayLock();
       if (play) {
-        zz_core_blend((zz_core_t)play,-1,HIWORD(wp));
-        PlayUnlock(play);
+	zz_core_blend((zz_core_t)play,-1,HIWORD(wp));
+	PlayUnlock(play);
       }
     } break;
     } break;
@@ -493,9 +493,9 @@ ConfigProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
       int j, k = i == IDC_S1 ? 5 : 9;
       SendDlgItemMessageA(hdlg,i,LB_RESETCONTENT,0,0);
       for (j=0; j<=k; ++j) {
-        char s[2]; s[0] = '0'+j; s[1] = 0;
-        SendDlgItemMessageA(hdlg,i,LB_ADDSTRING,0,(LPARAM)s);
-        SendDlgItemMessageA(hdlg,i,LB_SETITEMDATA,j,j);
+	char s[2]; s[0] = '0'+j; s[1] = 0;
+	SendDlgItemMessageA(hdlg,i,LB_ADDSTRING,0,(LPARAM)s);
+	SendDlgItemMessageA(hdlg,i,LB_SETITEMDATA,j,j);
       }
     }
 
@@ -533,8 +533,8 @@ ConfigProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
 
     case IDC_SPR:
       if (whi == CBN_SELCHANGE) {
-        int i = SendMessageA((HWND)lp,CB_GETCURSEL,0,0);
-        EnableWindow(GetDlgItem(hdlg, IDC_SPRVAL), !i);
+	int i = SendMessageA((HWND)lp,CB_GETCURSEL,0,0);
+	EnableWindow(GetDlgItem(hdlg, IDC_SPRVAL), !i);
       }
       break;
 
@@ -547,8 +547,8 @@ ConfigProc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
     case IDC_ABCD: {
       zz_play_t play = PlayLock();
       if (play) {
-        zz_core_blend((zz_core_t)play,i,-1);
-        PlayUnlock(play);
+	zz_core_blend((zz_core_t)play,i,-1);
+	PlayUnlock(play);
       }
       dmsg("Cmap: A%c\n", 'B'+i);
     } break;
@@ -637,9 +637,9 @@ int ConfigLoad(config_t * cfg)
     dmsg("config-load: mid=\"%s\"\n", val.str);
     for (i=0; ZZ_MIXER_ERR != zz_mixer_info(i,&name,&desc); ++i)
       if (!strcasecmp(name, val.str)) {
-        dmsg("config-load: mid=%hu\n", HU(i));
-        cfg->mid = i;
-        break;
+	dmsg("config-load: mid=%hu\n", HU(i));
+	cfg->mid = i;
+	break;
       }
 
     val.len = sizeof(val.num);
@@ -673,15 +673,15 @@ int ConfigSave(config_t * cfg)
   int modified = ConfigCheck(cfg,&name);
   DWORD dw;
   LONG res = RegCreateKeyExA(
-    HKEY_CURRENT_USER,                  /* key */
-    keyname,                            /* subkey */
-    0,                                  /* reserved */
-    0,                                  /* class */
-    0,                                  /* options */
-    KEY_WRITE,                          /* access */
-    0,                                  /* secu */
-    &hk,                                /* key handle */
-    0);                                 /* disposition */
+    HKEY_CURRENT_USER,			/* key */
+    keyname,				/* subkey */
+    0,					/* reserved */
+    0,					/* class */
+    0,					/* options */
+    KEY_WRITE,				/* access */
+    0,					/* secu */
+    &hk,				/* key handle */
+    0);					/* disposition */
 
   dmsg("config-save: mid:%hu spr:%lu dms:%lu map:%lx -- %ld\n",
        HU(cfg->mid), LU(cfg->spr), LU(cfg->dms), LU(cfg->map), LI(res));

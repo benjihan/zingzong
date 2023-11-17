@@ -1,16 +1,17 @@
 /**
  *  @file    sc68.x
- *  @author  Benjamin Gerard AKA Ben/OVR
+ *  @author  Benjamin Gerard AKA Ben^OVR
  *  @date    2017-09
  *  @brief   Linker script for building zingzong test file.
  */
 
 SECTIONS
 {
-  .text 0x10000 :
+  .text :
   {
     sc68_start.o(.text);
     . = ALIGN(4);
+    LONG(0xAD235535);
     LONG(song_bin - .);
     LONG(vset_bin - .);
     m68k_*.o(.text)
@@ -58,7 +59,7 @@ SECTIONS
   bss_section_len = SIZEOF(.bss);
 
   .data.song ALIGN(4) :
-  { 
+  {
     song.elf(.song.bin);
     song_adr = ABSOLUTE(.);
     song.elf(.song.dat);
@@ -69,7 +70,7 @@ SECTIONS
   }
 
   .data.vset ALIGN(16) :
-  { 
+  {
     vset.elf(.vset.bin);
     vset_adr = ABSOLUTE(.);
     vset.elf(.vset.dat);

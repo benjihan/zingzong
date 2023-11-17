@@ -7,7 +7,7 @@
 
 SECTIONS
 {
-  .text 0x10000 :
+  .text 0x10000:
   {
     stub.o(.text)
     m68k_*.o(.text)

@@ -1,6 +1,6 @@
 # -*- mode: conf; indent-tabs-mode: nil -*-
 #
-# @file   in_zingzong..nsi
+# @file   in_zingzong.nsi
 # @author Benjamin Gerard AKA Ben/OVR
 # @brief  Installer for zingzong winamp plugin
 #

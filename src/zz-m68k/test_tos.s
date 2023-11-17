@@ -1,5 +1,5 @@
 ;;; @file   test_tos.s
-;;; @author Benjamin Gerard AKA Ben/OVR
+;;; @author Benjamin Gerard AKA Ben^OVR
 ;;; @date   2017-12
 ;;; @brief  zingzong TOS test
 ;;;
@@ -17,12 +17,12 @@ LR8:	set	86		; 0-256 (128 is middle)
 SPR:	set	0		; 0:song default
 	endc
 
-	
+
 ZZ_MAP_B set 0			; L=A+B R=C+D
 ZZ_MAP_C set 1			; L=A+C R=B+D
 ZZ_MAP_D set 2			; L=A+D R=B+C
 
-ZZ_SPR_F set 1			; Driver fast quality 
+ZZ_SPR_F set 1			; Driver fast quality
 ZZ_SPR_L set 2			; Driver lowest quality
 ZZ_SPR_M set 3			; Driver medium quality
 ZZ_SPR_H set 4			; Driver highest quality
@@ -31,7 +31,7 @@ ZZ_CHN_A set %00010001		; Ignore/Mute channel A
 ZZ_CHN_B set %00100010		; Ignore/Mute channel B
 ZZ_CHN_C set %01000100		; Ignore/Mute channel C
 ZZ_CHN_D set %10001000		; Ignore/Mute channel D
-	
+
 llea:	macro
 	lea	vars(pc),\2
 	adda.l	#\1-vars,\2
@@ -277,7 +277,7 @@ exitloop:
 	;; Check for memory commando
 	llea	prot1,a6
 	movem.l (a6),d0-d1
-	cmp.l	#"Ben/",d0
+	cmp.l	#"Ben^",d0
 	sne	d0
 	cmp.l	#"OVR!",d1
 	sne	d1
@@ -486,7 +486,7 @@ vars:	ds.b	varsz
 cls:	dc.b	27,"E",0
 msgA:
 	dc.b	13,10,10,"Quartet music player",13,10,10
-	dc.b	"By Ben/OVR 2017-2018",13,10,10
+	dc.b	"By Ben^OVR 2017-2023",13,10,10
 	dc.b	">> Please wait initializing <<"
 	dc.b	0
 
@@ -574,7 +574,7 @@ vset_max: equ *-vset_bin
 
 	;; Memory commando check
 	even
-prot1:	dc.b	"Ben/OVR!"
+prot1:	dc.b	"Ben^OVR!"
 
 	;; Stacks buffer
 mybot:
@@ -599,3 +599,11 @@ zingzong_stat: equ zingzong+$18
 zingzong_samp: equ zingzong+$1c
 zingzong_driv: equ zingzong+$20
 zingzong_core: equ zingzong+$24
+
+
+;;; Local Variables:
+;;; mode: asm
+;;; indent-tabs-mode: t
+;;; tab-width: 10
+;;; comment-column: 40
+;;; End:

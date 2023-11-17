@@ -144,6 +144,37 @@ override gb_LDFLAGS += $(call filter-L,$(SOXR_LIBS))
 override gb_LDLIBS  += $(call filter-l,$(SOXR_LIBS))
 
 # ----------------------------------------------------------------------
+#  libao (NO_AO=1 to disable)
+# ----------------------------------------------------------------------
+
+ifeq ($(NO_AO),1)
+override undefine AO_CFLAGS
+override undefine AO_LIBS
+else
+ifeq ($(origin AO_CFLAGS)/$(origin AO_LIBS),undefined/undefined)
+
+AO_CFLAGS := $(call pkgconfig,--cflags ao)
+ifeq ($(AO_CFLAGS),n/a)
+$(error pkg-config failed -- ao --cflags)
+endif
+
+AO_LIBS := $(call pkgconfig,--libs ao)
+ifeq ($(AO_LIBS),n/a)
+$(error pkg-config failed -- ao --libs)
+endif
+
+endif
+endif
+
+ifeq ($(AO_LIBS),)
+override gb_CPPFLAGS += -DNO_AO=1
+endif
+
+override gb_CFLAGS  += $(AO_CFLAGS)
+override gb_LDFLAGS += $(call filter-L,$(AO_LIBS))
+override gb_LDLIBS  += $(call filter-l,$(AO_LIBS))
+
+# ----------------------------------------------------------------------
 
 PACKAGE_CPPFLAGS  = \
  -DPACKAGE_NAME='"$(PACKAGE)"' \

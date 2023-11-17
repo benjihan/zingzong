@@ -1,8 +1,8 @@
 /**
- * @file   mix_ata.h
- * @author Benjamin Gerard AKA Ben/OVR
- * @date   2018-01-15
- * @brief  Atari mixer (common code).
+ * @file    mix_ata.h
+ * @author  Benjamin Gerard AKA Ben^OVR
+ * @date    2018-01-15
+ * @brief   Atari mixer (common code).
  */
 
 #ifndef MIX_ATA_H
@@ -11,59 +11,59 @@
 typedef struct mix_fast_s fast_t;
 /* !!! change in m68k_mix.S as well !!! */
 struct mix_fast_s {
-  uint8_t *end;                 /*  0: sample end                   */
-  uint8_t *cur;                 /*  4: sample current pointer       */
-  uint32_t xtp;                 /*  8: read step (FP16)             */
-  uint16_t dec;                 /* 12: FP16 precision               */
-  uint16_t lpl;                 /* 14: Loop length (0:no-loop)      */
-  chan_t  *chn;                 /* 16: attached play channel        */
-  uint8_t  usr[12];             /* 20: free space for driver to use */
-};                              /* 32: bytes                        */
+  uint8_t *end;			/*  0: sample end                   */
+  uint8_t *cur;			/*  4: sample current pointer       */
+  uint32_t xtp;			/*  8: read step (FP16)             */
+  uint16_t dec;			/* 12: FP16 precision               */
+  uint16_t lpl;			/* 14: Loop length (0:no-loop)      */
+  chan_t  *chn;			/* 16: attached play channel        */
+  uint8_t  usr[12];		/* 20: free space for driver to use */
+};				/* 32: bytes                        */
 
 typedef struct mix_fifo_s fifo_t;
 typedef int16_t (*pb_play_t)(void);
-typedef void    (*pb_stop_t)(void);
+typedef void	(*pb_stop_t)(void);
 struct mix_fifo_s {
-  pb_play_t pb_play;                   /* Playback start/run        */
-  pb_stop_t pb_stop;                   /* Playback stop             */
-  void *    pb_user;                   /* Playback cookie           */
-  int16_t sz;                          /* FIFO buffer size          */
-  int16_t ro;                          /* Previous read position    */
-  int16_t rp;                          /* Current read position     */
-  int16_t wp;                          /* Last write position       */
-  int16_t i1,n1;                       /* Index and size of part #1 */
-  int16_t i2,n2;                       /* Index and size of part #2 */
+  pb_play_t pb_play;		       /* Playback start/run        */
+  pb_stop_t pb_stop;		       /* Playback stop             */
+  void *    pb_user;		       /* Playback cookie           */
+  int16_t sz;			       /* FIFO buffer size          */
+  int16_t ro;			       /* Previous read position    */
+  int16_t rp;			       /* Current read position     */
+  int16_t wp;			       /* Last write position       */
+  int16_t i1,n1;		       /* Index and size of part #1 */
+  int16_t i2,n2;		       /* Index and size of part #2 */
 };
 
 typedef struct mix_ata_s ata_t;
 struct mix_ata_s {
-  fifo_t   fifo;                        /* Generic FIFO       */
-  uint16_t step;                        /* Step scale (pitch) */
-  uint8_t  swap;                        /* Xor L/R swap       */
-  fast_t   fast[4];                     /* Fast channel info  */
+  fifo_t   fifo;			/* Generic FIFO       */
+  uint16_t step;			/* Step scale (pitch) */
+  uint8_t  swap;			/* Xor L/R swap       */
+  fast_t   fast[4];			/* Fast channel info  */
 };
 
 void play_ata(ata_t * ata, chan_t * chn, int16_t n);
 void stop_ata(ata_t * ata);
 
-#define init_ata(SIZE, STEP)                                \
-  do {                                                      \
-    M->ata.fifo.sz = SIZE;                                  \
-    M->ata.fifo.wp = -1;                                    \
-    M->ata.fifo.pb_play = pb_play;                          \
-    M->ata.fifo.pb_stop = pb_stop;                          \
-    M->ata.fifo.pb_user = M;                                \
-    M->ata.step = STEP;                                     \
-    M->ata.swap = 0;                                        \
+#define init_ata(SIZE, STEP)				    \
+  do {							    \
+    M->ata.fifo.sz = SIZE;				    \
+    M->ata.fifo.wp = -1;				    \
+    M->ata.fifo.pb_play = pb_play;			    \
+    M->ata.fifo.pb_stop = pb_stop;			    \
+    M->ata.fifo.pb_user = M;				    \
+    M->ata.step = STEP;					    \
+    M->ata.swap = 0;					    \
   } while (0)
 
 #undef FP
 #define FP 16
 
-#define DMA     ((volatile uint8_t  *)0xFFFF8900)
+#define DMA	((volatile uint8_t  *)0xFFFF8900)
 #define DMAB(X) ((volatile uint8_t  *)0xFFFF8900)[X]
 #define DMAW(X) *(volatile uint16_t *)(0xFFFF8900+(X))
-#define MFP     ((volatile uint8_t  *)0xFFFFFA00)
+#define MFP	((volatile uint8_t  *)0xFFFFFA00)
 
 enum {
   /* STE Sound DMA registers map. */
@@ -90,10 +90,10 @@ enum {
   DMA_MODE  = 0x21,
 
   /* Constants */
-  DMA_CNTL_ON   = 0x01,
+  DMA_CNTL_ON	= 0x01,
   DMA_CNTL_LOOP = 0x02,
 
-  DMA_MODE_MONO  = 0x80,
+  DMA_MODE_MONO	 = 0x80,
   DMA_MODE_16BIT = 0x40,
 
   DMA_TC_1TRK = 0x00,

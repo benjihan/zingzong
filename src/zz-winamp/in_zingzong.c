@@ -8,7 +8,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2017-2018 Benjamin Gerard AKA Ben/OVR.
+ * Copyright (c) 2017-2023 Benjamin Gerard AKA Ben/OVR.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -46,14 +46,14 @@
 #include "../zz_private.h"
 
 /* libc */
-#include <malloc.h>                     /* malloca */
+#include <malloc.h>			/* malloca */
 #include <libgen.h>
 #include <limits.h>
 
 /* winamp 2 */
 #include "winamp/in2.h"
-#undef   _MSC_VER                       /* fix intptr_t redefinition */
-#define  _MSC_VER 2000
+#undef	 _MSC_VER			/* fix intptr_t redefinition */
+#define	 _MSC_VER 2000
 #include "winamp/wa_ipc.h"
 #include "winamp/ipc_pe.h"
 
@@ -71,37 +71,37 @@ enum {
   NO_MEASURE=0, MEASURE, MEASURE_ONLY, MEASURE_CONFIG
 };
 
-static HANDLE g_lock;                   /* mutex handle            */
+static HANDLE g_lock;			/* mutex handle            */
 struct xinfo_s {
-  HANDLE lock;                          /* mutex for extended info */
-  unsigned int ready:1, fail:1;         /* status flags.           */
-  unsigned int ms;                      /* duration.               */
-  char * format;                        /* file format (static)    */
-  char * uri;                           /* load uri (in data[])    */
-  char * album;                         /* album (in data[])       */
-  char * title;                         /* title (in data[])       */
-  char * artist;                        /* artist (in data[])      */
-  char * ripper;                        /* ripper (in data[])      */
-  char data[4096];                      /* Buffer for infos        */
+  HANDLE lock;				/* mutex for extended info */
+  unsigned int ready:1, fail:1;		/* status flags.           */
+  unsigned int ms;			/* duration.               */
+  char * format;			/* file format (static)    */
+  char * uri;				/* load uri (in data[])    */
+  char * album;				/* album (in data[])       */
+  char * title;				/* title (in data[])       */
+  char * artist;			/* artist (in data[])      */
+  char * ripper;			/* ripper (in data[])      */
+  char data[4096];			/* Buffer for infos        */
 };
 typedef struct xinfo_s xinfo_t;
 
-static DWORD     g_tid;                 /* thread id               */
-static HANDLE    g_thdl;                /* thread handle           */
-static play_t    g_play;                /* play emulator instance  */
-static zz_info_t g_info;                /* current file info       */
-static xinfo_t   x_info;                /* unique x_info           */
-static zz_u32_t  g_spr = SPR_DEF;       /* sampling rate (hz)      */
-static int       g_maxlatency;          /* max latency in ms       */
-static zz_u8_t   g_mid = ZZ_MIXER_DEF;  /* mixer id                */
-static zz_u8_t   g_tr_measure = MEASURE_CONFIG;
-static zz_u8_t   g_map = 0;             /* channel mapping         */
-static zz_u16_t  g_lr8 = BLEND_DEF;     /* channel blending        */
-static zz_i32_t  g_dms;                 /* default play time (ms)  */
-static int32_t   g_pcm[576*2];          /* buffer for DSP filters  */
-static volatile LONG g_playing;         /* true while playing      */
-static volatile LONG g_stopreq;         /* stop requested          */
-static volatile LONG g_paused;          /* pause status            */
+static DWORD	 g_tid;			/* thread id               */
+static HANDLE	 g_thdl;		/* thread handle           */
+static play_t	 g_play;		/* play emulator instance  */
+static zz_info_t g_info;		/* current file info       */
+static xinfo_t	 x_info;		/* unique x_info           */
+static zz_u32_t	 g_spr = SPR_DEF;	/* sampling rate (hz)      */
+static int	 g_maxlatency;		/* max latency in ms       */
+static zz_u8_t	 g_mid = ZZ_MIXER_DEF;	/* mixer id                */
+static zz_u8_t	 g_tr_measure = MEASURE_CONFIG;
+static zz_u8_t	 g_map = 0;		/* channel mapping         */
+static zz_u16_t	 g_lr8 = BLEND_DEF;	/* channel blending        */
+static zz_i32_t	 g_dms;			/* default play time (ms)  */
+static int32_t	 g_pcm[576*2];		/* buffer for DSP filters  */
+static volatile LONG g_playing;		/* true while playing      */
+static volatile LONG g_stopreq;		/* stop requested          */
+static volatile LONG g_paused;		/* pause status            */
 
 /*****************************************************************************
  * Declaration
@@ -113,17 +113,17 @@ static void init();
 static void quit();
 static void config(HWND);
 static void about(HWND);
-static  int infobox(const char *, HWND);
-static  int isourfile(const char *);
+static	int infobox(const char *, HWND);
+static	int isourfile(const char *);
 static void pause();
 static void unpause();
-static  int ispaused();
-static  int getlength();
-static  int getoutputtime();
+static	int ispaused();
+static	int getlength();
+static	int getoutputtime();
 static void setoutputtime(int);
 static void setvolume(int);
 static void setpan(int);
-static  int play(const char *);
+static	int play(const char *);
 static void stop();
 static void getfileinfo(const in_char *, in_char *, int *);
 static void seteq(int, char *, int);
@@ -156,7 +156,7 @@ void play_unlock(play_t * play)
 { if (play == &g_play) unlock(g_lock); }
 
 play_t * PlayLock() { return play_lock(); }
-void     PlayUnlock(play_t *play) { play_unlock(play); }
+void	 PlayUnlock(play_t *play) { play_unlock(play); }
 
 static inline
 struct xinfo_s * info_lock()
@@ -172,19 +172,19 @@ static
  ****************************************************************************/
 In_Module g_mod =
 {
-  IN_VER,               /* Input plugin version as defined in in2.h */
+  IN_VER,		/* Input plugin version as defined in in2.h */
   (char*)
   "ZingZong (Quartet music player) v" PACKAGE_VERSION, /* Description */
-  0,                          /* hMainWindow (filled in by winamp)  */
-  0,                          /* hDllInstance (filled in by winamp) */
+  0,			      /* hMainWindow (filled in by winamp)  */
+  0,			      /* hDllInstance (filled in by winamp) */
   (char*)
   "4q\0"   "Quartet bundle (*.4q)\0"
   "4v\0"   "Quartet score (*.4v)\0"
   "qts\0"  "Quartet score (*.qts)\0"
   "qta\0"  "Quartet score (*.qta)\0"
   ,
-  0,                                  /* is_seekable */
-  1,                                  /* uses output plug-in system */
+  0,				      /* is_seekable */
+  1,				      /* uses output plug-in system */
 
   config,
   about,
@@ -206,11 +206,11 @@ In_Module g_mod =
   setvolume,
   setpan,
 
-  0,0,0,0,0,0,0,0,0,     /* visualization calls filled in by winamp */
-  0,0,                   /* dsp calls filled in by winamp */
-  seteq,                 /* set equalizer */
-  NULL,                  /* setinfo call filled in by winamp */
-   0                      /* out_mod filled in by winamp */
+  0,0,0,0,0,0,0,0,0,	 /* visualization calls filled in by winamp */
+  0,0,			 /* dsp calls filled in by winamp */
+  seteq,		 /* set equalizer */
+  NULL,			 /* setinfo call filled in by winamp */
+   0			  /* out_mod filled in by winamp */
 };
 
 static
@@ -227,7 +227,7 @@ void config(HWND hwnd)
   cfg.map = MAKELPARAM(g_map,g_lr8);
 
   if (0x1337 == ConfigDialog(g_mod.hDllInstance, hwnd, &cfg)) {
-    ConfigSave(&cfg);              /* Save might re-check the value */
+    ConfigSave(&cfg);		   /* Save might re-check the value */
     g_mid = cfg.mid;
     g_spr = cfg.spr;
     g_dms = cfg.dms;
@@ -307,7 +307,7 @@ static
  ****************************************************************************/
 int getlength()
 {
-  int ms = 0;                           /* 0 or -1 ? */
+  int ms = 0;				/* 0 or -1 ? */
   if (atomic_get(&g_playing)) {
     play_t * const P = play_lock();
     if (P) {
@@ -370,8 +370,8 @@ static void clean_close(void)
   atomic_set(&g_playing,0);
   zz_info(0,&g_info);
   zz_close(&g_play);
-  g_mod.outMod->Close();                /* Close output system */
-  g_mod.SAVSADeInit();                  /* Shutdown visualization */
+  g_mod.outMod->Close();		/* Close output system */
+  g_mod.SAVSADeInit();			/* Shutdown visualization */
 }
 
 static
@@ -386,8 +386,8 @@ void stop()
     if (g_thdl) {
       switch (WaitForSingleObject(g_thdl,10000)) {
       case WAIT_OBJECT_0:
-        CloseHandle(g_thdl);
-        g_thdl = 0;
+	CloseHandle(g_thdl);
+	g_thdl = 0;
       }
     }
     clean_close();
@@ -454,7 +454,7 @@ load(zz_play_t P, zz_info_t *I, const char * uri, zz_u8_t measure)
   if (!ecode && measure != MEASURE_ONLY) {
     ecode = zz_setup(P, mid, spr);
     dmsg("zz_setup(mid:%hu spr:%lu) -> [%hu]\n",
-         HU(mid), LU(spr), HU(ecode));
+	 HU(mid), LU(spr), HU(ecode));
     zz_core_blend(&P->core, map, lr8);
     dmsg("zz_blend(map:A%c lr8:%hu\n", 'B'+map, HU(lr8));
   }
@@ -530,12 +530,12 @@ int play(const char * uri)
 
   /* Init play thread */
   g_thdl = (HANDLE)
-    CreateThread(NULL,                /* Default Security Attributs */
-                 0,                   /* Default stack size         */
-                 (LPTHREAD_START_ROUTINE)playloop, /* Thread call   */
-                 (LPVOID) 0,          /* Thread cookie              */
-                 0,                   /* Thread status              */
-                 &g_tid               /* Thread id                  */
+    CreateThread(NULL,		      /* Default Security Attributs */
+		 0,		      /* Default stack size         */
+		 (LPTHREAD_START_ROUTINE)playloop, /* Thread call   */
+		 (LPVOID) 0,	      /* Thread cookie              */
+		 0,		      /* Thread status              */
+		 &g_tid		      /* Thread id                  */
       );
   err = !g_thdl;
 
@@ -618,7 +618,7 @@ void getfileinfo(const in_char *uri, in_char *title, int *msptr)
       break;
     case 3:
       snprintf(title,GETFILEINFO_TITLE_LENGTH-1,
-               "%s - %s",I->tag.album,I->tag.title);
+	       "%s - %s",I->tag.album,I->tag.title);
       break;
     }
     title[GETFILEINFO_TITLE_LENGTH-1] = 0;
@@ -669,23 +669,23 @@ DWORD WINAPI playloop(LPVOID cookie)
       zz_assert( npcm <= 576 );
 
       if (npcm >= 576) {
-        int vispos = g_mod.outMod->GetWrittenTime();
-        g_mod.SAAddPCMData (g_pcm, 2, 16, vispos);
-        g_mod.VSAAddPCMData(g_pcm, 2, 16, vispos);
-        if (g_mod.dsp_isactive())
-          npcm = g_mod.dsp_dosamples((void*)g_pcm, npcm, 16,2, g_play.core.spr);
-        filling = 0;
-        _pcm = g_pcm;
+	int vispos = g_mod.outMod->GetWrittenTime();
+	g_mod.SAAddPCMData (g_pcm, 2, 16, vispos);
+	g_mod.VSAAddPCMData(g_pcm, 2, 16, vispos);
+	if (g_mod.dsp_isactive())
+	  npcm = g_mod.dsp_dosamples((void*)g_pcm, npcm, 16,2, g_play.core.spr);
+	filling = 0;
+	_pcm = g_pcm;
       }
     } else {
       /* flushing */
       n = g_mod.outMod->CanWrite() >> 2;
       if (!n) {
-        Sleep(10);
-        continue;
+	Sleep(10);
+	continue;
       }
       if (n > npcm)
-        n = npcm;
+	n = npcm;
 
       /* Write the pcm data to the output system */
       g_mod.outMod->Write((char*)_pcm, n << 2);
@@ -698,7 +698,7 @@ DWORD WINAPI playloop(LPVOID cookie)
 
   /* Wait buffered output to be processed */
   while (!atomic_get(&g_stopreq)) {
-    g_mod.outMod->CanWrite();           /* needed by some out mod */
+    g_mod.outMod->CanWrite();		/* needed by some out mod */
     if (!g_mod.outMod->IsPlaying()) {
       /* Done playing: tell Winamp and quit the thread */
       PostMessage(g_mod.hMainWindow, WM_WA_MPEG_EOF, 0, 0);
@@ -716,16 +716,16 @@ DWORD WINAPI playloop(LPVOID cookie)
 /* My nice message handler that prints on STDERROR if the program was
  * launch from a console else use windows debug facilities. */
 static void msg_handler(zz_u8_t chan, void * user,
-                        const char * fmt , va_list list)
+			const char * fmt , va_list list)
 {
   static const char chans[][4] = { "ERR","WRN","INF","DBG","???" };
   static const char pref[] = "";
-  char  * s;
+  char	* s;
   DWORD i, len;
   HANDLE hdl;
   va_list list_bis;
 
-  if (chan >= 4 || ! fmt) return;       /* safety first */
+  if (chan >= 4 || ! fmt) return;	/* safety first */
 
   /* Copy the va_list and runs snprintf to measure the string length */
   va_copy(list_bis, list);
@@ -800,11 +800,11 @@ void quit()
  ****************************************************************************/
 
 struct transcon {
-  play_t    play;                  /* zingzong play instance.       */
-  zz_info_t info;                  /* zingzong info instance.       */
-  size_t    pcm;                   /* pcm counter.                  */
-  int       done;                  /* 0:running / 1:done / -1:error */
-  zz_err_t  code;                  /* error code                    */
+  play_t    play;		   /* zingzong play instance.       */
+  zz_info_t info;		   /* zingzong info instance.       */
+  size_t    pcm;		   /* pcm counter.                  */
+  int	    done;		   /* 0:running / 1:done / -1:error */
+  zz_err_t  code;		   /* error code                    */
 };
 
 EXPORT
@@ -873,9 +873,9 @@ intptr_t winampGetExtendedRead_getData(
 
     if (*end) {
       dmsg("transcoder: winamp request to end\n");
-      trc->done = 0x04;                 /* flag as done */
-      trc->code = E_ERR;                /* GB: is it an error ? */
-      cnt = 0;                          /* discard all */
+      trc->done = 0x04;			/* flag as done */
+      trc->code = E_ERR;		/* GB: is it an error ? */
+      cnt = 0;				/* discard all */
       break;
     }
 
@@ -893,9 +893,9 @@ intptr_t winampGetExtendedRead_getData(
       trc->code = n;
       trc->done = 1;
       if (!n)
-        dmsg("transcoder: play done\n");
+	dmsg("transcoder: play done\n");
       else
-        dmsg("transcoder: play failed (%02hX)\n", HU(n));
+	dmsg("transcoder: play failed (%02hX)\n", HU(n));
       break;
     }
 
@@ -917,7 +917,7 @@ void winampGetExtendedRead_close(intptr_t hdl)
   struct transcon * trc = (struct transcon *) hdl;
   if (trc) {
     dmsg("transcoder: close (ecode:%hX done:%hX)\n",
-         HU(trc->code), HU(trc->done));
+	 HU(trc->code), HU(trc->done));
     zz_close(&trc->play);
     zz_free(&trc);
   }
@@ -953,12 +953,12 @@ static int is_my_tag(const char * name, const char ** value)
       "\n"
       "Illusions Programmers:\n"
       "Rob Povey & Kevin Cowtan" },
-    { "genre",   "Quartet Atari ST Music" },
-    { "length",  0 },
+    { "genre",	 "Quartet Atari ST Music" },
+    { "length",	 0 },
     { "lossless", "1" },
     { "publisher", 0 },
     { "title", 0 },
-    { "type", "0" },                  /* "0" = audio format */
+    { "type", "0" },		      /* "0" = audio format */
     { 0, 0 }
   }, *tag;
 
@@ -987,7 +987,7 @@ EXPORT
  * @retval 0 unsupported tag
  */
 int winampGetExtendedFileInfo(const char *uri, const char *data,
-                              char *dest, size_t max)
+			      char *dest, size_t max)
 {
   int ret = 0;
   play_t * P = 0;  zz_info_t *I = 0, tmp_info;
@@ -1017,53 +1017,53 @@ int winampGetExtendedFileInfo(const char *uri, const char *data,
       /* always the empty string at start */
       X->data[0] = 0;
       if (!X->uri || !*X->uri || strcasecmp(uri,X->uri)) {
-        dmsg("WA-Xinfo[%s]: new URI \"%s\"\n", data, uri);
-        X->ready = 0;                   /* not ready yet */
-        /* Copy URI */
-        X->uri = X->data+(l=1);
-        l += 1 + snprintf(X->uri, M-l, "%s", uri);
-        /* Reset all other fields */
-        X->ms = 0;
-        X->format = X->album = X->artist = X->title = X->ripper = X->data;
-        ecode = zz_new(&P);
-        while (!ecode) {
-          if (ecode = zz_load(P,uri,"",0), ecode) break;
-          if (ecode = zz_info(P,&tmp_info), ecode) break;
-          X->format = (char *)tmp_info.fmt.str; /* always a static string */
-          dmsg("WA-Xinfo[%s]: format is <%s>\n", data, X->format);
+	dmsg("WA-Xinfo[%s]: new URI \"%s\"\n", data, uri);
+	X->ready = 0;			/* not ready yet */
+	/* Copy URI */
+	X->uri = X->data+(l=1);
+	l += 1 + snprintf(X->uri, M-l, "%s", uri);
+	/* Reset all other fields */
+	X->ms = 0;
+	X->format = X->album = X->artist = X->title = X->ripper = X->data;
+	ecode = zz_new(&P);
+	while (!ecode) {
+	  if (ecode = zz_load(P,uri,"",0), ecode) break;
+	  if (ecode = zz_info(P,&tmp_info), ecode) break;
+	  X->format = (char *)tmp_info.fmt.str; /* always a static string */
+	  dmsg("WA-Xinfo[%s]: format is <%s>\n", data, X->format);
 
-#define COPYTAG(TAG)                                                    \
-          if ((l+=snprintf(X->TAG=X->data+l,M-l,"%s",I->tag.TAG))       \
-              >= M) { break; } else ++l
+#define COPYTAG(TAG)							\
+	  if ((l+=snprintf(X->TAG=X->data+l,M-l,"%s",I->tag.TAG))	\
+	      >= M) { break; } else ++l
 
-          I = &tmp_info;
-          COPYTAG(title);
-          COPYTAG(artist);
-          COPYTAG(ripper);
-          COPYTAG(album);
-          I = 0;
-          break;
-        }
-        X->ready = 1;
-        X->fail  = !!ecode;
-        dmsg("WA-Xinfo[%s]: %s\n", data, X->fail?"FAIL":"READY");
+	  I = &tmp_info;
+	  COPYTAG(title);
+	  COPYTAG(artist);
+	  COPYTAG(ripper);
+	  COPYTAG(album);
+	  I = 0;
+	  break;
+	}
+	X->ready = 1;
+	X->fail	 = !!ecode;
+	dmsg("WA-Xinfo[%s]: %s\n", data, X->fail?"FAIL":"READY");
 
-        if (P)
-          zz_del(&P);
-        zz_assert( !P );
-        P = 0;
+	if (P)
+	  zz_del(&P);
+	zz_assert( !P );
+	P = 0;
       } /* uri */
 
       if (X->ready && !X->fail) {
-        I = &tmp_info;
-        /* copy xinfo to this temp info to use it below */
-        I->tag.album  = X->album;
-        I->tag.title  = X->title;
-        I->tag.artist = X->artist;
-        I->tag.ripper = X->ripper;
+	I = &tmp_info;
+	/* copy xinfo to this temp info to use it below */
+	I->tag.album  = X->album;
+	I->tag.title  = X->title;
+	I->tag.artist = X->artist;
+	I->tag.ripper = X->ripper;
       }
       /* GB: We can not unlock X until the data is copied */
-      X->data[M] = 0;                   /* safety net */
+      X->data[M] = 0;			/* safety net */
     }
   }
 

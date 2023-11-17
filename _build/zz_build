@@ -161,8 +161,7 @@ if [ ${crosscompile} = yes ]; then
 
 fi
 
-pkgconfig="${PKGCONFIG:-pkg-config}"    # pkg-config to use in here
-pkgconfig+=' --short-errors'
+PKGCONFIG="${PKGCONFIG:-pkg-config}"
 
 # ----------------------------------------------------------------------
 # Architecture specific
@@ -178,7 +177,7 @@ if [ -z "${gb_CFLAGS+set}${gb_LDFLAGS+set}${gb_LDLIBS+set}" ]; then
             # For win32 platform try to build fully static (even for dlls)
             gb_CFLAGS="-static"
             gb_LDFLAGS="-static -static-libgcc"
-            pkgconfig+=' --static'
+            PKGCONFIG+=' --static'
             echo " *******************************${arch//?/*}*"
             echo " * Forcing all static mode for $arch *"
             echo " *******************************${arch//?/*}*"
@@ -191,6 +190,8 @@ if [ -z "${gb_CFLAGS+set}${gb_LDFLAGS+set}${gb_LDLIBS+set}" ]; then
 else
     echo " * At least one of the gb_* flags is set."
 fi
+
+pkgconfig="${PKGCONFIG} --short-errors"
 
 # ----------------------------------------------------------------------
 # Dependency libraries

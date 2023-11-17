@@ -49,7 +49,7 @@ song_init_header(song_t * song, const void *_hd)
 {
   const uint8_t * hd = _hd;
   const uint16_t khz = U16(hd+0), bar = U16(hd+2), spd = U16(hd+4);
-  uint16_t tck = U16(hd+12) == 0x5754 ? U16(hd+14) : 0;
+  uint16_t tck = U16(hd+12) == 0x5754 ? U16(hd+14) : 0; /* QTS tick rate ? */
   zz_err_t ecode;
 
   /* Parse song header */
@@ -64,11 +64,11 @@ song_init_header(song_t * song, const void *_hd)
        HU(song->rate), HU(song->khz),
        HU(song->barm), HU(song->tempo), HU(song->sigm), HU(song->sigd));
 
-  ecode = E_SNG & -!( is_valid_tck(song->rate)  &&
-                      is_valid_khz(song->khz)   &&
-                      is_valid_bar(song->barm)  &&
-                      is_valid_spd(song->tempo) &&
-                      is_valid_sig(song->sigm,song->sigd) );
+  ecode = E_SNG & -!( is_valid_tck(song->rate)	&&
+		      is_valid_khz(song->khz)	&&
+		      is_valid_bar(song->barm)	&&
+		      is_valid_spd(song->tempo) &&
+		      is_valid_sig(song->sigm,song->sigd) );
   if (ecode != E_OK)
     emsg("invalid song header\n");
    return ecode;
@@ -124,8 +124,8 @@ song_init(song_t * song)
    * condition and allow to properly measure music length.
    */
   static uint8_t nullseq[2][12] = {
-    { 0,'R', 0, 1 },                    /* "R"est 1 tick */
-    { 0,'F' }                           /* "F"inish      */
+    { 0,'R', 0, 1 },			/* "R"est 1 tick */
+    { 0,'F' }				/* "F"inish      */
   };
 
   /* Clean-up */
@@ -147,89 +147,89 @@ song_init(song_t * song)
     u16_t    const len = U16(seq->len);
     u32_t    const stp = U32(seq->stp);
     u32_t    const par = U32(seq->par);
-    u8_t           s12;
+    u8_t	   s12;
 
     if (!song->seq[k]) {
       /* new sequence starts */
-      song->seq[k] = seq;           /* new channel sequence       */
-      cur = 0;                      /* current instrument (0:def) */
-      ssp = 0;                      /* loop stack pointer         */
-      loops[0].len = 0;             /*  */
-      loops[0].has = 0;             /* #0:note #1:wait            */
-      /*out = seq;*/                    /* on the fly patch */
+      song->seq[k] = seq;	    /* new channel sequence       */
+      cur = 0;			    /* current instrument (0:def) */
+      ssp = 0;			    /* loop stack pointer         */
+      loops[0].len = 0;		    /*  */
+      loops[0].has = 0;		    /* #0:note #1:wait            */
+      /*out = seq;*/			/* on the fly patch */
     }
 
     switch (cmd) {
 
-    case 'F':                           /* Finish */
+    case 'F':				/* Finish */
       if (ssp) {
-        dmsg("(song) %c[%hu] loop not closed -- %hu\n",
-             'A'+k, HU(seq_idx(song->seq[k],seq)), HU(ssp));
-        collapse_all(loops,ssp);
+	dmsg("(song) %c[%hu] loop not closed -- %hu\n",
+	     'A'+k, HU(seq_idx(song->seq[k],seq)), HU(ssp));
+	collapse_all(loops,ssp);
       }
 
       if (!loops[0].has) {
-        song->seq[k] = (sequ_t *) nullseq;
-        loops[0].len = 1;
+	song->seq[k] = (sequ_t *) nullseq;
+	loops[0].len = 1;
       }
       dmsg("%c duration: %lu ticks\n",'A'+k, LU(loops[0].len));
       if ( loops[0].len > song->ticks)
-        song->ticks = loops[0].len;
+	song->ticks = loops[0].len;
       ++k;
       break;
 
-    case 'P':                           /* Play-Note */
+    case 'P':				/* Play-Note */
       loops[ssp].has = 1;
       song->iuse |= 1l << cur;
 
-    case 'S':                           /* Slide-To-Note */
+    case 'S':				/* Slide-To-Note */
       if (stp < SEQ_STP_MIN || stp > SEQ_STP_MAX) {
-        emsg("song: %c[%hu] step out of range -- %08lx\n",
-             'A'+k, HU(seq_idx(song->seq[k],seq)), LU(stp));
-        goto error;
+	emsg("song: %c[%hu] step out of range -- %08lx\n",
+	     'A'+k, HU(seq_idx(song->seq[k],seq)), LU(stp));
+	goto error;
       }
       if (!song->stepmax)
-        song->stepmax = song->stepmin = stp;
+	song->stepmax = song->stepmin = stp;
       else if (stp > song->stepmax)
-        song->stepmax = stp;
+	song->stepmax = stp;
       else if (stp < song->stepmin)
-        song->stepmin = stp;
+	song->stepmin = stp;
 
       s12 = (stp+4095) >> 12;
       if (s12 > song->istep[cur])
-        song->istep[cur] = s12;
+	song->istep[cur] = s12;
 
-    case 'R':                           /* Rest */
+    case 'R':				/* Rest */
       if (!len) {
-        emsg("song: %c[%hu] length out of range -- %08lx\n",
-             'A'+k, HU(seq_idx(song->seq[k],seq)), LU(len));
-        goto error;
+	emsg("song: %c[%hu] length out of range -- %08lx\n",
+	     'A'+k, HU(seq_idx(song->seq[k],seq)), LU(len));
+	goto error;
       }
       loops[ssp].len += len;
       break;
 
-    case 'l':                           /* Set-Loop-Point */
+    case 'l':				/* Set-Loop-Point */
       if (ssp == MAX_LOOP) {
-        emsg("song: %c[%hu] loop stack overflow\n",
-             'A'+k, HU(seq_idx(song->seq[k],seq)));
-        goto error;
+	emsg("song: %c[%hu] loop stack overflow\n",
+	     'A'+k, HU(seq_idx(song->seq[k],seq)));
+	goto error;
       }
       ++ssp;
       loops[ssp].len = 0;
       loops[ssp].has = 0;
       break;
 
-    case 'L':                           /* Loop-To-Point */
+    case 'L':				/* Loop-To-Point */
       dmsg("%c[%05hu][%hu] ",'A'+k, HU(seq_idx(song->seq[k],seq)), HU(ssp));
       ssp = collapse_one(loops, ssp, par>>16);
       break;
 
-    case 'V':                           /* Voice-Set */
+    case 'V':				/* Voice-Set */
       cur = par >> 2;
       if ( cur >= 20 || (par & 3) ) {
-        emsg("song: %c[%hu] instrument out of range -- %08lx\n",
-             'A'+k, HU(seq_idx(song->seq[k],seq)), LU(par));
-        goto error;
+	emsg("song: %c[%hu] instrument out of range -- %08lx\n",
+	     'A'+k, HU(seq_idx(song->seq[k],seq)), LU(par));
+	goto error;
       }
       song->iref |= 1l << cur;
       break;
@@ -246,8 +246,8 @@ song_init(song_t * song)
       dmsg("%c (truncated) duration: %lu ticks\n",'A'+k, LU(loops[0].len));
 #endif
       emsg("song: %c[%hu] invalid sequence -- %04hx-%04hx-%08lx-%08lx\n",
-           'A'+k, HU(seq_idx(song->seq[k],seq)),
-           HU(cmd), HU(len), LU(stp), LU(par));
+	   'A'+k, HU(seq_idx(song->seq[k],seq)),
+	   HU(cmd), HU(len), LU(stp), LU(par));
       goto error;
     }
 
@@ -264,7 +264,7 @@ song_init(song_t * song)
 
   if ( (off -= 11) != song->bin->len) {
     dmsg("garbage data after voice sequences -- %lu bytes\n",
-         LU(song->bin->len) - off);
+	 LU(song->bin->len) - off);
   }
 
 #ifdef ZZ_MINIMAL
@@ -285,7 +285,7 @@ song_init(song_t * song)
 
       dmsg("%c duration: %lu ticks\n",'A'+k, LU(loops[0].len));
       if ( loops[0].len > song->ticks)
-        song->ticks = loops[0].len;
+	song->ticks = loops[0].len;
       wmsg("channel %c is truncated\n", 'A'+k);
     } else {
       wmsg("channel %c is MIA\n", 'A'+k);
@@ -329,7 +329,7 @@ vset_init_header(vset_t *vset, const void * _hd)
   if (is_valid_khz(vset->khz) && is_valid_ins(vset->nbi)) {
     i8_t i;
 
-    hd += 7*20;                         /* skip instrument names */
+    hd += 7*20;				/* skip instrument names */
     /* copy instrument offset and setup */
     for (i=0; i<20; ++i, hd+=4) {
       inst_t * const inst = vset->inst+i;
@@ -379,9 +379,9 @@ vset_init(vset_t * const vset)
 
     do {
       /* Sanity tests */
-      TAINTED (!(1&(imsk>>i)));         /* instrument in used ? */
-      TAINTED (off < 8);                /* offset in range ? */
-      TAINTED (off >= bin->len);        /* offset in range ? */
+      TAINTED (!(1&(imsk>>i)));		/* instrument in used ? */
+      TAINTED (off < 8);		/* offset in range ? */
+      TAINTED (off >= bin->len);	/* offset in range ? */
 
       /* Get sample info */
       pcm = bin->ptr + off;
@@ -394,23 +394,23 @@ vset_init(vset_t * const vset)
        * Currently I haven't found a music file that is valid and does
        * not pass them.
        */
-      TAINTED (len & 0xFFFF);           /* clean length ? */
-      TAINTED (lpl & 0xFFFF);           /* clean loop ? */
-      TAINTED ((len >>= 16) == 0);      /* have data ? */
-      TAINTED ((lpl >>= 16) > len);     /* loop inside sample ? */
-      TAINTED (off+len > bin->len);     /* sample in range ? */
+      TAINTED (len & 0xFFFF);		/* clean length ? */
+      TAINTED (lpl & 0xFFFF);		/* clean loop ? */
+      TAINTED ((len >>= 16) == 0);	/* have data ? */
+      TAINTED ((lpl >>= 16) > len);	/* loop inside sample ? */
+      TAINTED (off+len > bin->len);	/* sample in range ? */
 
       vset->iref |= 1l << i;
       dmsg("I#%02hu [$%05lX:$%05lX:$%05lX] [$%05lX:$%05lX:$%05lX]\n",
-           HU(i+1),
-           LU(0), LU(len-lpl), LU(len),
-           LU(off), LU(off+len-lpl), LU(off+len));
+	   HU(i+1),
+	   LU(0), LU(len-lpl), LU(len),
+	   LU(off), LU(off+len-lpl), LU(off+len));
     } while (0);
 
     if ( !(1 & (vset->iref>>i)) ) {
       dmsg("I#%02hu was tainted by (%s)\n",HU(i+1),tainted);
       pcm = 0;
-      len = lpl = 0;                   /* If not used mark as dirty */
+      len = lpl = 0;		       /* If not used mark as dirty */
     }
 
     zz_assert( (!!len) == (1 & (vset->iref>>i)) );
@@ -445,11 +445,11 @@ sort_inst(const inst_t inst[], uint8_t idx[], u32_t iuse)
     /* find best */
     for (j=i+1; irem; ++j) {
       if (irem & (1l<<j)) {
-        irem &= ~(1l<<j);
-        zz_assert ( inst[j].pcm );
-        zz_assert ( inst[j].len );
-        if ( inst[j].pcm < inst[i].pcm )
-          i = j;
+	irem &= ~(1l<<j);
+	zz_assert ( inst[j].pcm );
+	zz_assert ( inst[j].len );
+	if ( inst[j].pcm < inst[i].pcm )
+	  i = j;
       }
     }
     idx[nbi++] = i;
@@ -488,7 +488,7 @@ unroll_loop(uint8_t * dst, uint8_t * const end, i32_t lpl, const uint8_t nul)
 zz_err_t
 vset_unroll(vset_t * const vset, const uint8_t *tohw)
 {
-  bin_t   * const bin = vset->bin;
+  bin_t	  * const bin = vset->bin;
   uint8_t * const beg = bin->ptr;
   uint8_t * const end = beg + bin->max;
   const uint8_t nul = tohw ? tohw[128] : 128;
@@ -501,7 +501,7 @@ vset_unroll(vset_t * const vset, const uint8_t *tohw)
 
   if (vset->unroll) {
     dmsg("voice-set already prepared 0:%02hX 1:%02hX unroll:%lu\n",
-         HU(vset->nul), HU(vset->one), LU(vset->unroll));
+	 HU(vset->nul), HU(vset->one), LU(vset->unroll));
     return E_OK;
   }
 

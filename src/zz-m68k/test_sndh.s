@@ -1,15 +1,15 @@
 ;;; @file    test_sndh.s
-;;; @author  Ben G. AKA Ben/OVR
+;;; @author  Ben G. AKA Ben^OVR
 ;;; @date    2018-02-28
 ;;; @brief   zingzong quartet player SNDH test
 ;;;
 
-	opt	p+
+	opt	a+,p+
 
-        ifnd    MIXERID
-MIXERID set     0               ; 0:Auto 1:Amiga 2:YM 3:DMA8 4:DMA16
-        endc
-	
+	ifnd	MIXERID
+MIXERID	set	0	    ; 0:Auto 1:Amiga 2:YM 3:DMA8 4:DMA16
+	endc
+
 	bra.w	sndh_init
 	bra.w	sndh_kill
 	bra.w	sndh_play
@@ -28,7 +28,7 @@ sndh_init:
 
 	;; Sampling/Quality (0:default)
 	clr.l	-(a7)
-	
+
 	;; Driver (0:Auto 1:AGA 2:STf 3:STe 4:Falcon)
 	pea	MIXERID.w
 
@@ -48,10 +48,10 @@ sndh_init:
 
 	bsr.s	zingzong
 	lea	16(a7),a7
-	
+
 	movem.l	(a7)+,d0-d1/a0-a1
 	rts
-	
+
 sndh_kill:
 	movem.l	d0-d1/a0-a1,-(a7)
 	bsr.s	zingzong+4
@@ -119,3 +119,10 @@ vset_len: equ *-vset_bin
 	even
 	ds.b	2048		; loop unroll extra space
 vset_max: equ *-vset_bin
+
+;;; Local Variables:
+;;; mode: asm
+;;; indent-tabs-mode: t
+;;; tab-width: 10
+;;; comment-column: 40
+;;; End:

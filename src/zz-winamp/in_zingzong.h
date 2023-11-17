@@ -8,7 +8,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2017-2018 Benjamin Gerard AKA Ben/OVR.
+ * Copyright (c) 2017-2023 Benjamin Gerard AKA Ben^OVR.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -59,19 +59,19 @@
 
 #if 0
 /* XP */
-#define NTDDI_VERSION 0x05010000        /* NTDDI_WINXP XP */
-#define _WIN32_WINNT  0x0501            /* _WIN32_WINNT_WINXP */
-#define _WIN32_IE     0x0400            /* IE4 */
+#define NTDDI_VERSION 0x05010000	/* NTDDI_WINXP XP */
+#define _WIN32_WINNT  0x0501		/* _WIN32_WINNT_WINXP */
+#define _WIN32_IE     0x0400		/* IE4 */
 #else
 /* VISTA */
-#define NTDDI_VERSION 0x06000000        /* NTDDI_VISTA */
-#define _WIN32_WINNT  0x0600            /* _WIN32_WINNT_VISTA */
-#define _WIN32_IE     0x0500            /* _WIN32_IE_IE50 */
+#define NTDDI_VERSION 0x06000000	/* NTDDI_VISTA */
+#define _WIN32_WINNT  0x0600		/* _WIN32_WINNT_VISTA */
+#define _WIN32_IE     0x0500		/* _WIN32_IE_IE50 */
 #endif
 
-#include <Windows.h>
-#include <Shellapi.h>
-#include <Commctrl.h>
+#include <windows.h>
+#include <shellapi.h>
+#include <commctrl.h>
 
 #ifndef NOVTABLE
 # define NOVTABLE
@@ -81,10 +81,10 @@
 # define EXPORT EXTERN_C __declspec(dllexport)
 #endif
 
-#define DLGHWND  g_mod.hMainWindow
+#define DLGHWND	 g_mod.hMainWindow
 #define DLGHINST g_mod.hDllInstance
 
-typedef struct  {
+typedef struct	{
   int mid, spr, dms, map;
 } config_t;
 

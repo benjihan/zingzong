@@ -1,8 +1,8 @@
 /**
- * @file   m68k_muldiv.h
- * @author Benjamin Gerard AKA Ben/OVR
- * @date   2017-07-04
- * @brief  m68k multiplications and divisions.
+ * @file    m68k_muldiv.h
+ * @author  Benjamin Gerard AKA Ben^OVR
+ * @date    2017-07-04
+ * @brief   m68k multiplications and divisions.
  */
 
 #ifndef M68K_MULDIV_H

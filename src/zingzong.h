@@ -1,8 +1,8 @@
 /**
- * @file   zingzong.h
- * @author Benjamin Gerard AKA Ben/OVR
- * @date   2017-07-04
- * @brief  zingzong public API.
+ * @file    zingzong.h
+ * @author  Benjamin Gerard AKA Ben^OVR
+ * @date    2017-07-04
+ * @brief   zingzong public API.
  */
 
 #ifndef ZINGZONG_H

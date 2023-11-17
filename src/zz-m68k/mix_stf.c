@@ -8,7 +8,7 @@
 #include "../zz_private.h"
 #include "mix_ata.h"
 
-#define HALF_TONE 1                   /* Use lowpass filter trick */
+#define HALF_TONE 1		      /* Use lowpass filter trick */
 
 #define mix_align(N) (N)
 
@@ -18,18 +18,18 @@
 #undef SPR_MAX
 #define SPR_MAX 14000 /* 15650 */
 
-#define FRQMAX 20000                    /*  */
+#define FRQMAX 20000			/*  */
 #define MIXMAX (FRQMAX/200u+2)
 
 #define YML ((volatile uint32_t *)0xFFFF8800)
 #define YMB ((volatile uint8_t *)0xFFFF8800)
 #define MFP ((volatile uint8_t *)0xFFFFFA00)
 #define VEC (*(trout_t * volatile *)0x134)
-#define BGC(X) (*(volatile uint16_t *)0xFFFF8240) = (X)
+/* #define BGC(X) (*(volatile uint16_t *)0xFFFF8240) = (X) */
 
 static zz_err_t init_stf(core_t * const P, u32_t spr);
-static void     free_stf(core_t * const P);
-static i16_t    push_stf(core_t * const P, void *pcm, i16_t npcm);
+static void	free_stf(core_t * const P);
+static i16_t	push_stf(core_t * const P, void *pcm, i16_t npcm);
 
 mixer_t * mixer_stf(mixer_t * const M)
 {
@@ -45,18 +45,18 @@ mixer_t * mixer_stf(mixer_t * const M)
 
 typedef struct mix_stf_s mix_stf_t;
 struct mix_stf_s {
-  ata_t   ata;                          /* generic atari mixer  */
-  uint8_t tcr, tdr;                     /* timer parameters */
+  ata_t	  ata;				/* generic atari mixer  */
+  uint8_t tcr, tdr;			/* timer parameters */
 };
 
 typedef struct timer_rout_s trout_t;
 struct timer_rout_s {
   struct  {
-    uint16_t opc;                       /* 0x21fc */
+    uint16_t opc;			/* 0x21fc */
     uint8_t  reg,x,val,y;
     uint16_t adr;
   } movel[3];
-  uint16_t opc;                         /* 0x31fc */
+  uint16_t opc;				/* 0x31fc */
   uint16_t imm;
   uint16_t adr;
   uint16_t rte;
@@ -64,18 +64,18 @@ struct timer_rout_s {
 
 #include "ym10_pack.h"
 
-static mix_stf_t      g_stf;
-static int16_t      * temp;             /* intermediat mix buffer */
-static trout_t * rout;             /* first timer routine */
-static trout_t * tuor;             /* last  timer routine */
+static mix_stf_t g_stf;
+static int16_t * temp;			/* intermediat mix buffer */
+static trout_t * rout;			/* first timer routine */
+static trout_t * tuor;			/* last  timer routine */
 
 static uint8_t stf_buf[32*4*MIXMAX+16];
 static uint8_t Tpcm[1024*4];
 
 ZZ_EXTERN_C
 void fast_stf(uint8_t * Tpcm, trout_t * routs,
-              int16_t * temp, fast_t   * voices,
-              int32_t n);
+	      int16_t * temp, fast_t   * voices,
+	      int32_t n);
 
 /* ---------------------------------------------------------------------- */
 
@@ -126,12 +126,12 @@ init_timer_routines(void)
 
   if (seg > beg) {
     /* end is on a different segment */
-    const uint16_t len0 = seg-beg;      /* => -beg */
-    const uint16_t len1 = end-seg;      /* =>  end */
+    const uint16_t len0 = seg-beg;	/* => -beg */
+    const uint16_t len1 = end-seg;	/* =>  end */
     if (len0 < len1) {
       rout = (trout_t *) seg;
       if ( (len0>>1) >= MIXMAX ) {
-        temp = (int16_t *) stf_buf;
+	temp = (int16_t *) stf_buf;
       }
     }
   }
@@ -173,10 +173,10 @@ init_recore_table(void)
 
 static void clear_ym_regs(void)
 {
-  YML[0] = 0x00000000;  YML[0] = 0x01000000;
-  YML[0] = 0x02000000;  YML[0] = 0x03000000;
-  YML[0] = 0x04000000;  YML[0] = 0x05000000;
-  YML[0] = 0x08000000;  YML[0] = 0x09000000;  YML[0] = 0x0A000000;
+  YML[0] = 0x00000000;	YML[0] = 0x01000000;
+  YML[0] = 0x02000000;	YML[0] = 0x03000000;
+  YML[0] = 0x04000000;	YML[0] = 0x05000000;
+  YML[0] = 0x08000000;	YML[0] = 0x09000000;  YML[0] = 0x0A000000;
 }
 
 
@@ -211,8 +211,8 @@ static void init_spl(core_t * P)
 
 static void stop_timer(void)
 {
-  MFP[0x19]  = 0;                       /* Stop timer-A */
-  MFP[0x17] |= 8;                       /* SEI */
+  MFP[0x19]  = 0;			/* Stop timer-A */
+  MFP[0x17] |= 8;			/* SEI */
 }
 
 static uint16_t never_inline set_sampling(core_t * const P, uint16_t spr)
@@ -225,10 +225,10 @@ static uint16_t never_inline set_sampling(core_t * const P, uint16_t spr)
 
 static void start_timer(void)
 {
-  MFP[0x19]  = 0;                       /* Stop timer-A */
-  MFP[0x07] |= 0x20;                    /* IER */
-  MFP[0x13] |= 0x20;                    /* IMR */
-  MFP[0x17] &= ~8;                      /* AEI */
+  MFP[0x19]  = 0;			/* Stop timer-A */
+  MFP[0x07] |= 0x20;			/* IER */
+  MFP[0x13] |= 0x20;			/* IMR */
+  MFP[0x17] &= ~8;			/* AEI */
   VEC = rout;
   MFP[0x1F] = g_stf.tdr;
   MFP[0x19] = g_stf.tcr;
@@ -316,7 +316,7 @@ static zz_err_t init_stf(core_t * const P, u32_t spr)
   if (spr > SPR_MAX) spr = SPR_MAX;
 
   P->spr = spr = set_sampling(P,spr);
-  scale  = ( divu( refspr<<13, spr) + 1 ) >> 1;
+  scale	 = ( divu( refspr<<13, spr) + 1 ) >> 1;
 
   init_spl(P);
   init_ata(MIXMAX*2,scale);

@@ -227,7 +227,7 @@ DRIFLAGS = -r -static $(NOSTART) $(NOLIBS)
 
 # START_* are dummies only used by the echo command
 dri_%.elf: START_SYMB = mixer_$*
-dri_%.elf: START_ADDR = 00000000
+dri_%.elf: START_ADDR = 00010000
 dri_%.elf: LDFLAGS = $(DRIFLAGS)
 
 # ----------------------------------------------------------------------
@@ -291,7 +291,7 @@ test_o = sc68_start.o $(zzo) $(drivers)
 
 .PRECIOUS: test.elf
 test.elf: START_SYMB = sc68_start
-test.elf: START_ADDR = 00010000
+test.elf: START_ADDR = 000FACE00
 test.elf: LDFLAGS    = -T $(srcdir)/sc68.x $(ELFFLAGS)
 test.elf: $(test_o) $(drivers) song.elf vset.elf
 sc68_start.o: $(srcdir)/sc68.x	# GB: force rebuild when script change
@@ -319,7 +319,7 @@ vset.dat: $(VSETFILE)
 song.dat vset.dat: %.dat:
 	test -n "$<"
 	$(call M,DAT,$* [$(notdir $(realpath $<))])
-	cat "$<" >$@
+	cp -- "$<" "$@"
 
 song.dat vset.dat: song.dep
 .INTERMEDIATE: song.dat vset.dat
@@ -381,7 +381,7 @@ test_%.tos: test_tos.s zingzong.bin zingzong.sym song_dat
 
 %.bin: %.elf
 	$(call M,BIN,$*)
-	$(ELF2BIN) $< $@
+	$(ELF2BIN) --change-addresses 256 $< $@
 
 %.sym: %.elf $(srcdir)/mksymb
 	$(call M,SYM,$*)
